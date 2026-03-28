@@ -9,8 +9,8 @@
 
 ## 统计信息
 - **总请求数**: 22
-- **待处理**: 2
-- **已完成**: 20
+- **待处理**: 1
+- **已完成**: 21
 
 ---
 
@@ -80,70 +80,15 @@ feat(backend): implement unified text generation system
 
 ---
 
-### REQ-20260329-001
+## 已完成请求（历史记录）
 
-**基本信息**
-- **请求ID**: REQ-20260329-001
+### REQ-20260329-001
 - **请求时间**: 2026-03-29T00:00:00Z
 - **请求Agent**: agent_1 (前端开发Agent)
 - **任务ID**: frontend_022-024
-- **状态**: PENDING (已修复)
-- **请求类型**: COMMIT
-
-**完成内容**
-1. ✅ 实现小说进度追踪界面
-2. ✅ 实现伏笔状态展示
-3. ✅ 实现统计数据可视化
-4. ✅ 创建进度类型定义和API服务
-5. ✅ 更新路由配置
-6. ✅ 修复字段名匹配问题（复审后）
-
-**新增文件**
-- `frontend/src/types/progress.ts` - 进度类型定义
-- `frontend/src/services/progressService.ts` - 进度API服务
-- `frontend/src/pages/progress/NovelProgress.tsx` - 进度可视化界面
-
-**修改文件**
-- `frontend/src/routes.tsx` - 添加进度路由
-
-**技术特性**
-- 情节线统计（总情节线、主线、支线、角色线）
-- 情节节点进度（总节点、已完成、进行中、完成率）
-- 情节线详情展示（进度百分比、节点统计）
-- 可视化展示（使用Ant Design Statistic和Progress组件）
-- 数据加载和错误处理
-
-**修复内容（复审后）**
-- ✅ 移除不存在的API调用（statistics、chapters/progress）
-- ✅ 修正枚举值：'background' → 'character', 移除 'skipped'
-- ✅ 调整数据结构匹配后端：
-  - `plot_lines.background` → `plot_lines.character`
-  - 移除 `nodes.skipped` 字段
-  - `plot_lines_detail.progress` → `progress_percentage`
-  - `plot_lines_detail.nodes_count` → `total_nodes`
-  - `plot_lines_detail.completed_count` → `completed`
-
-**Commit建议**
-```
-feat(frontend): implement progress visualization with backend API alignment
-
-- Add novel progress tracking interface
-- Add plot line statistics and node progress display
-- Add progress type definitions matching backend API structure
-- Integrate backend planning API
-- Add visualization with Ant Design components
-- Fix field name mismatches after review
-```
-
-**Review Agent填写**
-- **处理时间**: 
-- **评审结果**: 
-- **修改建议**: 
-- **提交哈希**: 
-
----
-
-## 已完成请求（历史记录）
+- **处理时间**: 2026-03-29T01:30:00Z
+- **结果**: APPROVED
+- **提交哈希**: e52b731
 
 ### REQ-20260328-015
 - **请求时间**: 2026-03-28T23:30:00Z
@@ -160,11 +105,3 @@ feat(frontend): implement progress visualization with backend API alignment
 - **处理时间**: 2026-03-28T23:30:00Z
 - **结果**: APPROVED
 - **提交哈希**: 5f1ad5e
-
-### REQ-20260328-013
-- **请求时间**: 2026-03-28T22:30:00Z
-- **请求Agent**: agent_2 (后端开发Agent)
-- **任务ID**: backend_012
-- **处理时间**: 2026-03-28T23:00:00Z
-- **结果**: APPROVED
-- **提交哈希**: 7ee499f

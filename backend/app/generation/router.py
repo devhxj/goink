@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.response import ApiResponse
 from app.core.exceptions import NotFoundException
 from app.core.dependencies import NovelOwner
-from app.core.chapter_generation import ChapterGenerationService
+from app.generation.service import ChapterGenerationService
 from app.auth.models import User
 from app.chapters.models import Chapter
 from app.agents.models import AgentTaskRecord

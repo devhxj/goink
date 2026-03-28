@@ -2,7 +2,7 @@
   "agent_id": "agent_2",
   "agent_name": "后端开发Agent",
   "created_at": "2026-03-27T00:00:00Z",
-  "last_updated": "2026-03-28T23:30:00Z",
+  "last_updated": "2026-03-29T00:00:00Z",
   "completed_task_ids": [
     "backend_000",
     "backend_001",
@@ -18,11 +18,11 @@
     "backend_010_fix",
     "backend_011",
     "backend_012",
-    "backend_013"
+    "backend_013",
+    "backend_014"
   ],
-  "current_task": "backend_014",
+  "current_task": "backend_015",
   "pending_tasks": [
-    "backend_014",
     "backend_015",
     "backend_016",
     "backend_017",
@@ -54,6 +54,7 @@
     "重试机制提高可靠性",
     "LLM智能一致性检查",
     "LangGraph工作流编排",
-    "情节规划系统（情节线、情节节点、情节大纲）"
+    "情节规划系统（情节线、情节节点、情节大纲）",
+    "统一文本生成服务（章节、对话、描写、大纲、摘要、角色档案）"
   ]
 }

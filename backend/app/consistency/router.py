@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.response import ApiResponse
 from app.core.exceptions import NotFoundException
 from app.core.dependencies import NovelOwner
-from app.core.consistency_checker import ConsistencyChecker
+from app.consistency.service import ConsistencyChecker
 from app.foreshadowing.models import Foreshadowing, ForeshadowingStatus
 from app.foreshadowing.schemas import (
     ForeshadowingCreate,

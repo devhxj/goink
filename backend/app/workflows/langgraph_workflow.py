@@ -24,7 +24,7 @@ except ImportError:
     ContextBuilder = None
 
 try:
-    from app.core.consistency_checker import ConsistencyChecker
+    from app.consistency.service import ConsistencyChecker
     CONSISTENCY_CHECKER_AVAILABLE = True
 except ImportError:
     CONSISTENCY_CHECKER_AVAILABLE = False

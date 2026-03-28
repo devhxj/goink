@@ -18,8 +18,8 @@
 - MCP工具开发
 
 ## 当前任务
-- 任务ID: backend_014
-- 任务描述: 实现文本生成系统
+- 任务ID: backend_015
+- 任务描述: MCP工具 - 小说管理类
 - 状态: 待开始
 
 ## 任务列表
@@ -46,7 +46,8 @@
 - [x] backend_013: 实现情节规划系统 ✅ (2026-03-28)
 
 ### 阶段4: 高级功能开发
-- [ ] backend_014: 实现文本生成系统 ← 当前任务
+- [x] backend_014: 实现文本生成系统 ✅ (2026-03-29)
+- [ ] backend_015: MCP工具 - 小说管理类 ← 当前任务
 - [ ] backend_015: MCP工具 - 小说管理类
 - [ ] backend_016: MCP工具 - 记忆检索类
 - [ ] backend_017: MCP工具 - 一致性检查类
@@ -271,6 +272,31 @@
   - POST /api/v1/planning/novels/{novel_id}/suggestions - 生成情节建议
   - GET /api/v1/planning/novels/{novel_id}/progress - 获取情节进度
   - GET /api/v1/planning/novels/{novel_id}/chapters/{chapter_number}/nodes - 获取章节情节节点
+
+### backend_014 - 实现文本生成系统
+- 完成时间: 2026-03-29
+- 关键成果:
+  - 创建TextGenerator统一文本生成服务
+  - 支持多种生成类型：章节、对话、描写、大纲、摘要、角色档案
+  - 支持多种写作风格：叙述性、描写性、对话式、诗意、戏剧性、自然、生动
+  - 集成ContextBuilder自动构建生成上下文
+  - 支持自定义生成配置（温度、目标字数、风格）
+  - 提供统一的生成接口和专用生成方法
+- 文件创建:
+  - backend/app/core/text_generator.py - 文本生成服务
+  - backend/app/text/router.py - API路由
+  - backend/app/text/__init__.py
+- 文件修改:
+  - backend/app/main.py - 注册text路由
+- API端点:
+  - POST /api/v1/text/novels/{novel_id}/generate/chapter - 生成章节
+  - POST /api/v1/text/novels/{novel_id}/generate/dialogue - 生成对话
+  - POST /api/v1/text/novels/{novel_id}/generate/description - 生成描写
+  - POST /api/v1/text/novels/{novel_id}/generate/outline - 生成大纲
+  - POST /api/v1/text/novels/{novel_id}/generate/summary - 生成摘要
+  - POST /api/v1/text/novels/{novel_id}/generate/character-profile - 生成角色档案
+  - POST /api/v1/text/novels/{novel_id}/generate/custom - 自定义生成
+  - GET /api/v1/text/generation-types - 获取支持的生成类型和风格
 
 ## 依赖关系
 - ✅ API接口文档: `.trae/documents/api-specification.md`
