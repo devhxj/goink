@@ -16,6 +16,7 @@ import ChapterCreate from '@/pages/chapter/ChapterCreate'
 import ChapterGenerate from '@/pages/chapter/ChapterGenerate'
 import ConsistencyCheck from '@/pages/consistency/ConsistencyCheck'
 import ForeshadowingList from '@/pages/consistency/ForeshadowingList'
+import NovelProgress from '@/pages/progress/NovelProgress'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -50,6 +51,7 @@ function AppRoutes() {
           <Route path="chapters/:id/generate" element={<ChapterGenerate />} />
           <Route path="novels/:novelId/consistency" element={<ConsistencyCheck />} />
           <Route path="novels/:novelId/foreshadowings" element={<ForeshadowingList />} />
+          <Route path="novels/:novelId/progress" element={<NovelProgress />} />
         </Route>
       </Routes>
     </BrowserRouter>
