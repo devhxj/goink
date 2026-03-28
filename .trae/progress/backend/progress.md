@@ -15,10 +15,11 @@
 - RAG检索系统（上下文构建）
 - 多智能体框架（LangGraph）
 - 一致性检查系统
+- MCP工具开发
 
 ## 当前任务
-- 任务ID: backend_011
-- 任务描述: 实现一致性检查系统
+- 任务ID: backend_012
+- 任务描述: 实现LangGraph工作流
 - 状态: 待开始
 
 ## 任务列表
@@ -39,17 +40,23 @@
 - [x] backend_010: 实现章节生成完整流程 ✅ (2026-03-28)
 - [x] backend_010_fix: 修复章节生成问题 ✅ (2026-03-28)
 
-### 阶段3: 高级功能开发
-- [ ] backend_011: 实现一致性检查系统 ← 当前任务
-- [ ] backend_012: 实现情节规划系统
-- [ ] backend_013: 实现文本生成系统
+### 阶段3: Agent系统完善
+- [x] backend_011: 实现一致性检查系统 ✅ (2026-03-28)
+- [ ] backend_012: 实现LangGraph工作流 ← 当前任务
+- [ ] backend_013: 实现情节规划系统
 
-### 阶段4: API开发
-- [ ] backend_014: 小说管理API（完善）
-- [ ] backend_015: 角色管理API（完善）
-- [ ] backend_016: 章节生成API
-- [ ] backend_017: 一致性检查API
-- [ ] backend_018: 记忆检索API
+### 阶段4: 高级功能开发
+- [ ] backend_014: 实现文本生成系统
+- [ ] backend_015: MCP工具 - 小说管理类
+- [ ] backend_016: MCP工具 - 记忆检索类
+- [ ] backend_017: MCP工具 - 一致性检查类
+
+### 阶段5: API完善
+- [ ] backend_018: 小说管理API（完善）
+- [ ] backend_019: 角色管理API（完善）
+- [ ] backend_020: 章节生成API
+- [ ] backend_021: 一致性检查API
+- [ ] backend_022: 记忆检索API
 
 ## 已完成任务
 
@@ -167,6 +174,37 @@
   3. 重试机制 - _generate_with_retry和_regenerate_with_retry函数实现3次重试
 - 文件修改:
   - backend/app/generation/router.py
+
+### backend_011 - 实现一致性检查系统
+- 完成时间: 2026-03-28
+- 关键成果:
+  - 创建ConsistencyChecker服务检查角色、情节、时间线一致性
+  - 实现伏笔管理模型（Foreshadowing）追踪挖坑/填坑
+  - 角色一致性检查：性格、能力、关系前后矛盾检测
+  - 情节一致性检查：逻辑漏洞、因果关系检测
+  - 时间线一致性检查：事件时间顺序检测
+  - 伏笔状态检查：未解决伏笔追踪
+  - 集成LLM进行智能一致性分析
+- 文件创建:
+  - backend/app/foreshadowing/models.py - 伏笔数据模型
+  - backend/app/foreshadowing/schemas.py - Pydantic验证模型
+  - backend/app/foreshadowing/__init__.py
+  - backend/app/core/consistency_checker.py - 一致性检查服务
+  - backend/app/consistency/router.py - API路由
+  - backend/app/consistency/__init__.py
+- 文件修改:
+  - backend/app/main.py - 注册consistency路由
+  - backend/app/novels/models.py - 添加foreshadowings关系
+- API端点:
+  - POST /api/v1/consistency/novels/{novel_id}/check - 执行一致性检查
+  - GET /api/v1/consistency/novels/{novel_id}/foreshadowings - 获取伏笔列表
+  - POST /api/v1/consistency/novels/{novel_id}/foreshadowings - 创建伏笔
+  - GET /api/v1/consistency/foreshadowings/{foreshadowing_id} - 获取伏笔详情
+  - PUT /api/v1/consistency/foreshadowings/{foreshadowing_id} - 更新伏笔
+  - POST /api/v1/consistency/foreshadowings/{foreshadowing_id}/resolve - 解决伏笔
+  - POST /api/v1/consistency/foreshadowings/{foreshadowing_id}/abandon - 放弃伏笔
+  - GET /api/v1/consistency/novels/{novel_id}/foreshadowings/unresolved - 获取未解决伏笔
+  - GET /api/v1/consistency/novels/{novel_id}/foreshadowings/statistics - 获取伏笔统计
 
 ## 依赖关系
 - ✅ API接口文档: `.trae/documents/api-specification.md`
