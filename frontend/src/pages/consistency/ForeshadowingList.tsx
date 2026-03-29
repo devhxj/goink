@@ -3,11 +3,22 @@ import { Table, Button, Space, Tag, Select, message, Popconfirm, Modal, Form, In
 import { PlusOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { consistencyApi } from '@/services/consistencyService'
-import type { Foreshadowing, ForeshadowingStatus, ForeshadowingType } from '@/types/consistency'
+import { getErrorMessage } from '@/types/error'
+import type { Foreshadowing, ForeshadowingStatus, ForeshadowingType, ForeshadowingCreate, ForeshadowingResolve } from '@/types/consistency'
 import dayjs from 'dayjs'
 
 const { Option } = Select
 const { TextArea } = Input
+
+interface StatusConfig {
+  color: string
+  text: string
+}
+
+interface TypeConfig {
+  color: string
+  text: string
+}
 
 function ForeshadowingList() {
   const navigate = useNavigate()
@@ -22,8 +33,8 @@ function ForeshadowingList() {
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [resolveModalVisible, setResolveModalVisible] = useState(false)
   const [selectedForeshadowing, setSelectedForeshadowing] = useState<Foreshadowing | null>(null)
-  const [form] = Form.useForm()
-  const [resolveForm] = Form.useForm()
+  const [form] = Form.useForm<ForeshadowingCreate>()
+  const [resolveForm] = Form.useForm<ForeshadowingResolve>()
 
   useEffect(() => {
     if (novelId) {
@@ -46,14 +57,14 @@ function ForeshadowingList() {
         setForeshadowings(response.data.items)
         setTotal(response.data.total)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载伏笔列表失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCreate = async (values: any) => {
+  const handleCreate = async (values: ForeshadowingCreate) => {
     if (!novelId) return
 
     try {
@@ -64,12 +75,12 @@ function ForeshadowingList() {
         form.resetFields()
         loadForeshadowings()
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '创建失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     }
   }
 
-  const handleResolve = async (values: any) => {
+  const handleResolve = async (values: ForeshadowingResolve) => {
     if (!novelId || !selectedForeshadowing) return
 
     try {
@@ -81,8 +92,8 @@ function ForeshadowingList() {
         setSelectedForeshadowing(null)
         loadForeshadowings()
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '操作失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     }
   }
 
@@ -95,13 +106,13 @@ function ForeshadowingList() {
         message.success('伏笔已放弃')
         loadForeshadowings()
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '操作失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     }
   }
 
   const getStatusTag = (status: ForeshadowingStatus) => {
-    const statusMap = {
+    const statusMap: Record<ForeshadowingStatus, StatusConfig> = {
       unresolved: { color: 'warning', text: '未解决' },
       resolved: { color: 'success', text: '已解决' },
       abandoned: { color: 'default', text: '已放弃' },
@@ -111,7 +122,7 @@ function ForeshadowingList() {
   }
 
   const getTypeTag = (type: ForeshadowingType) => {
-    const typeMap = {
+    const typeMap: Record<ForeshadowingType, TypeConfig> = {
       plot: { color: 'blue', text: '情节' },
       character: { color: 'green', text: '角色' },
       item: { color: 'purple', text: '物品' },
@@ -181,7 +192,7 @@ function ForeshadowingList() {
       title: '操作',
       key: 'action',
       width: 200,
-      render: (_: any, record: Foreshadowing) => (
+      render: (_: unknown, record: Foreshadowing) => (
         <Space>
           <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/novels/${novelId}/foreshadowings/${record.id}`)}>
             查看

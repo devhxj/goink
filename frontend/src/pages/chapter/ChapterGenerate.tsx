@@ -3,17 +3,29 @@ import { Card, Form, Input, Button, Select, message, Spin, Alert, Divider } from
 import { useParams, useNavigate } from 'react-router-dom'
 import { chapterApi } from '@/services/chapterService'
 import { generationApi } from '@/services/generationService'
+import { getErrorMessage } from '@/types/error'
 import type { ChapterDetail } from '@/types/chapter'
 
 const { TextArea } = Input
 const { Option } = Select
+
+interface GenerateFormValues {
+  prompt: string
+  context?: {
+    style?: string
+  }
+  options?: {
+    temperature?: number
+    max_tokens?: number
+  }
+}
 
 function ChapterGenerate() {
   const [loading, setLoading] = useState(false)
   const [fetchLoading, setFetchLoading] = useState(true)
   const [chapter, setChapter] = useState<ChapterDetail | null>(null)
   const [generatedContent, setGeneratedContent] = useState('')
-  const [form] = Form.useForm()
+  const [form] = Form.useForm<GenerateFormValues>()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -30,15 +42,15 @@ function ChapterGenerate() {
       if (response.success) {
         setChapter(response.data)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载章节详情失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
       navigate('/novels')
     } finally {
       setFetchLoading(false)
     }
   }
 
-  const onGenerate = async (values: any) => {
+  const onGenerate = async (values: GenerateFormValues) => {
     if (!id || !chapter) return
     
     setLoading(true)
@@ -53,8 +65,8 @@ function ChapterGenerate() {
         setGeneratedContent(response.data.content || '生成成功')
         message.success('章节内容生成成功')
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '生成失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -72,8 +84,8 @@ function ChapterGenerate() {
         message.success('内容保存成功')
         navigate(`/chapters/${id}`)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '保存失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }

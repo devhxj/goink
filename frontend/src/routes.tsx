@@ -5,18 +5,22 @@ import Login from '@/pages/auth/Login'
 import Register from '@/pages/auth/Register'
 import NovelList from '@/pages/novel/NovelList'
 import NovelDetailPage from '@/pages/novel/NovelDetail'
-import NovelCreate from '@/pages/novel/NovelCreate'
+import NovelCreatePage from '@/pages/novel/NovelCreate'
 import NovelEdit from '@/pages/novel/NovelEdit'
 import CharacterList from '@/pages/character/CharacterList'
 import CharacterDetailPage from '@/pages/character/CharacterDetail'
-import CharacterCreate from '@/pages/character/CharacterCreate'
+import CharacterCreatePage from '@/pages/character/CharacterCreate'
 import ChapterList from '@/pages/chapter/ChapterList'
 import ChapterDetailPage from '@/pages/chapter/ChapterDetail'
-import ChapterCreate from '@/pages/chapter/ChapterCreate'
+import ChapterCreatePage from '@/pages/chapter/ChapterCreate'
 import ChapterGenerate from '@/pages/chapter/ChapterGenerate'
 import ConsistencyCheck from '@/pages/consistency/ConsistencyCheck'
 import ForeshadowingList from '@/pages/consistency/ForeshadowingList'
 import NovelProgress from '@/pages/progress/NovelProgress'
+import TextGeneration from '@/pages/generation/TextGeneration'
+import WorkflowGenerate from '@/pages/workflow/WorkflowGenerate'
+import PlotPlanning from '@/pages/planning/PlotPlanning'
+import MCPTools from '@/pages/mcp/MCPTools'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -39,19 +43,23 @@ function AppRoutes() {
         >
           <Route index element={<Navigate to="/novels" replace />} />
           <Route path="novels" element={<NovelList />} />
-          <Route path="novels/create" element={<NovelCreate />} />
+          <Route path="novels/create" element={<NovelCreatePage />} />
           <Route path="novels/:id" element={<NovelDetailPage />} />
           <Route path="novels/:id/edit" element={<NovelEdit />} />
           <Route path="novels/:novelId/characters" element={<CharacterList />} />
-          <Route path="novels/:novelId/characters/create" element={<CharacterCreate />} />
+          <Route path="novels/:novelId/characters/create" element={<CharacterCreatePage />} />
           <Route path="characters/:id" element={<CharacterDetailPage />} />
           <Route path="novels/:novelId/chapters" element={<ChapterList />} />
-          <Route path="novels/:novelId/chapters/create" element={<ChapterCreate />} />
+          <Route path="novels/:novelId/chapters/create" element={<ChapterCreatePage />} />
           <Route path="chapters/:id" element={<ChapterDetailPage />} />
           <Route path="chapters/:id/generate" element={<ChapterGenerate />} />
           <Route path="novels/:novelId/consistency" element={<ConsistencyCheck />} />
           <Route path="novels/:novelId/foreshadowings" element={<ForeshadowingList />} />
           <Route path="novels/:novelId/progress" element={<NovelProgress />} />
+          <Route path="novels/:novelId/text-generation" element={<TextGeneration />} />
+          <Route path="novels/:novelId/workflow" element={<WorkflowGenerate />} />
+          <Route path="novels/:novelId/planning" element={<PlotPlanning />} />
+          <Route path="novels/:novelId/mcp-tools" element={<MCPTools />} />
         </Route>
       </Routes>
     </BrowserRouter>

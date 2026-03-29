@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Card, Descriptions, Tag, Button, Space, message } from 'antd'
+import { Card, Descriptions, Tag, Button, Space, message, Divider, Row, Col } from 'antd'
+import { FileTextOutlined, UserOutlined, ThunderboltOutlined, BulbOutlined, ToolOutlined, CheckCircleOutlined, BarChartOutlined, EditOutlined } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { novelApi } from '@/services/novelService'
+import { getErrorMessage } from '@/types/error'
 import type { NovelDetail } from '@/types/novel'
 import dayjs from 'dayjs'
+
+interface StatusConfig {
+  color: string
+  text: string
+}
 
 function NovelDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -24,15 +31,15 @@ function NovelDetailPage() {
       if (response.success) {
         setNovel(response.data)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载小说详情失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
   }
 
   const getStatusTag = (status: string) => {
-    const statusMap: any = {
+    const statusMap: Record<string, StatusConfig> = {
       draft: { color: 'default', text: '草稿' },
       writing: { color: 'processing', text: '写作中' },
       completed: { color: 'success', text: '已完成' },
@@ -49,13 +56,7 @@ function NovelDetailPage() {
       title={novel.title}
       extra={
         <Space>
-          <Button onClick={() => navigate(`/novels/${id}/characters`)}>
-            角色管理
-          </Button>
-          <Button onClick={() => navigate(`/novels/${id}/chapters`)}>
-            章节管理
-          </Button>
-          <Button type="primary" onClick={() => navigate(`/novels/${id}/edit`)}>
+          <Button type="primary" icon={<EditOutlined />} onClick={() => navigate(`/novels/${id}/edit`)}>
             编辑
           </Button>
         </Space>
@@ -79,6 +80,92 @@ function NovelDetailPage() {
           {novel.description}
         </Descriptions.Item>
       </Descriptions>
+
+      <Divider>功能入口</Divider>
+      
+      <Row gutter={[16, 16]}>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/chapters`)}>
+            <Card.Meta
+              avatar={<FileTextOutlined style={{ fontSize: 24, color: '#1890ff' }} />}
+              title="章节管理"
+              description="管理小说章节内容"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/characters`)}>
+            <Card.Meta
+              avatar={<UserOutlined style={{ fontSize: 24, color: '#52c41a' }} />}
+              title="角色管理"
+              description="管理小说角色信息"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/text-generation`)}>
+            <Card.Meta
+              avatar={<FileTextOutlined style={{ fontSize: 24, color: '#722ed1' }} />}
+              title="文本生成"
+              description="AI辅助文本生成工具"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/workflow`)}>
+            <Card.Meta
+              avatar={<ThunderboltOutlined style={{ fontSize: 24, color: '#faad14' }} />}
+              title="工作流生成"
+              description="LangGraph自动化生成"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/planning`)}>
+            <Card.Meta
+              avatar={<BulbOutlined style={{ fontSize: 24, color: '#eb2f96' }} />}
+              title="情节规划"
+              description="情节线与节点管理"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/consistency`)}>
+            <Card.Meta
+              avatar={<CheckCircleOutlined style={{ fontSize: 24, color: '#13c2c2' }} />}
+              title="一致性检查"
+              description="检查内容一致性"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/foreshadowings`)}>
+            <Card.Meta
+              avatar={<BulbOutlined style={{ fontSize: 24, color: '#fa8c16' }} />}
+              title="伏笔管理"
+              description="追踪伏笔状态"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/progress`)}>
+            <Card.Meta
+              avatar={<BarChartOutlined style={{ fontSize: 24, color: '#2f54eb' }} />}
+              title="进度追踪"
+              description="小说写作进度"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/mcp-tools`)}>
+            <Card.Meta
+              avatar={<ToolOutlined style={{ fontSize: 24, color: '#595959' }} />}
+              title="MCP工具"
+              description="AI工具集"
+            />
+          </Card>
+        </Col>
+      </Row>
     </Card>
   )
 }

@@ -3,7 +3,8 @@ import { Table, Button, Space, Tag, Input, message, Popconfirm } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { characterApi } from '@/services/characterService'
-import type { Character } from '@/types/character'
+import { getErrorMessage } from '@/types/error'
+import type { Character, Personality } from '@/types/character'
 import dayjs from 'dayjs'
 
 const { Search } = Input
@@ -38,8 +39,8 @@ function CharacterList() {
         setCharacters(response.data.items)
         setTotal(response.data.total)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载角色列表失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -53,8 +54,8 @@ function CharacterList() {
         setCharacters(characters.filter(c => c.id !== id))
         setTotal(total - 1)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '删除失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     }
   }
 
@@ -77,9 +78,9 @@ function CharacterList() {
       title: '性格特征',
       dataIndex: 'personality',
       key: 'traits',
-      render: (personality: any) => (
+      render: (personality: Personality) => (
         <Space wrap>
-          {personality?.traits?.slice(0, 3).map((trait: string, index: number) => (
+          {personality?.traits?.slice(0, 3).map((trait, index) => (
             <Tag key={index} color="blue">{trait}</Tag>
           ))}
           {personality?.traits?.length > 3 && (
@@ -114,7 +115,7 @@ function CharacterList() {
       title: '操作',
       key: 'action',
       width: 200,
-      render: (_: any, record: Character) => (
+      render: (_: unknown, record: Character) => (
         <Space>
           <Button
             type="link"

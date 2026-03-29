@@ -3,7 +3,8 @@ import { Form, Input, Select, Button, Card, message, Spin } from 'antd'
 import { useNavigate, useParams } from 'react-router-dom'
 import { novelApi } from '@/services/novelService'
 import { useNovelStore } from '@/stores/novelStore'
-import type { NovelDetail } from '@/types/novel'
+import { getErrorMessage } from '@/types/error'
+import type { NovelDetail, NovelUpdate } from '@/types/novel'
 
 const { TextArea } = Input
 const { Option } = Select
@@ -12,7 +13,7 @@ function NovelEdit() {
   const [loading, setLoading] = useState(false)
   const [fetchLoading, setFetchLoading] = useState(true)
   const [novel, setNovel] = useState<NovelDetail | null>(null)
-  const [form] = Form.useForm()
+  const [form] = Form.useForm<NovelUpdate>()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const { updateNovel } = useNovelStore()
@@ -36,15 +37,15 @@ function NovelEdit() {
           status: response.data.status,
         })
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载小说详情失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
       navigate('/novels')
     } finally {
       setFetchLoading(false)
     }
   }
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: NovelUpdate) => {
     if (!id) return
     
     setLoading(true)
@@ -55,8 +56,8 @@ function NovelEdit() {
         message.success('小说更新成功')
         navigate(`/novels/${id}`)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '更新失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }

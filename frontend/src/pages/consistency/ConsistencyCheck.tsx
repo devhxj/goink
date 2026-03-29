@@ -3,14 +3,15 @@ import { Card, Button, Checkbox, Alert, Spin, Empty, Tag, Collapse, Descriptions
 import { WarningOutlined, CloseCircleOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import { useParams } from 'react-router-dom'
 import { consistencyApi } from '@/services/consistencyService'
-import type { ConsistencyCheckResponse } from '@/types/consistency'
+import { getErrorMessage } from '@/types/error'
+import type { ConsistencyCheckResponse, CheckType } from '@/types/consistency'
 
 const { Panel } = Collapse
 
 function ConsistencyCheck() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ConsistencyCheckResponse | null>(null)
-  const [checkTypes, setCheckTypes] = useState<string[]>(['character', 'plot', 'timeline', 'foreshadowing'])
+  const [checkTypes, setCheckTypes] = useState<CheckType[]>(['character', 'plot', 'timeline', 'foreshadowing'])
   const { novelId } = useParams<{ novelId: string }>()
 
   const handleCheck = async () => {
@@ -19,14 +20,14 @@ function ConsistencyCheck() {
     setLoading(true)
     try {
       const response = await consistencyApi.checkConsistency(parseInt(novelId), {
-        check_types: checkTypes as any,
+        check_types: checkTypes,
       })
       if (response.success) {
         setResult(response.data)
         message.success('一致性检查完成')
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '检查失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -85,7 +86,7 @@ function ConsistencyCheck() {
         <div style={{ marginBottom: 8 }}>选择检查类型：</div>
         <Checkbox.Group
           value={checkTypes}
-          onChange={(values) => setCheckTypes(values as string[])}
+          onChange={(values) => setCheckTypes(values as CheckType[])}
           options={[
             { label: '角色一致性', value: 'character' },
             { label: '情节一致性', value: 'plot' },

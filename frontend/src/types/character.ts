@@ -1,11 +1,13 @@
+export interface Personality {
+  traits: string[]
+  background: string
+}
+
 export interface Character {
   id: number
   novel_id: number
   name: string
-  personality: {
-    traits: string[]
-    background: string
-  }
+  personality: Personality
   relationships: {
     friend?: number[]
     enemy?: number[]

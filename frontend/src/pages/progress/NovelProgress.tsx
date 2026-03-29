@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Row, Col, Statistic, Progress, Empty, Spin, message, Tag } from 'antd'
 import { useParams } from 'react-router-dom'
 import { progressApi } from '@/services/progressService'
+import { getErrorMessage } from '@/types/error'
 import type { PlotProgress } from '@/types/progress'
 
 function NovelProgress() {
@@ -24,8 +25,8 @@ function NovelProgress() {
       if (response.success) {
         setPlotProgress(response.data)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载数据失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }

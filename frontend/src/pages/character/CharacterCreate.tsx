@@ -3,15 +3,18 @@ import { Form, Input, Button, Card, message, Space } from 'antd'
 import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { characterApi } from '@/services/characterService'
+import { getErrorMessage } from '@/types/error'
+import type { CharacterCreate } from '@/types/character'
 
 const { TextArea } = Input
 
-function CharacterCreate() {
+function CharacterCreatePage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { novelId } = useParams<{ novelId: string }>()
+  const [form] = Form.useForm<CharacterCreate>()
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: CharacterCreate) => {
     if (!novelId) return
     
     setLoading(true)
@@ -21,8 +24,8 @@ function CharacterCreate() {
         message.success('角色创建成功')
         navigate(`/novels/${novelId}/characters`)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '创建失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -31,6 +34,7 @@ function CharacterCreate() {
   return (
     <Card title="创建角色">
       <Form
+        form={form}
         layout="vertical"
         onFinish={onFinish}
         style={{ maxWidth: 600 }}
@@ -114,4 +118,4 @@ function CharacterCreate() {
   )
 }
 
-export default CharacterCreate
+export default CharacterCreatePage

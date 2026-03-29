@@ -3,22 +3,35 @@ import { Form, Input, Button, Card, message } from 'antd'
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi } from '@/services/authService'
+import { getErrorMessage } from '@/types/error'
 import styles from './Auth.module.css'
+
+interface RegisterFormValues {
+  username: string
+  email: string
+  password: string
+  confirmPassword: string
+}
 
 function Register() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const [form] = Form.useForm<RegisterFormValues>()
 
-  const onFinish = async (values: { username: string; email: string; password: string }) => {
+  const onFinish = async (values: RegisterFormValues) => {
     setLoading(true)
     try {
-      const response = await authApi.register(values)
+      const response = await authApi.register({
+        username: values.username,
+        email: values.email,
+        password: values.password,
+      })
       if (response.success) {
         message.success('注册成功，请登录')
         navigate('/login')
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '注册失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -28,6 +41,7 @@ function Register() {
     <div className={styles.container}>
       <Card className={styles.card} title="AI小说生成系统 - 注册">
         <Form
+          form={form}
           name="register"
           onFinish={onFinish}
           autoComplete="off"

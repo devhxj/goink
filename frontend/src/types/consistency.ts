@@ -1,5 +1,6 @@
 export type ForeshadowingType = 'plot' | 'character' | 'item' | 'mystery' | 'other'
 export type ForeshadowingStatus = 'unresolved' | 'resolved' | 'abandoned'
+export type CheckType = 'character' | 'plot' | 'timeline' | 'foreshadowing'
 
 export interface Foreshadowing {
   id: number

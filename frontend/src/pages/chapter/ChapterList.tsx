@@ -3,11 +3,17 @@ import { Table, Button, Space, Tag, Input, Select, message, Popconfirm } from 'a
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, RobotOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { chapterApi } from '@/services/chapterService'
+import { getErrorMessage } from '@/types/error'
 import type { Chapter, ChapterStatus } from '@/types/chapter'
 import dayjs from 'dayjs'
 
 const { Search } = Input
 const { Option } = Select
+
+interface StatusConfig {
+  color: string
+  text: string
+}
 
 function ChapterList() {
   const navigate = useNavigate()
@@ -41,8 +47,8 @@ function ChapterList() {
         setChapters(response.data.items)
         setTotal(response.data.total)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载章节列表失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -56,13 +62,13 @@ function ChapterList() {
         setChapters(chapters.filter(c => c.id !== id))
         setTotal(total - 1)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '删除失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     }
   }
 
   const getStatusTag = (status: ChapterStatus) => {
-    const statusMap = {
+    const statusMap: Record<ChapterStatus, StatusConfig> = {
       draft: { color: 'default', text: '草稿' },
       completed: { color: 'success', text: '已完成' },
     }
@@ -118,7 +124,7 @@ function ChapterList() {
       title: '操作',
       key: 'action',
       width: 250,
-      render: (_: any, record: Chapter) => (
+      render: (_: unknown, record: Chapter) => (
         <Space>
           <Button
             type="link"

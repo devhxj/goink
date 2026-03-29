@@ -4,11 +4,17 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-de
 import { useNavigate } from 'react-router-dom'
 import { novelApi } from '@/services/novelService'
 import { useNovelStore } from '@/stores/novelStore'
+import { getErrorMessage } from '@/types/error'
 import type { Novel, NovelStatus } from '@/types/novel'
 import dayjs from 'dayjs'
 
 const { Search } = Input
 const { Option } = Select
+
+interface StatusConfig {
+  color: string
+  text: string
+}
 
 function NovelList() {
   const navigate = useNavigate()
@@ -36,8 +42,8 @@ function NovelList() {
         setNovels(response.data.items)
         setTotal(response.data.total)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载小说列表失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -51,13 +57,13 @@ function NovelList() {
         removeNovel(id)
         setTotal(total - 1)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '删除失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     }
   }
 
   const getStatusTag = (status: NovelStatus) => {
-    const statusMap = {
+    const statusMap: Record<NovelStatus, StatusConfig> = {
       draft: { color: 'default', text: '草稿' },
       writing: { color: 'processing', text: '写作中' },
       completed: { color: 'success', text: '已完成' },
@@ -119,7 +125,7 @@ function NovelList() {
       title: '操作',
       key: 'action',
       width: 200,
-      render: (_: any, record: Novel) => (
+      render: (_: unknown, record: Novel) => (
         <Space>
           <Button
             type="link"

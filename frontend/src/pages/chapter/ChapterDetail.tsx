@@ -2,8 +2,14 @@ import { useEffect, useState } from 'react'
 import { Card, Descriptions, Tag, Button, Space, message } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import { chapterApi } from '@/services/chapterService'
+import { getErrorMessage } from '@/types/error'
 import type { ChapterDetail } from '@/types/chapter'
 import dayjs from 'dayjs'
+
+interface StatusConfig {
+  color: string
+  text: string
+}
 
 function ChapterDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -24,15 +30,15 @@ function ChapterDetailPage() {
       if (response.success) {
         setChapter(response.data)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载章节详情失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
   }
 
   const getStatusTag = (status: string) => {
-    const statusMap: any = {
+    const statusMap: Record<string, StatusConfig> = {
       draft: { color: 'default', text: '草稿' },
       completed: { color: 'success', text: '已完成' },
     }

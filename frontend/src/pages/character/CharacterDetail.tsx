@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, Descriptions, Tag, Button, Space, message } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
 import { characterApi } from '@/services/characterService'
+import { getErrorMessage } from '@/types/error'
 import type { CharacterDetail } from '@/types/character'
 import dayjs from 'dayjs'
 
@@ -24,8 +25,8 @@ function CharacterDetailPage() {
       if (response.success) {
         setCharacter(response.data)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '加载角色详情失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }

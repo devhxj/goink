@@ -2,15 +2,18 @@ import { useState } from 'react'
 import { Form, Input, Button, Card, message, InputNumber } from 'antd'
 import { useNavigate, useParams } from 'react-router-dom'
 import { chapterApi } from '@/services/chapterService'
+import { getErrorMessage } from '@/types/error'
+import type { ChapterCreate } from '@/types/chapter'
 
 const { TextArea } = Input
 
-function ChapterCreate() {
+function ChapterCreatePage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { novelId } = useParams<{ novelId: string }>()
+  const [form] = Form.useForm<ChapterCreate>()
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: ChapterCreate) => {
     if (!novelId) return
     
     setLoading(true)
@@ -20,8 +23,8 @@ function ChapterCreate() {
         message.success('章节创建成功')
         navigate(`/novels/${novelId}/chapters`)
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '创建失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -30,6 +33,7 @@ function ChapterCreate() {
   return (
     <Card title="创建章节">
       <Form
+        form={form}
         layout="vertical"
         onFinish={onFinish}
         style={{ maxWidth: 800 }}
@@ -77,4 +81,4 @@ function ChapterCreate() {
   )
 }
 
-export default ChapterCreate
+export default ChapterCreatePage

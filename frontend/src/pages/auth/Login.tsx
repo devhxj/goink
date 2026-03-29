@@ -4,14 +4,21 @@ import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi } from '@/services/authService'
 import { useAuthStore } from '@/stores/authStore'
+import { getErrorMessage } from '@/types/error'
 import styles from './Auth.module.css'
+
+interface LoginFormValues {
+  username: string
+  password: string
+}
 
 function Login() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { setTokens, setUser } = useAuthStore()
+  const [form] = Form.useForm<LoginFormValues>()
 
-  const onFinish = async (values: { username: string; password: string }) => {
+  const onFinish = async (values: LoginFormValues) => {
     setLoading(true)
     try {
       const response = await authApi.login(values)
@@ -24,8 +31,8 @@ function Login() {
         message.success('登录成功')
         navigate('/')
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '登录失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -35,6 +42,7 @@ function Login() {
     <div className={styles.container}>
       <Card className={styles.card} title="AI小说生成系统 - 登录">
         <Form
+          form={form}
           name="login"
           onFinish={onFinish}
           autoComplete="off"

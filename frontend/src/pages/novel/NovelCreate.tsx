@@ -3,16 +3,19 @@ import { Form, Input, Select, Button, Card, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { novelApi } from '@/services/novelService'
 import { useNovelStore } from '@/stores/novelStore'
+import { getErrorMessage } from '@/types/error'
+import type { NovelCreate } from '@/types/novel'
 
 const { TextArea } = Input
 const { Option } = Select
 
-function NovelCreate() {
+function NovelCreatePage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { addNovel } = useNovelStore()
+  const [form] = Form.useForm<NovelCreate>()
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: NovelCreate) => {
     setLoading(true)
     try {
       const response = await novelApi.createNovel(values)
@@ -21,8 +24,8 @@ function NovelCreate() {
         message.success('小说创建成功')
         navigate('/novels')
       }
-    } catch (error: any) {
-      message.error(error.error?.message || '创建失败')
+    } catch (error) {
+      message.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -31,6 +34,7 @@ function NovelCreate() {
   return (
     <Card title="创建小说">
       <Form
+        form={form}
         layout="vertical"
         onFinish={onFinish}
         style={{ maxWidth: 600 }}
@@ -79,4 +83,4 @@ function NovelCreate() {
   )
 }
 
-export default NovelCreate
+export default NovelCreatePage

@@ -15,6 +15,10 @@
 - 章节生成界面
 - 一致性检查界面
 - 进度可视化追踪
+- 文本生成工具界面
+- 工作流生成界面
+- 情节规划界面
+- MCP工具界面
 
 ## 当前任务
 - 任务ID: 无
@@ -23,9 +27,14 @@
 
 ## 已完成任务
 
-### frontend_018-021 - 一致性检查界面
-- 完成时间: 2026-03-28
-- 关键成果: 检查结果展示、问题标记、修改建议、伏笔管理
+### frontend_025-033 - 对接后端新功能 (2026-03-29)
+- 完成时间: 2026-03-29
+- 关键成果:
+  - 文本生成系统界面（章节/对话/描写/大纲/摘要/角色档案生成）
+  - LangGraph工作流生成界面（状态轮询、进度展示）
+  - 情节规划界面（情节大纲/情节线/情节节点/情节建议）
+  - MCP工具界面（快捷工具/工具列表/分类浏览）
+  - 更新路由配置和小说详情页面入口
 
 ## 任务列表
 
@@ -65,44 +74,37 @@
 - [x] frontend_023: 实现伏笔状态展示 ✅ (2026-03-28)
 - [x] frontend_024: 实现统计数据可视化 ✅ (2026-03-28)
 
-## 已完成任务
-
-### frontend_001 - 初始化React项目结构
-- 完成时间: 2026-03-27
-- 关键成果: 使用Vite创建React + TypeScript项目
-
-### frontend_002 - 配置TypeScript和ESLint
-- 完成时间: 2026-03-27
-- 关键成果: 配置路径别名、严格模式、Vite代理
-
-### frontend_003 - 集成Ant Design UI库
-- 完成时间: 2026-03-27
-- 关键成果: 安装antd、配置中文语言包、创建基础布局
-
-### frontend_004 - 配置路由和状态管理
-- 完成时间: 2026-03-27
-- 关键成果: React Router路由系统、Zustand状态管理
-
-### frontend_005 - 创建API客户端
-- 完成时间: 2026-03-27
-- 关键成果: axios实例、JWT拦截器、完整API服务
-
-### frontend_006-009 - 小说管理界面
-- 完成时间: 2026-03-28
-- 关键成果: 小说列表、详情、创建、编辑页面
-
-### frontend_010-013 - 角色管理界面
-- 完成时间: 2026-03-28
-- 关键成果: 角色列表（搜索、筛选）、角色详情、角色创建页面
-
-### frontend_014-017 - 章节管理界面
-- 完成时间: 2026-03-28
-- 关键成果: 章节列表、章节详情、章节创建、AI生成章节功能
-
-### frontend_018-021 - 一致性检查界面
-- 完成时间: 2026-03-28
-- 关键成果: 一致性检查界面、伏笔管理界面、问题展示、修改建议
+### 阶段7: 后端新功能对接 (已完成) ✅
+- [x] frontend_025: 文本生成系统服务层和类型定义 ✅ (2026-03-29)
+- [x] frontend_026: 文本生成界面页面 ✅ (2026-03-29)
+- [x] frontend_027: 工作流服务层和类型定义 ✅ (2026-03-29)
+- [x] frontend_028: 工作流生成界面 ✅ (2026-03-29)
+- [x] frontend_029: 情节规划服务层和类型定义 ✅ (2026-03-29)
+- [x] frontend_030: 情节规划界面页面 ✅ (2026-03-29)
+- [x] frontend_031: MCP工具服务层和类型定义 ✅ (2026-03-29)
+- [x] frontend_032: MCP工具界面页面 ✅ (2026-03-29)
+- [x] frontend_033: 更新路由配置和导航菜单 ✅ (2026-03-29)
 
 ## 依赖关系
 - ✅ API接口文档: `.trae/documents/api-specification.md`
 - ✅ JWT认证方案: `.trae/documents/technical/jwt-authentication.md`
+
+## 新增文件列表
+
+### 类型定义
+- `src/types/textGeneration.ts` - 文本生成类型
+- `src/types/workflow.ts` - 工作流类型
+- `src/types/planning.ts` - 情节规划类型
+- `src/types/mcp.ts` - MCP工具类型
+
+### 服务层
+- `src/services/textGenerationService.ts` - 文本生成API
+- `src/services/workflowService.ts` - 工作流API
+- `src/services/planningService.ts` - 情节规划API
+- `src/services/mcpService.ts` - MCP工具API
+
+### 页面组件
+- `src/pages/generation/TextGeneration.tsx` - 文本生成页面
+- `src/pages/workflow/WorkflowGenerate.tsx` - 工作流生成页面
+- `src/pages/planning/PlotPlanning.tsx` - 情节规划页面
+- `src/pages/mcp/MCPTools.tsx` - MCP工具页面
