@@ -14,11 +14,12 @@ import ChapterList from '@/pages/chapter/ChapterList'
 import ChapterDetailPage from '@/pages/chapter/ChapterDetail'
 import ChapterCreatePage from '@/pages/chapter/ChapterCreate'
 import ChapterGenerate from '@/pages/chapter/ChapterGenerate'
+import ChapterEdit from '@/pages/chapter/ChapterEdit'
 import ConsistencyCheck from '@/pages/consistency/ConsistencyCheck'
 import ForeshadowingList from '@/pages/consistency/ForeshadowingList'
 import NovelProgress from '@/pages/progress/NovelProgress'
 import TextGeneration from '@/pages/generation/TextGeneration'
-import WorkflowGenerate from '@/pages/workflow/WorkflowGenerate'
+import ChatPage from '@/pages/chat/ChatPage'
 import PlotPlanning from '@/pages/planning/PlotPlanning'
 import MCPTools from '@/pages/mcp/MCPTools'
 
@@ -52,12 +53,13 @@ function AppRoutes() {
           <Route path="novels/:novelId/chapters" element={<ChapterList />} />
           <Route path="novels/:novelId/chapters/create" element={<ChapterCreatePage />} />
           <Route path="chapters/:id" element={<ChapterDetailPage />} />
+          <Route path="chapters/:id/edit" element={<ChapterEdit />} />
           <Route path="chapters/:id/generate" element={<ChapterGenerate />} />
           <Route path="novels/:novelId/consistency" element={<ConsistencyCheck />} />
           <Route path="novels/:novelId/foreshadowings" element={<ForeshadowingList />} />
           <Route path="novels/:novelId/progress" element={<NovelProgress />} />
           <Route path="novels/:novelId/text-generation" element={<TextGeneration />} />
-          <Route path="novels/:novelId/workflow" element={<WorkflowGenerate />} />
+          <Route path="novels/:novelId/chat" element={<ChatPage />} />
           <Route path="novels/:novelId/planning" element={<PlotPlanning />} />
           <Route path="novels/:novelId/mcp-tools" element={<MCPTools />} />
         </Route>

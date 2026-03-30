@@ -1,6 +1,6 @@
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu } from 'antd'
-import { BookOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons'
+import { BookOutlined, LogoutOutlined } from '@ant-design/icons'
 import { useAuthStore } from '@/stores/authStore'
 import styles from './MainLayout.module.css'
 
@@ -21,23 +21,15 @@ function MainLayout() {
       icon: <BookOutlined />,
       label: '小说管理',
     },
-    {
-      key: '/characters',
-      icon: <UserOutlined />,
-      label: '角色管理',
-    },
   ]
 
   const getSelectedKey = () => {
     const path = location.pathname
-    if (path.startsWith('/novels/')) {
-      const parts = path.split('/')
-      if (parts.length >= 3) {
-        return `/novels/${parts[2]}`
-      }
+    if (path === '/novels' || path === '/novels/create') {
+      return '/novels'
     }
-    if (path.startsWith('/characters/')) {
-      return '/characters'
+    if (path.startsWith('/novels/')) {
+      return '/novels'
     }
     return path
   }
@@ -55,9 +47,7 @@ function MainLayout() {
           items={menuItems}
           className={styles.menu}
           onClick={({ key }) => {
-            if (key.startsWith('/novels/') || key.startsWith('/characters')) {
-              navigate(key)
-            }
+            navigate(key)
           }}
         />
       </Sider>

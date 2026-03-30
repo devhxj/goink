@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, Descriptions, Tag, Button, Space, message, Divider, Row, Col } from 'antd'
-import { FileTextOutlined, UserOutlined, ThunderboltOutlined, BulbOutlined, ToolOutlined, CheckCircleOutlined, BarChartOutlined, EditOutlined } from '@ant-design/icons'
+import { FileTextOutlined, UserOutlined, ThunderboltOutlined, BulbOutlined, ToolOutlined, CheckCircleOutlined, BarChartOutlined, EditOutlined, MessageOutlined } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { novelApi } from '@/services/novelService'
 import { getErrorMessage } from '@/types/error'
@@ -67,9 +67,9 @@ function NovelDetailPage() {
         <Descriptions.Item label="ID">{novel.id}</Descriptions.Item>
         <Descriptions.Item label="类型">{novel.genre}</Descriptions.Item>
         <Descriptions.Item label="状态">{getStatusTag(novel.status)}</Descriptions.Item>
-        <Descriptions.Item label="章节数">{novel.chapter_count}</Descriptions.Item>
-        <Descriptions.Item label="字数">{novel.word_count.toLocaleString()}</Descriptions.Item>
-        <Descriptions.Item label="角色数">{novel.character_count}</Descriptions.Item>
+        <Descriptions.Item label="章节数">{novel.chapter_count ?? 0}</Descriptions.Item>
+        <Descriptions.Item label="字数">{(novel.word_count ?? 0).toLocaleString()}</Descriptions.Item>
+        <Descriptions.Item label="角色数">{novel.character_count ?? 0}</Descriptions.Item>
         <Descriptions.Item label="创建时间">
           {dayjs(novel.created_at).format('YYYY-MM-DD HH:mm:ss')}
         </Descriptions.Item>
@@ -112,11 +112,20 @@ function NovelDetailPage() {
           </Card>
         </Col>
         <Col span={6}>
-          <Card hoverable onClick={() => navigate(`/novels/${id}/workflow`)}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/chat`)}>
+            <Card.Meta
+              avatar={<MessageOutlined style={{ fontSize: 24, color: '#1890ff' }} />}
+              title="AI对话"
+              description="多轮对话创作助手"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card hoverable onClick={() => navigate(`/novels/${id}/chapters`)}>
             <Card.Meta
               avatar={<ThunderboltOutlined style={{ fontSize: 24, color: '#faad14' }} />}
-              title="工作流生成"
-              description="LangGraph自动化生成"
+              title="章节生成"
+              description="AI自动生成章节"
             />
           </Card>
         </Col>

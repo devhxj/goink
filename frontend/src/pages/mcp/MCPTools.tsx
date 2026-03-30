@@ -243,7 +243,7 @@ function MCPTools() {
         return (
           <Card title="一致性检查结果" size="small">
             <Alert
-              message={checkData.passed ? '检查通过' : '发现问题'}
+              title={checkData.passed ? '检查通过' : '发现问题'}
               type={checkData.passed ? 'success' : 'warning'}
               showIcon
               style={{ marginBottom: 16 }}

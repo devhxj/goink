@@ -106,13 +106,14 @@ function NovelList() {
       dataIndex: 'chapter_count',
       key: 'chapter_count',
       width: 100,
+      render: (count: number | undefined) => count ?? 0,
     },
     {
       title: '字数',
       dataIndex: 'word_count',
       key: 'word_count',
       width: 120,
-      render: (count: number) => count.toLocaleString(),
+      render: (count: number | undefined) => (count ?? 0).toLocaleString(),
     },
     {
       title: '创建时间',

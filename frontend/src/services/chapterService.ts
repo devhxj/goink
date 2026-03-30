@@ -4,7 +4,7 @@ import type { ApiResponse, PaginatedResponse } from '@/types/api'
 
 export const chapterApi = {
   getChapters: async (novelId: number, params: ChapterListParams): Promise<ApiResponse<PaginatedResponse<Chapter>>> => {
-    return apiClient.get(`/novels/${novelId}/chapters`, { params })
+    return apiClient.get(`/chapters/novel/${novelId}`, { params })
   },
 
   getChapter: async (chapterId: number): Promise<ApiResponse<ChapterDetail>> => {
@@ -12,7 +12,7 @@ export const chapterApi = {
   },
 
   createChapter: async (novelId: number, data: ChapterCreate): Promise<ApiResponse<Chapter>> => {
-    return apiClient.post(`/novels/${novelId}/chapters`, data)
+    return apiClient.post(`/chapters`, { ...data, novel_id: novelId })
   },
 
   updateChapter: async (chapterId: number, data: ChapterUpdate): Promise<ApiResponse<Chapter>> => {

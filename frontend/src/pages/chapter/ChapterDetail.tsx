@@ -77,7 +77,7 @@ function ChapterDetailPage() {
         <Descriptions.Item label="创建时间">
           {dayjs(chapter.created_at).format('YYYY-MM-DD HH:mm:ss')}
         </Descriptions.Item>
-        <Descriptions.Item label="更新时间">
+        <Descriptions.Item label="更新时间" span={2}>
           {dayjs(chapter.updated_at).format('YYYY-MM-DD HH:mm:ss')}
         </Descriptions.Item>
         <Descriptions.Item label="摘要" span={2}>

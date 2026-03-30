@@ -10,14 +10,14 @@ export interface Novel {
   description: string
   author_id: number
   status: NovelStatus
-  chapter_count: number
-  word_count: number
+  chapter_count?: number
+  word_count?: number
   created_at: string
   updated_at: string
 }
 
 export interface NovelDetail extends Novel {
-  character_count: number
+  character_count?: number
   characters?: Character[]
   chapters?: Chapter[]
 }
