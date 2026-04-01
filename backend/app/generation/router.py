@@ -28,6 +28,7 @@ from app.core.prompt_templates import (
 )
 from app.chapters.models import Chapter
 from app.novels.models import Novel
+from app.generation.service import ChapterGenerationService
 
 router = APIRouter(prefix="/generation", tags=["generation"])
 logger = logging.getLogger(__name__)
@@ -342,38 +343,29 @@ async def _generate_chapter_http(
     target_length = params.get("target_length", 3000)
     style = params.get("style", "narrative")
     model = params.get("model")
-    user_prompt = params.get("user_prompt")
-    chapter_outline = params.get("chapter_outline")
-    key_events = params.get("key_events")
-    focus_characters = params.get("focus_characters")
-    
-    context_builder = ContextBuilder(db, novel_id)
-    context_data = await context_builder.build_writing_context(
-        chapter_number=chapter_number,
-        context_size=params.get("context_size", 3000),
-        include_previous_chapters=True,
-        include_characters=True,
-        include_plot_events=True
-    )
-    
-    system_prompt = get_system_prompt(GenerationType.CHAPTER, style)
-    user_message = build_chapter_prompt(
+    service = ChapterGenerationService(db, novel_id)
+    result = await service.generate_chapter(
         chapter_number=chapter_number,
         target_length=target_length,
         style=style,
-        context=context_data.get("context", ""),
-        user_prompt=user_prompt,
-        chapter_outline=chapter_outline,
-        key_events=key_events,
-        focus_characters=focus_characters
+        additional_context={
+            "user_prompt": params.get("user_prompt"),
+            "author_intent": params.get("author_intent"),
+            "scene_goal": params.get("scene_goal"),
+            "chapter_outline": params.get("chapter_outline"),
+            "must_keep": params.get("must_keep"),
+            "must_avoid": params.get("must_avoid"),
+            "key_events": params.get("key_events"),
+            "focus_characters": params.get("focus_characters")
+        },
+        agent_role=params.get("agent_role"),
+        model=model,
+        use_workflow=params.get("use_langgraph"),
+        context_size=params.get("context_size", 3000)
     )
-    
-    result = await llm_service.generate_text(
-        prompt=user_message,
-        system_prompt=system_prompt,
-        model=model
-    )
-    
+    if not result.get("success"):
+        raise RuntimeError(result.get("error", "章节生成失败"))
+
     db_result = await db.execute(
         select(Chapter).where(
             Chapter.novel_id == novel_id,
@@ -381,14 +373,10 @@ async def _generate_chapter_http(
         )
     )
     chapter = db_result.scalar_one_or_none()
-    
     if chapter:
-        chapter.content = result
-        chapter.status = "completed"
-        chapter.word_count = len(result)
         await db.commit()
     
-    logger.info(f"HTTP chapter generation task {task_id} completed: {len(result)} chars")
+    logger.info(f"HTTP chapter generation task {task_id} completed: {result.get('word_count', 0)} chars")
 
 
 async def _generate_other_http(

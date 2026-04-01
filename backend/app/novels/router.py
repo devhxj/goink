@@ -10,8 +10,8 @@ from app.core.database import DBSession
 from app.core.auth import CurrentUser
 from app.core.dependencies import NovelOwner
 from app.core.redis_service import redis_service, NovelCache
-from .models import Novel
-from .schemas import NovelCreate, NovelUpdate
+from .models import Novel, NovelCreativeProfile
+from .schemas import NovelCreate, NovelUpdate, CreativeProfileUpdate, CreativeProfileResponse
 
 router = APIRouter(prefix="/novels", tags=["novels"])
 
@@ -135,6 +135,65 @@ async def get_novel(novel: NovelOwner):
     await redis_service.set(cache_key, data, ttl=300)
     
     return ApiResponse.success(data)
+
+
+@router.get("/{novel_id}/creative-profile")
+async def get_creative_profile(
+    novel: NovelOwner,
+    db: DBSession
+):
+    """获取作者创作配置"""
+    result = await db.execute(
+        select(NovelCreativeProfile).where(NovelCreativeProfile.novel_id == novel.id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        return ApiResponse.success({
+            "novel_id": novel.id,
+            "author_intent": None,
+            "preferred_tone": None,
+            "collaboration_style": "ai_ide",
+            "scene_planning_notes": None,
+            "must_keep": [],
+            "must_avoid": [],
+            "long_term_goals": [],
+            "extra_metadata": {}
+        })
+
+    return ApiResponse.success(CreativeProfileResponse.model_validate(profile))
+
+
+@router.put("/{novel_id}/creative-profile")
+async def update_creative_profile(
+    novel: NovelOwner,
+    data: CreativeProfileUpdate,
+    db: DBSession
+):
+    """更新作者创作配置"""
+    result = await db.execute(
+        select(NovelCreativeProfile).where(NovelCreativeProfile.novel_id == novel.id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        profile = NovelCreativeProfile(novel_id=novel.id, collaboration_style="ai_ide")
+        db.add(profile)
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(profile, key, value)
+
+    await db.commit()
+    await db.refresh(profile)
+
+    await redis_service.delete(f"novel:{novel.id}:detail")
+    await redis_service.clear_pattern(f"user:{novel.author_id}:novels:*")
+
+    return ApiResponse.success(
+        CreativeProfileResponse.model_validate(profile),
+        message="创作配置已更新"
+    )
 
 
 @router.put("/{novel_id}")

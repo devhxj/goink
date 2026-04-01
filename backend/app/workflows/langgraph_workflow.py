@@ -38,6 +38,7 @@ class WorkflowState(TypedDict):
     model: Optional[str]
     agent_role: Optional[str]
     context_size: int
+    extra_parameters: Dict[str, Any]
     
     context: Dict[str, Any]
     generated_content: Optional[str]
@@ -63,7 +64,8 @@ def create_initial_state(
     context: Dict[str, Any] = None,
     model: Optional[str] = None,
     agent_role: Optional[str] = None,
-    context_size: int = 3000
+    context_size: int = 3000,
+    extra_parameters: Dict[str, Any] = None
 ) -> WorkflowState:
     """创建初始状态"""
     now = datetime.now().isoformat()
@@ -76,6 +78,7 @@ def create_initial_state(
         model=model,
         agent_role=agent_role,
         context_size=context_size,
+        extra_parameters=extra_parameters or {},
         context=context or {},
         generated_content=None,
         review_result=None,
@@ -167,9 +170,11 @@ class ChapterWorkflow:
                     include_characters=True,
                     include_plot_events=True
                 )
+                incoming_context = state.get("context") or {}
+                merged_context = {**context, **incoming_context}
                 
                 return {
-                    "context": context,
+                    "context": merged_context,
                     "status": "context_prepared",
                     "updated_at": datetime.now().isoformat()
                 }
@@ -196,7 +201,8 @@ class ChapterWorkflow:
                     "target_length": state["target_length"],
                     "style": state["style"],
                     "model": state.get("model"),
-                    "agent_role": state.get("agent_role")
+                    "agent_role": state.get("agent_role"),
+                    **(state.get("extra_parameters") or {})
                 },
                 context=state["context"]
             )
@@ -241,12 +247,20 @@ class ChapterWorkflow:
             )
             
             result = await self.reviewer_agent.execute(task)
+            review_payload = result.result or {}
+            issues = review_payload.get("issues", [])
+            approved = review_payload.get("approved")
+            if approved is None:
+                approved = review_payload.get("passed", result.success)
+            score = review_payload.get("score")
+            if score is None:
+                score = max(0, 100 - len(issues) * 10)
             
             return {
                 "review_result": {
-                    "approved": result.success and result.result.get("approved", False),
-                    "score": result.result.get("score", 0),
-                    "issues": result.result.get("issues", []),
+                    "approved": approved,
+                    "score": score,
+                    "issues": issues,
                     "suggestions": result.suggestions
                 },
                 "status": "content_reviewed",
@@ -276,6 +290,9 @@ class ChapterWorkflow:
                 result = await checker.check_all(
                     check_types=["character", "plot", "timeline"]
                 )
+                summary = result.get("summary", {})
+                passed = summary.get("by_severity", {}).get("error", 0) == 0
+                result["passed"] = passed
                 
                 return {
                     "consistency_result": result,
@@ -309,9 +326,11 @@ class ChapterWorkflow:
                     )
                 )
                 chapter = result.scalar_one_or_none()
+                summary = await self._generate_chapter_summary(state["generated_content"] or "")
                 
                 if chapter:
                     chapter.content = state["generated_content"]
+                    chapter.summary = summary
                     chapter.status = "completed"
                     chapter.word_count = len(state["generated_content"])
                     chapter.updated_at = datetime.now()
@@ -322,6 +341,7 @@ class ChapterWorkflow:
                         chapter_number=state["chapter_number"],
                         title=f"第{state['chapter_number']}章",
                         content=state["generated_content"],
+                        summary=summary,
                         status="completed",
                         word_count=len(state["generated_content"])
                     )
@@ -377,6 +397,7 @@ class ChapterWorkflow:
                     ]
                     
                     if chunk_data:
+                        vector_store.delete_chapter_chunks(state["novel_id"], chapter.id)
                         vector_store.add_chunks(state["novel_id"], chunk_data)
                 
                 return {
@@ -401,7 +422,8 @@ class ChapterWorkflow:
         if state["review_result"] and not state["review_result"].get("approved", True):
             issues = state["review_result"].get("issues", [])
             suggestions = state["review_result"].get("suggestions", [])
-            feedback_parts.append(f"审核问题: {', '.join(issues)}")
+            issue_texts = [issue.get("message") or issue.get("description") or str(issue) for issue in issues]
+            feedback_parts.append(f"审核问题: {', '.join(issue_texts)}")
             feedback_parts.append(f"修改建议: {', '.join(suggestions)}")
         
         if state["consistency_result"]:
@@ -454,6 +476,26 @@ class ChapterWorkflow:
         if state["iteration"] >= state["max_iterations"]:
             return "end"
         return "retry"
+
+    async def _generate_chapter_summary(self, content: str) -> Optional[str]:
+        if not content or len(content.strip()) < 200:
+            return content[:200] if content else None
+
+        prompt = (
+            "请为以下小说章节生成一段120字以内的剧情摘要，"
+            "突出关键事件、人物变化和后续伏笔，不要评论。\n\n"
+            f"{content[:4000]}"
+        )
+        try:
+            summary = await llm_service.generate_text(
+                prompt=prompt,
+                system_prompt="你是长篇小说章节摘要助手。",
+                max_tokens=200
+            )
+            return summary.strip()
+        except Exception as e:
+            logger.warning(f"Failed to generate chapter summary in workflow: {e}")
+            return content[:200]
     
     async def run(
         self,
@@ -465,7 +507,8 @@ class ChapterWorkflow:
         context: Dict[str, Any] = None,
         model: Optional[str] = None,
         agent_role: Optional[str] = None,
-        context_size: int = 3000
+        context_size: int = 3000,
+        extra_parameters: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
         运行工作流
@@ -490,7 +533,8 @@ class ChapterWorkflow:
             context=context,
             model=model,
             agent_role=agent_role,
-            context_size=context_size
+            context_size=context_size,
+            extra_parameters=extra_parameters
         )
         
         config = {"configurable": {"thread_id": task_id}}

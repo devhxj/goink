@@ -5,7 +5,7 @@ from .base import BaseAgent, AgentTask, AgentResult, AgentRole, TaskType, TaskSt
 from .coordinator import CoordinatorAgent
 from .writer import WriterAgent
 from .reviewer import ReviewerAgent
-from .router import router
+from .factory import create_default_coordinator
 from .models import AgentTaskRecord
 
 __all__ = [
@@ -18,6 +18,6 @@ __all__ = [
     "CoordinatorAgent",
     "WriterAgent",
     "ReviewerAgent",
-    "AgentTaskRecord",
-    "router"
+    "create_default_coordinator",
+    "AgentTaskRecord"
 ]

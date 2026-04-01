@@ -12,21 +12,21 @@ from app.core.database import init_db
 from app.core.redis_service import redis_service
 from app.core.exceptions import APIException
 
-from app.auth import router as auth_router
-from app.novels import router as novels_router
-from app.characters import router as characters_router
-from app.chapters import router as chapters_router
-from app.plot_events import router as plot_events_router
-from app.memory import router as memory_router
-from app.rag import router as rag_router
-from app.agents import router as agents_router
-from app.consistency import router as consistency_router
-from app.planning import router as planning_router
-from app.mcp import router as mcp_router
+from app.auth.router import router as auth_router
+from app.novels.router import router as novels_router
+from app.characters.router import router as characters_router
+from app.chapters.router import router as chapters_router
+from app.plot_events.router import router as plot_events_router
+from app.memory.router import router as memory_router
+from app.rag.router import router as rag_router
+from app.agents.router import router as agents_router
+from app.consistency.router import router as consistency_router
+from app.planning.router import router as planning_router
+from app.mcp.router import router as mcp_router
 from app.mcp.server import get_mcp_transport
 from app.core.ws_chat import router as ws_chat_router
-from app.generation import router as generation_router
-from app.sessions import router as sessions_router
+from app.generation.router import router as generation_router
+from app.sessions.router import router as sessions_router
 from app.editor.router import router as editor_router
 
 from app.auth.models import User

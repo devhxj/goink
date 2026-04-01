@@ -99,6 +99,41 @@ async def get_novel_progress(novel_id: int, ctx: Context) -> dict:
 
 
 @mcp.tool()
+async def get_creative_profile(novel_id: int, ctx: Context) -> dict:
+    return await _execute_tool("get_creative_profile", ctx, novel_id=novel_id)
+
+
+@mcp.tool()
+async def update_creative_profile(
+    novel_id: int,
+    author_intent: Optional[str] = None,
+    preferred_tone: Optional[str] = None,
+    collaboration_style: Optional[str] = None,
+    scene_planning_notes: Optional[str] = None,
+    must_keep: Optional[List[str]] = None,
+    must_avoid: Optional[List[str]] = None,
+    long_term_goals: Optional[List[str]] = None,
+    extra_metadata: Optional[dict] = None,
+    merge_with_existing: bool = True,
+    ctx: Context = None
+) -> dict:
+    return await _execute_tool(
+        "update_creative_profile",
+        ctx,
+        novel_id=novel_id,
+        author_intent=author_intent,
+        preferred_tone=preferred_tone,
+        collaboration_style=collaboration_style,
+        scene_planning_notes=scene_planning_notes,
+        must_keep=must_keep,
+        must_avoid=must_avoid,
+        long_term_goals=long_term_goals,
+        extra_metadata=extra_metadata,
+        merge_with_existing=merge_with_existing
+    )
+
+
+@mcp.tool()
 async def get_character_list(
     novel_id: int,
     search: Optional[str] = None,
@@ -115,7 +150,7 @@ async def get_character_detail(character_id: int, ctx: Context) -> dict:
 @mcp.tool()
 async def create_new_chapter(
     novel_id: int,
-    chapter_number: int,
+    chapter_number: Optional[int] = None,
     title: Optional[str] = None,
     content: Optional[str] = None,
     ctx: Context = None
@@ -127,6 +162,48 @@ async def create_new_chapter(
         chapter_number=chapter_number,
         title=title,
         content=content
+    )
+
+
+@mcp.tool()
+async def generate_chapter_draft(
+    novel_id: int,
+    chapter_number: Optional[int] = None,
+    title: Optional[str] = None,
+    target_length: int = 3000,
+    style: str = "narrative",
+    writing_task: Optional[str] = None,
+    author_intent: Optional[str] = None,
+    scene_goal: Optional[str] = None,
+    outline: Optional[str] = None,
+    tone: Optional[str] = None,
+    must_keep: Optional[List[str]] = None,
+    must_avoid: Optional[List[str]] = None,
+    key_events: Optional[List[str]] = None,
+    model: Optional[str] = None,
+    use_workflow: Optional[bool] = None,
+    overwrite_existing: bool = False,
+    ctx: Context = None
+) -> dict:
+    return await _execute_tool(
+        "generate_chapter_draft",
+        ctx,
+        novel_id=novel_id,
+        chapter_number=chapter_number,
+        title=title,
+        target_length=target_length,
+        style=style,
+        writing_task=writing_task,
+        author_intent=author_intent,
+        scene_goal=scene_goal,
+        outline=outline,
+        tone=tone,
+        must_keep=must_keep,
+        must_avoid=must_avoid,
+        key_events=key_events,
+        model=model,
+        use_workflow=use_workflow,
+        overwrite_existing=overwrite_existing
     )
 
 

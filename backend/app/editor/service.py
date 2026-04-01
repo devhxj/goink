@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.editor.models import EditSession, EditSessionStatus, EditChange, ChangeSource
 from app.core.diff_engine import diff_engine, DiffChangeType
 from app.chapters.models import Chapter
+from app.core.llm_service import llm_service
+from app.core.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,10 @@ class EditSessionManager:
         ws_session_id: str
     ) -> EditSession:
         """创建编辑会话（副本）"""
+        existing = await self.get_edit_session(chapter_id)
+        if existing:
+            return existing
+
         result = await self.db.execute(
             select(Chapter).where(Chapter.id == chapter_id)
         )
@@ -44,7 +50,12 @@ class EditSessionManager:
             original_content=chapter.content or "",
             working_content=chapter.content or "",
             status=EditSessionStatus.PENDING,
-            change_count=0
+            change_count=0,
+            extra_metadata={
+                "source_chapter_updated_at": chapter.updated_at.isoformat() if chapter.updated_at else None,
+                "source_word_count": chapter.word_count or 0,
+                "created_from_ws_session": ws_session_id
+            }
         )
         
         self.db.add(edit_session)
@@ -95,6 +106,9 @@ class EditSessionManager:
         edit_session_public_id = edit_session.edit_session_id
         
         try:
+            if edit_session.status != EditSessionStatus.PENDING:
+                raise ValueError("编辑会话已结束，不能继续修改")
+
             if change_type == "full_replace":
                 edit_session.working_content = new_content
             elif change_type == "partial_edit":
@@ -165,7 +179,10 @@ class EditSessionManager:
         
         if not edit_session:
             raise ValueError(f"Edit session {edit_session_id} not found")
-        
+
+        if edit_session.status != EditSessionStatus.PENDING:
+            raise ValueError("编辑会话已结束，不能接受")
+
         result = await self.db.execute(
             select(Chapter).where(Chapter.id == edit_session.chapter_id)
         )
@@ -176,11 +193,15 @@ class EditSessionManager:
         
         chapter.content = edit_session.working_content
         chapter.word_count = len(edit_session.working_content) if edit_session.working_content else 0
-        
+        chapter.summary = await self._generate_chapter_summary(edit_session.working_content or "")
+        chapter.status = "completed" if (edit_session.working_content or "").strip() else chapter.status
+        chapter.updated_at = datetime.now()
+
         edit_session.status = EditSessionStatus.ACCEPTED
         edit_session.accepted_at = datetime.now()
         
         await self.db.commit()
+        await self._refresh_chapter_memory(chapter)
         
         logger.info(f"Accepted edit session {edit_session_id}, {edit_session.change_count} changes")
         
@@ -190,7 +211,8 @@ class EditSessionManager:
             "status": "accepted",
             "change_count": edit_session.change_count,
             "final_content": edit_session.working_content,
-            "word_count": chapter.word_count
+            "word_count": chapter.word_count,
+            "summary": chapter.summary
         }
     
     async def reject_edit_session(
@@ -207,6 +229,9 @@ class EditSessionManager:
         
         if not edit_session:
             raise ValueError(f"Edit session {edit_session_id} not found")
+
+        if edit_session.status != EditSessionStatus.PENDING:
+            raise ValueError("编辑会话已结束，不能拒绝")
         
         edit_session.status = EditSessionStatus.REJECTED
         edit_session.rejected_at = datetime.now()
@@ -219,7 +244,7 @@ class EditSessionManager:
             "edit_session_id": edit_session_id,
             "chapter_id": edit_session.chapter_id,
             "status": "rejected",
-            "change_count": 0,
+            "change_count": edit_session.change_count,
             "original_content": edit_session.original_content
         }
     
@@ -250,6 +275,52 @@ class EditSessionManager:
             "change_count": edit_session.change_count,
             "diff": diff_result.to_dict()
         }
+
+    async def _generate_chapter_summary(self, content: str) -> Optional[str]:
+        if not content or len(content.strip()) < 200:
+            return content[:200] if content else None
+
+        prompt = (
+            "请为以下小说章节生成一段120字以内的剧情摘要，"
+            "只保留关键情节推进、人物变化和伏笔，不要评价。\n\n"
+            f"{content[:4000]}"
+        )
+        try:
+            summary = await llm_service.generate_text(
+                prompt=prompt,
+                system_prompt="你是长篇小说章节摘要助手。",
+                max_tokens=200
+            )
+            return summary.strip()
+        except Exception as e:
+            logger.warning(f"Failed to generate summary for edited chapter: {e}")
+            return content[:200]
+
+    async def _refresh_chapter_memory(self, chapter: Chapter) -> None:
+        try:
+            vector_store.delete_chapter_chunks(chapter.novel_id, chapter.id)
+            content = chapter.content or ""
+            if not content.strip():
+                return
+            chunks = vector_store.split_text(content)
+            chunk_data = [
+                {
+                    "id": f"{chapter.id}_{i}",
+                    "content": chunk,
+                    "chapter_id": chapter.id,
+                    "chunk_type": "content",
+                    "chunk_index": i,
+                    "metadata": {
+                        "chapter_number": chapter.chapter_number,
+                        "chapter_title": chapter.title
+                    }
+                }
+                for i, chunk in enumerate(chunks)
+            ]
+            if chunk_data:
+                vector_store.add_chunks(chapter.novel_id, chunk_data)
+        except Exception as e:
+            logger.warning(f"Failed to refresh chapter memory after accept edit: {e}")
 
 
 def get_edit_session_manager(db: AsyncSession) -> EditSessionManager:

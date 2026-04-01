@@ -254,6 +254,7 @@ class SessionConfig:
     context_window: int = 64000
     summary_threshold: float = 0.8
     keep_recent_messages: int = 30
+    api_max_history_messages: int = 60
     session_ttl: int = 3600 * 24
     enable_auto_summary: bool = True
     min_compress_ratio: float = 0.8
@@ -268,6 +269,7 @@ class SessionConfig:
             context_window=context_window,
             summary_threshold=0.8,
             keep_recent_messages=30,
+            api_max_history_messages=60,
             session_ttl=3600 * 24,
             enable_auto_summary=True,
             min_compress_ratio=0.8
@@ -399,7 +401,9 @@ class ContextCompressor:
         elif message.role == MessageRole.USER:
             score = 0.8
         elif message.role == MessageRole.TOOL:
-            score = 0.7
+            score = 0.25
+        elif message.role == MessageRole.ASSISTANT and message.metadata.get("tool_calls"):
+            score = 0.35
         if len(message.content) > 500:
             score += 0.1
         if len(message.content) > 1000:
@@ -412,7 +416,10 @@ class ContextCompressor:
     
     def should_compress(self, session: Session) -> bool:
         usage_ratio = session.get_context_usage_ratio()
-        return usage_ratio >= self.config.min_compress_ratio
+        return (
+            usage_ratio >= self.config.min_compress_ratio
+            or session.get_message_count() >= self.config.max_messages
+        )
     
     def compress(self, session: Session, summary_text: Optional[str] = None) -> Session:
         if not self.should_compress(session):
@@ -510,14 +517,14 @@ class SessionManager:
         content: str,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Message:
+        message_metadata = metadata or {}
+        probe = Message(role=role, content=content, metadata=message_metadata)
         message = Message(
             role=role,
             content=content,
             token_count=self.compressor.estimate_tokens(content),
-            importance=self.compressor.calculate_importance(
-                Message(role=role, content=content)
-            ),
-            metadata=metadata or {}
+            importance=self.compressor.calculate_importance(probe),
+            metadata=message_metadata
         )
         session.messages.append(message)
         session.updated_at = datetime.now()
@@ -548,31 +555,111 @@ class SessionManager:
         include_context: bool = True,
         extra_context: Optional[str] = None
     ) -> List[Dict[str, str]]:
-        messages = []
+        messages: List[Dict[str, Any]] = []
+        context_tokens = 0
         if include_context:
             context_prompt = self.build_context_prompt(session)
             if extra_context:
                 context_prompt = f"{context_prompt}\n\n{extra_context}" if context_prompt else extra_context
             if context_prompt:
-                messages.append({
+                context_message = {
                     "role": "system",
                     "content": f"以下是相关的背景信息，请在回答时参考：\n\n{context_prompt}"
-                })
-        for msg in session.messages:
-            messages.append(msg.to_api_format())
+                }
+                messages.append(context_message)
+                context_tokens = self.compressor.estimate_tokens(context_message["content"])
+        history_messages = self._select_messages_for_api(session.messages)
         
         max_tokens = self.config.max_tokens
         if max_tokens:
-            total = 0
-            trimmed = []
-            for msg in reversed(messages):
-                tokens = self.compressor.estimate_tokens(msg["content"])
-                if total + tokens > max_tokens and msg["role"] != MessageRole.SYSTEM.value:
-                    continue
-                trimmed.append(msg)
-                total += tokens
-            messages = list(reversed(trimmed))
+            history_budget = max(max_tokens - context_tokens, 0)
+            history_messages = self._trim_history_to_token_limit(history_messages, history_budget)
+
+        for msg in history_messages:
+            messages.append(msg.to_api_format())
         return messages
+
+    def _select_messages_for_api(self, session_messages: List[Message]) -> List[Message]:
+        system_messages = [m for m in session_messages if m.role == MessageRole.SYSTEM]
+        non_system_messages = [m for m in session_messages if m.role != MessageRole.SYSTEM]
+        if len(non_system_messages) <= self.config.api_max_history_messages:
+            return system_messages + non_system_messages
+
+        selected: List[Message] = []
+        required_tool_call_ids: set[str] = set()
+
+        for msg in reversed(non_system_messages):
+            tool_call_id = str(msg.metadata.get("tool_call_id", "")) if msg.metadata else ""
+            tool_calls = msg.metadata.get("tool_calls") if msg.metadata else None
+            tool_call_ids = {
+                str(call.get("id"))
+                for call in tool_calls
+                if isinstance(call, dict) and call.get("id")
+            } if isinstance(tool_calls, list) else set()
+
+            must_keep = False
+            if msg.role == MessageRole.TOOL and tool_call_id:
+                must_keep = True
+                required_tool_call_ids.add(tool_call_id)
+            elif tool_call_ids and required_tool_call_ids.intersection(tool_call_ids):
+                must_keep = True
+                required_tool_call_ids.difference_update(tool_call_ids)
+
+            if not must_keep and len(selected) >= self.config.api_max_history_messages and not required_tool_call_ids:
+                break
+
+            selected.append(msg)
+
+        selected.reverse()
+        return system_messages + selected
+
+    def _trim_history_to_token_limit(self, messages: List[Message], max_tokens: int) -> List[Message]:
+        if max_tokens <= 0:
+            return [m for m in messages if m.role == MessageRole.SYSTEM]
+
+        system_messages = [m for m in messages if m.role == MessageRole.SYSTEM]
+        non_system_messages = [m for m in messages if m.role != MessageRole.SYSTEM]
+        trimmed: List[Message] = []
+        required_tool_call_ids: set[str] = set()
+        total = 0
+
+        for msg in reversed(non_system_messages):
+            token_cost = self._estimate_message_tokens(msg)
+            tool_call_id = str(msg.metadata.get("tool_call_id", "")) if msg.metadata else ""
+            tool_calls = msg.metadata.get("tool_calls") if msg.metadata else None
+            tool_call_ids = {
+                str(call.get("id"))
+                for call in tool_calls
+                if isinstance(call, dict) and call.get("id")
+            } if isinstance(tool_calls, list) else set()
+
+            must_keep = False
+            if msg.role == MessageRole.TOOL and tool_call_id:
+                must_keep = True
+                required_tool_call_ids.add(tool_call_id)
+            elif tool_call_ids and required_tool_call_ids.intersection(tool_call_ids):
+                must_keep = True
+                required_tool_call_ids.difference_update(tool_call_ids)
+
+            if total + token_cost > max_tokens and not must_keep:
+                continue
+
+            trimmed.append(msg)
+            total += token_cost
+
+        trimmed.reverse()
+        return system_messages + trimmed
+
+    def _estimate_message_tokens(self, message: Message) -> int:
+        if message.content:
+            return self.compressor.estimate_tokens(message.content)
+
+        if message.metadata.get("tool_calls"):
+            return self.compressor.estimate_tokens(
+                json.dumps(message.metadata["tool_calls"], ensure_ascii=False)
+            )
+
+        return 0
     
     async def save_session(self, session: Session):
         if session.subtitle:

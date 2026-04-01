@@ -67,12 +67,22 @@ class WriterAgent(BaseAgent):
         writing_task = parameters.get("writing_task", "")
         tone = parameters.get("tone", "")
         outline = parameters.get("outline", "")
+        author_intent = parameters.get("author_intent", "")
+        scene_goal = parameters.get("scene_goal", "")
+        must_keep = parameters.get("must_keep", [])
+        must_avoid = parameters.get("must_avoid", [])
         revision = parameters.get("revision", False)
         issues = parameters.get("issues", [])
         
         previous_summary = context.get("previous_summary", "")
         characters = context.get("characters", [])
         plot_hints = context.get("plot_hints", [])
+        story_outline = context.get("story_outline", {})
+        active_plot_lines = context.get("active_plot_lines", [])
+        upcoming_plot_nodes = context.get("upcoming_plot_nodes", [])
+        unresolved_foreshadowings = context.get("unresolved_foreshadowings", [])
+        current_arc_summary = context.get("current_arc_summary", "")
+        author_preferences = context.get("author_preferences", {})
         
         prompt = self._build_writing_prompt(
             chapter_number=chapter_number,
@@ -81,11 +91,21 @@ class WriterAgent(BaseAgent):
             writing_task=writing_task,
             tone=tone,
             outline=outline,
+            author_intent=author_intent,
+            scene_goal=scene_goal,
+            must_keep=must_keep,
+            must_avoid=must_avoid,
             revision=revision,
             issues=issues,
             previous_summary=previous_summary,
             characters=characters,
-            plot_hints=plot_hints
+            plot_hints=plot_hints,
+            story_outline=story_outline,
+            active_plot_lines=active_plot_lines,
+            upcoming_plot_nodes=upcoming_plot_nodes,
+            unresolved_foreshadowings=unresolved_foreshadowings,
+            current_arc_summary=current_arc_summary,
+            author_preferences=author_preferences
         )
         
         self.logger.info(f"Generating chapter {chapter_number} with LLM")
@@ -179,11 +199,21 @@ class WriterAgent(BaseAgent):
         writing_task: str,
         tone: str,
         outline: str,
+        author_intent: str,
+        scene_goal: str,
+        must_keep: list,
+        must_avoid: list,
         revision: bool,
         issues: list,
         previous_summary: str,
         characters: list,
-        plot_hints: list
+        plot_hints: list,
+        story_outline: dict,
+        active_plot_lines: list,
+        upcoming_plot_nodes: list,
+        unresolved_foreshadowings: list,
+        current_arc_summary: str,
+        author_preferences: dict
     ) -> str:
         """构建写作提示"""
         prompt = f"""请创作小说的第{chapter_number}章。
@@ -194,14 +224,27 @@ class WriterAgent(BaseAgent):
 - 保持与前文的一致性
 - 注意角色性格的连贯性
 - 情节要有张力和吸引力
+- 优先满足作者明确表达的创作意图
 - 输出正文，不要输出解释
 """
         if tone:
             prompt += f"- 语气要求：{tone}\n"
         if writing_task:
             prompt += f"- 核心任务：{writing_task}\n"
+        if scene_goal:
+            prompt += f"- 本场景目标：{scene_goal}\n"
+        if author_intent:
+            prompt += f"\n【作者意图】\n{author_intent}\n"
         if outline:
             prompt += f"\n【章节提纲】\n{outline}\n"
+        if must_keep:
+            prompt += "\n【必须保留/实现】\n"
+            for item in must_keep:
+                prompt += f"- {item}\n"
+        if must_avoid:
+            prompt += "\n【明确避免】\n"
+            for item in must_avoid:
+                prompt += f"- {item}\n"
         if revision and issues:
             prompt += "\n【修订要求】\n"
             for issue in issues:
@@ -209,6 +252,41 @@ class WriterAgent(BaseAgent):
         
         if previous_summary:
             prompt += f"\n【前文摘要】\n{previous_summary}\n"
+
+        if current_arc_summary:
+            prompt += f"\n【当前卷/主线目标】\n{current_arc_summary}\n"
+
+        if author_preferences:
+            prompt += "\n【作者长期协作配置】\n"
+            if author_preferences.get("author_intent"):
+                prompt += f"- 长期意图：{author_preferences['author_intent']}\n"
+            if author_preferences.get("preferred_tone") and not tone:
+                prompt += f"- 默认语气：{author_preferences['preferred_tone']}\n"
+            if author_preferences.get("scene_planning_notes"):
+                prompt += f"- 章节规划备注：{author_preferences['scene_planning_notes']}\n"
+            for item in author_preferences.get("long_term_goals", [])[:5]:
+                prompt += f"- 长线目标：{item}\n"
+            if author_preferences.get("must_keep"):
+                prompt += "必须长期遵守：\n"
+                for item in author_preferences.get("must_keep", [])[:8]:
+                    prompt += f"- {item}\n"
+            if author_preferences.get("must_avoid"):
+                prompt += "长期明确避免：\n"
+                for item in author_preferences.get("must_avoid", [])[:8]:
+                    prompt += f"- {item}\n"
+
+        if story_outline:
+            outline_parts = []
+            if story_outline.get("premise"):
+                outline_parts.append(f"故事前提：{story_outline['premise']}")
+            if story_outline.get("theme"):
+                outline_parts.append(f"主题：{story_outline['theme']}")
+            if story_outline.get("middle"):
+                outline_parts.append(f"中段方向：{story_outline['middle']}")
+            if story_outline.get("climax"):
+                outline_parts.append(f"高潮目标：{story_outline['climax']}")
+            if outline_parts:
+                prompt += "\n【整体大纲】\n" + "\n".join(f"- {item}" for item in outline_parts) + "\n"
         
         if characters:
             prompt += "\n【相关角色】\n"
@@ -224,6 +302,21 @@ class WriterAgent(BaseAgent):
             prompt += "\n【情节提示】\n"
             for hint in plot_hints:
                 prompt += f"- {hint.get('description', '')}\n"
+
+        if active_plot_lines:
+            prompt += "\n【当前活跃情节线】\n"
+            for line in active_plot_lines[:5]:
+                prompt += f"- {line.get('name', '')}: {line.get('description', '')}\n"
+
+        if upcoming_plot_nodes:
+            prompt += "\n【待推进情节节点】\n"
+            for node in upcoming_plot_nodes[:5]:
+                prompt += f"- {node.get('title', '')}: {node.get('description', '')}\n"
+
+        if unresolved_foreshadowings:
+            prompt += "\n【未解决伏笔】\n"
+            for item in unresolved_foreshadowings[:5]:
+                prompt += f"- {item.get('title', '')}: {item.get('description', '')}\n"
         
         prompt += "\n请开始创作本章内容："
         

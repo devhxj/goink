@@ -10,7 +10,7 @@ from app.core.redis_service import redis_service
 from app.core.database import AsyncSessionLocal
 from app.core.session_manager import Session, SessionConfig, ScopeType, Message, MessageRole, NovelContext, ChapterContext, SessionScope
 from app.chat.models import ChatSession as DBChatSession, ChatMessage as DBChatMessage
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
@@ -246,9 +246,9 @@ class SessionStorage:
                     db.add(db_session)
                 
                 await db.flush()
-                
+
                 await db.execute(
-                    select(DBChatMessage).where(DBChatMessage.session_id == db_session.id)
+                    delete(DBChatMessage).where(DBChatMessage.session_id == db_session.id)
                 )
                 
                 for msg in session.messages:

@@ -577,7 +577,7 @@ async def create_new_chapter(
     novel: NovelOwner,
     db: DBSession,
     current_user: CurrentUser,
-    chapter_number: int = Body(..., description="章节号"),
+    chapter_number: Optional[int] = Body(None, description="章节号，不传则自动创建下一章"),
     title: Optional[str] = Body(None, description="章节标题"),
     content: Optional[str] = Body(None, description="章节内容")
 ):
@@ -595,6 +595,55 @@ async def create_new_chapter(
         content=content
     )
     
+    if result.success:
+        return ApiResponse.success(result.data)
+    return ApiResponse.error("TOOL_ERROR", result.error or "Unknown error")
+
+
+@router.post("/novels/{novel_id}/chapters/generate")
+async def generate_chapter_draft(
+    novel: NovelOwner,
+    db: DBSession,
+    current_user: CurrentUser,
+    chapter_number: Optional[int] = Body(None, description="章节号，不传则自动生成下一章"),
+    title: Optional[str] = Body(None, description="章节标题"),
+    target_length: int = Body(3000, ge=500, le=12000, description="目标字数"),
+    style: str = Body("narrative", description="写作风格"),
+    writing_task: Optional[str] = Body(None, description="核心写作任务"),
+    author_intent: Optional[str] = Body(None, description="作者本人明确意图"),
+    scene_goal: Optional[str] = Body(None, description="本章或场景必须完成的目标"),
+    outline: Optional[str] = Body(None, description="章节提纲"),
+    tone: Optional[str] = Body(None, description="语气要求"),
+    must_keep: Optional[list[str]] = Body(None, description="必须保留、必须写到的要点"),
+    must_avoid: Optional[list[str]] = Body(None, description="明确避免的内容或走向"),
+    key_events: Optional[list[str]] = Body(None, description="必须覆盖的关键事件"),
+    model: Optional[str] = Body(None, description="指定模型"),
+    use_workflow: Optional[bool] = Body(None, description="是否启用完整工作流"),
+    overwrite_existing: bool = Body(False, description="若章节已存在，是否允许覆盖")
+):
+    registry = get_mcp_registry()
+    result = await registry.execute(
+        "generate_chapter_draft",
+        db=db,
+        user_id=current_user.id,
+        novel_id=novel.id,
+        chapter_number=chapter_number,
+        title=title,
+        target_length=target_length,
+        style=style,
+        writing_task=writing_task,
+        author_intent=author_intent,
+        scene_goal=scene_goal,
+        outline=outline,
+        tone=tone,
+        must_keep=must_keep,
+        must_avoid=must_avoid,
+        key_events=key_events,
+        model=model,
+        use_workflow=use_workflow,
+        overwrite_existing=overwrite_existing
+    )
+
     if result.success:
         return ApiResponse.success(result.data)
     return ApiResponse.error("TOOL_ERROR", result.error or "Unknown error")

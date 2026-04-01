@@ -42,7 +42,7 @@ async def get_db():
 
 async def init_db():
     from app.auth.models import User
-    from app.novels.models import Novel
+    from app.novels.models import Novel, NovelCreativeProfile
     from app.characters.models import Character
     from app.chapters.models import Chapter
     from app.plot_events.models import PlotEvent

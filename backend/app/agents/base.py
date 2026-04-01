@@ -47,6 +47,9 @@ class AgentTask:
     chapter_id: Optional[int] = None
     parameters: Dict[str, Any] = field(default_factory=dict)
     context: Dict[str, Any] = field(default_factory=dict)
+    parent_task_id: Optional[str] = None
+    root_task_id: Optional[str] = None
+    depth: int = 0
     status: TaskStatus = TaskStatus.PENDING
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -59,6 +62,9 @@ class AgentTask:
             "chapter_id": self.chapter_id,
             "parameters": self.parameters,
             "context": self.context,
+            "parent_task_id": self.parent_task_id,
+            "root_task_id": self.root_task_id or self.task_id,
+            "depth": self.depth,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat()

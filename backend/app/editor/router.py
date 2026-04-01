@@ -56,6 +56,7 @@ async def start_edit_session(
             "working_content": existing_session.working_content,
             "change_count": existing_session.change_count,
             "status": existing_session.status,
+            "reused_existing": True,
             "message": "已有活动的编辑会话"
         })
     
@@ -68,6 +69,7 @@ async def start_edit_session(
         "working_content": edit_session.working_content,
         "change_count": 0,
         "status": "pending",
+        "reused_existing": False,
         "message": "编辑会话已创建"
     })
 
@@ -112,15 +114,18 @@ async def apply_edit(
     if not novel or novel.author_id != user.id:
         return ApiResponse.error(code="FORBIDDEN", message="无权编辑此章节", status_code=403)
     
-    change = await manager.apply_change(
-        edit_session=edit_session,
-        change_type=change_type,
-        new_content=new_content,
-        start_line=start_line,
-        end_line=end_line,
-        source=source,
-        reason=reason
-    )
+    try:
+        change = await manager.apply_change(
+            edit_session=edit_session,
+            change_type=change_type,
+            new_content=new_content,
+            start_line=start_line,
+            end_line=end_line,
+            source=source,
+            reason=reason
+        )
+    except ValueError as e:
+        return ApiResponse.error(code="EDIT_INVALID", message=str(e), status_code=400)
     
     diff_data = await manager.get_diff(edit_session_id)
     
@@ -167,13 +172,17 @@ async def accept_edit_session(
     if not novel or novel.author_id != user.id:
         return ApiResponse.error(code="FORBIDDEN", message="无权操作此章节", status_code=403)
     
-    result = await manager.accept_edit_session(edit_session_id)
+    try:
+        result = await manager.accept_edit_session(edit_session_id)
+    except ValueError as e:
+        return ApiResponse.error(code="EDIT_INVALID", message=str(e), status_code=400)
     
     return ApiResponse.success({
         "edit_session_id": edit_session_id,
         "chapter_id": result["chapter_id"],
         "change_count": result["change_count"],
         "word_count": result["word_count"],
+        "summary": result.get("summary"),
         "message": f"已接受 {result['change_count']} 处变更"
     })
 
@@ -212,7 +221,10 @@ async def reject_edit_session(
     if not novel or novel.author_id != user.id:
         return ApiResponse.error(code="FORBIDDEN", message="无权操作此章节", status_code=403)
     
-    result = await manager.reject_edit_session(edit_session_id)
+    try:
+        result = await manager.reject_edit_session(edit_session_id)
+    except ValueError as e:
+        return ApiResponse.error(code="EDIT_INVALID", message=str(e), status_code=400)
     
     return ApiResponse.success({
         "edit_session_id": edit_session_id,
@@ -233,6 +245,20 @@ async def get_edit_session_status(
     
     if not edit_session:
         return ApiResponse.error(code="SESSION_NOT_FOUND", message="编辑会话不存在", status_code=404)
+
+    result = await db.execute(
+        select(Chapter).where(Chapter.id == edit_session.chapter_id)
+    )
+    chapter = result.scalar_one_or_none()
+    if not chapter:
+        return ApiResponse.error(code="CHAPTER_NOT_FOUND", message="章节不存在", status_code=404)
+
+    result = await db.execute(
+        select(Novel).where(Novel.id == chapter.novel_id)
+    )
+    novel = result.scalar_one_or_none()
+    if not novel or novel.author_id != user.id:
+        return ApiResponse.error(code="FORBIDDEN", message="无权访问此编辑会话", status_code=403)
     
     diff_data = await manager.get_diff(edit_session_id)
     
@@ -283,7 +309,8 @@ async def get_chapter_edit_status(
             "change_count": edit_session.change_count,
             "working_content": edit_session.working_content,
             "original_content": edit_session.original_content,
-            "diff": diff_data.get("diff", {})
+            "diff": diff_data.get("diff", {}),
+            "created_from_ws_session": (edit_session.extra_metadata or {}).get("created_from_ws_session")
         })
     
     return ApiResponse.success({

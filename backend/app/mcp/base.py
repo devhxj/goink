@@ -50,12 +50,25 @@ class BaseMCPTool(ABC):
     
     def to_openai_function(self) -> Dict[str, Any]:
         """转换为OpenAI function calling格式"""
+        parameters = dict(self.parameters_schema or {"type": "object"})
+        properties = dict(parameters.get("properties") or {})
+        required = list(parameters.get("required") or [])
+
+        if (
+            "novel_id" in properties
+            and ("无需传novel_id" in self.description or "无需提供novel_id" in self.description)
+        ):
+            properties.pop("novel_id", None)
+            required = [item for item in required if item != "novel_id"]
+            parameters["properties"] = properties
+            parameters["required"] = required
+
         return {
             "type": "function",
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters_schema
+                "parameters": parameters
             }
         }
 

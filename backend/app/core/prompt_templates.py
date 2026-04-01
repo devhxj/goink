@@ -124,7 +124,11 @@ def build_chapter_prompt(
     style: str,
     context: str,
     user_prompt: Optional[str] = None,
+    author_intent: Optional[str] = None,
+    scene_goal: Optional[str] = None,
     chapter_outline: Optional[str] = None,
+    must_keep: Optional[List[str]] = None,
+    must_avoid: Optional[List[str]] = None,
     key_events: Optional[List[str]] = None,
     focus_characters: Optional[List[str]] = None
 ) -> str:
@@ -137,7 +141,11 @@ def build_chapter_prompt(
         style: 写作风格
         context: 上下文信息
         user_prompt: 用户自定义提示词
+        author_intent: 作者明确创作意图
+        scene_goal: 本章或本场景目标
         chapter_outline: 章节大纲
+        must_keep: 必须保留要点
+        must_avoid: 必须避免要点
         key_events: 关键事件
         focus_characters: 重点角色
         
@@ -150,7 +158,13 @@ def build_chapter_prompt(
         parts.append(f"【创作要求】\n{user_prompt}")
     else:
         parts.append(f"请创作小说的第{chapter_number}章，目标字数约{target_length}字。")
-    
+
+    if author_intent:
+        parts.append(f"\n【作者意图】\n{author_intent}")
+
+    if scene_goal:
+        parts.append(f"\n【场景目标】\n{scene_goal}")
+
     if context:
         parts.append(f"\n【上下文信息】\n{context}")
     
@@ -160,6 +174,14 @@ def build_chapter_prompt(
     if key_events:
         events_str = "\n".join(f"- {event}" for event in key_events)
         parts.append(f"\n【关键事件】\n{events_str}")
+
+    if must_keep:
+        keep_str = "\n".join(f"- {item}" for item in must_keep)
+        parts.append(f"\n【必须保留/实现】\n{keep_str}")
+
+    if must_avoid:
+        avoid_str = "\n".join(f"- {item}" for item in must_avoid)
+        parts.append(f"\n【明确避免】\n{avoid_str}")
     
     if focus_characters:
         chars_str = "、".join(focus_characters)

@@ -29,6 +29,12 @@ class EditModeConfig:
 
 在编辑时，你会创建一个副本进行修改，用户需要确认后才会应用到原稿。
 当需要写作、审核或一致性检查时，可以调度子Agent执行任务。
+可以直接创建空章节，也可以直接生成新章节正文草稿。
+当作者表达“以后都这样写”“长期不要出现某类内容”“这本书整体风格/目标/禁忌”等稳定规则时，
+应主动调用 update_creative_profile 进行沉淀。
+当准备生成章节、规划情节、审阅方向，且需要确认长期规则时，应优先调用 get_creative_profile。
+若只是新增或补充长期规则，优先走增量合并；若明确要替换旧规则，再传 merge_with_existing=false。
+短期一次性的本章要求放在当前任务参数里，长期规则写入 creative profile。
 不要在正文内容中输出你的思考过程或自言自语。""",
         
         EditMode.REVIEW: """你是一个专业的小说审阅助手。你可以：
@@ -48,19 +54,20 @@ class EditModeConfig:
     
     MODE_ALLOWED_TOOLS: dict[EditMode, Set[str]] = {
         EditMode.AGENT: {
-            "get_novel_summary", "get_chapter_list", "get_chapter_content",
+            "get_novel_summary", "get_chapter_list", "get_chapter_content", "create_new_chapter", "generate_chapter_draft",
+            "get_creative_profile", "update_creative_profile",
             "get_novel_progress", "get_character_list", "get_character_detail",
             "search_plot_memory", "get_character_memory", "get_timeline", "get_recent_context",
             "start_edit_session", "apply_edit", "get_edit_status", "read_chapter_for_edit",
             "run_agent_task"
         },
         EditMode.REVIEW: {
-            "get_novel_summary", "get_chapter_list", "get_chapter_content",
+            "get_novel_summary", "get_chapter_list", "get_chapter_content", "get_creative_profile",
             "get_novel_progress", "get_character_list", "get_character_detail",
             "search_plot_memory", "get_character_memory", "get_timeline", "get_recent_context"
         },
         EditMode.PLAN: {
-            "get_novel_summary", "get_chapter_list", "get_chapter_content",
+            "get_novel_summary", "get_chapter_list", "get_chapter_content", "get_creative_profile",
             "get_novel_progress", "get_character_list", "get_character_detail",
             "search_plot_memory", "get_character_memory", "get_timeline", "get_recent_context"
         }

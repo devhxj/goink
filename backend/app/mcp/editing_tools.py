@@ -11,7 +11,7 @@ from .base import BaseMCPTool, MCPToolResult, MCPToolCategory, MCPToolRegistry
 from app.novels.models import Novel
 from app.chapters.models import Chapter
 from app.editor.service import get_edit_session_manager
-from app.editor.models import EditSession, EditSessionStatus
+from app.editor.models import EditSession, EditSessionStatus, EditChange
 from app.core.context_builder import ContextBuilder
 
 
@@ -102,6 +102,7 @@ class StartEditSessionTool(BaseMCPTool):
                         "working_content": existing.working_content,
                         "change_count": existing.change_count,
                         "status": existing.status,
+                        "reused_existing": True,
                         "message": "已有活动的编辑会话，可以继续编辑"
                     },
                     metadata={"tool": self.name, "edit_session_id": existing.edit_session_id}
@@ -118,6 +119,7 @@ class StartEditSessionTool(BaseMCPTool):
                     "working_content": edit_session.working_content,
                     "change_count": 0,
                     "status": "pending",
+                    "reused_existing": False,
                     "message": "编辑会话已创建，可以开始编辑。编辑完成后用户需要确认接受或拒绝。"
                 },
                 metadata={"tool": self.name, "edit_session_id": edit_session.edit_session_id}
@@ -393,6 +395,13 @@ class GetEditStatusTool(BaseMCPTool):
                     if novel.author_id != user_id:
                         return MCPToolResult(success=False, error="无权访问此章节")
                 diff_data = await manager.get_diff(edit_session.edit_session_id)
+                changes_result = await db.execute(
+                    select(EditChange)
+                    .where(EditChange.edit_session_id == edit_session.id)
+                    .order_by(EditChange.created_at.desc())
+                    .limit(5)
+                )
+                recent_changes = list(changes_result.scalars().all())
                 return MCPToolResult(
                     success=True,
                     data={
@@ -402,7 +411,9 @@ class GetEditStatusTool(BaseMCPTool):
                         "change_count": edit_session.change_count,
                         "working_content": edit_session.working_content,
                         "original_content": edit_session.original_content,
-                        "diff": diff_data.get("diff", {})
+                        "diff": diff_data.get("diff", {}),
+                        "created_from_ws_session": (edit_session.extra_metadata or {}).get("created_from_ws_session"),
+                        "recent_changes": [change.to_dict() for change in recent_changes]
                     }
                 )
             
@@ -503,13 +514,10 @@ class RunAgentTaskTool(BaseMCPTool):
                 return MCPToolResult(success=False, error="无权访问此小说")
             
             from app.agents.base import AgentTask, TaskType
-            from app.agents.coordinator import CoordinatorAgent
-            from app.agents.writer import WriterAgent
-            from app.agents.reviewer import ReviewerAgent
+            from app.agents.factory import create_default_coordinator
+            from app.consistency.service import ConsistencyChecker
             
-            coordinator = CoordinatorAgent()
-            coordinator.register_agent(WriterAgent())
-            coordinator.register_agent(ReviewerAgent())
+            coordinator = create_default_coordinator()
             
             task_parameters = parameters or {}
             nested_agent_role = task_parameters.get("agent_role")
@@ -542,6 +550,12 @@ class RunAgentTaskTool(BaseMCPTool):
                         include_characters=True,
                         include_plot_events=True
                     )
+            if normalized_type == "check_consistency":
+                checker = ConsistencyChecker(db, novel_id)
+                context["consistency_result"] = await checker.check_all(
+                    chapter_ids=[chapter_id] if chapter_id else None,
+                    check_types=task_parameters.get("check_types")
+                )
             
             task = AgentTask(
                 task_id=f"task_{novel_id}_{task_type}_{chapter_id or 'general'}",
@@ -604,7 +618,7 @@ class GetPendingChangesTool(BaseMCPTool):
         **kwargs
     ) -> MCPToolResult:
         try:
-            query = select(EditSession)
+            query = select(EditSession).options(selectinload(EditSession.chapter))
             if user_id:
                 query = (
                     query.join(Chapter, EditSession.chapter_id == Chapter.id)
@@ -627,10 +641,12 @@ class GetPendingChangesTool(BaseMCPTool):
                 {
                     "edit_session_id": s.edit_session_id,
                     "chapter_id": s.chapter_id,
+                    "chapter_title": s.chapter.title if s.chapter else None,
                     "ws_session_id": s.ws_session_id,
                     "status": s.status,
                     "change_count": s.change_count,
-                    "created_at": s.created_at.isoformat() if s.created_at else None
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                    "content_preview": (s.working_content or "")[:120]
                 }
                 for s in sessions
             ]
@@ -689,7 +705,7 @@ class ReadChapterForEditTool(BaseMCPTool):
             
             content = chapter.content or ""
             lines = content.splitlines()
-            lines_payload = [{"line_number": i + 1, "content": line} for i, line in enumerate(lines)] if include_line_numbers else []
+            lines_payload = [{"line_number": i + 1, "content": line} for i, line in enumerate(lines)]
             
             return MCPToolResult(
                 success=True,

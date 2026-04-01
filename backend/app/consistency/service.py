@@ -134,6 +134,43 @@ class ConsistencyChecker:
             "summary": summary,
             "check_time": round(check_time, 2)
         }
+
+    def _issue(
+        self,
+        issue_type: str,
+        severity: str,
+        description: str,
+        chapter_id: Optional[Any] = None,
+        chapter_number: Optional[Any] = None,
+        details: Optional[Dict[str, Any]] = None,
+        suggestion: Optional[str] = None
+    ) -> Optional[ConsistencyIssue]:
+        """统一构造一致性问题，避免脏数据导致 Pydantic 实例化失败"""
+        payload = {
+            "issue_type": str(issue_type or "").strip() or "unknown",
+            "severity": str(severity or "").strip() or "info",
+            "chapter_id": self._coerce_optional_int(chapter_id),
+            "chapter_number": self._coerce_optional_int(chapter_number),
+            "description": str(description or "").strip(),
+            "details": details or None,
+            "suggestion": str(suggestion).strip() if suggestion is not None else None,
+        }
+        if not payload["description"]:
+            logger.warning("Skip empty consistency issue payload: %s", payload)
+            return None
+        try:
+            return ConsistencyIssue.model_validate(payload)
+        except Exception as e:
+            logger.warning("Failed to build ConsistencyIssue: %s, payload=%s", e, payload)
+            return None
+
+    def _coerce_optional_int(self, value: Optional[Any]) -> Optional[int]:
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
     
     async def _get_chapters(self, chapter_ids: Optional[List[int]] = None) -> List[Chapter]:
         """获取要检查的章节"""
@@ -218,7 +255,7 @@ class ConsistencyChecker:
             
             if data:
                 for item in data.get("issues", []):
-                    issues.append(ConsistencyIssue(
+                    issue = self._issue(
                         issue_type="character",
                         severity="warning",
                         chapter_number=item.get("chapter_number"),
@@ -228,7 +265,9 @@ class ConsistencyChecker:
                             "issue_type": item.get("issue_type")
                         },
                         suggestion=item.get("suggestion")
-                    ))
+                    )
+                    if issue:
+                        issues.append(issue)
                 
         except Exception as e:
             logger.error(f"Character consistency check failed: {e}")
@@ -306,7 +345,7 @@ class ConsistencyChecker:
             
             if data:
                 for item in data.get("issues", []):
-                    issues.append(ConsistencyIssue(
+                    issue = self._issue(
                         issue_type="plot",
                         severity="warning",
                         chapter_number=item.get("chapter_number"),
@@ -315,7 +354,9 @@ class ConsistencyChecker:
                             "issue_type": item.get("issue_type")
                         },
                         suggestion=item.get("suggestion")
-                    ))
+                    )
+                    if issue:
+                        issues.append(issue)
                 
         except Exception as e:
             logger.error(f"Plot consistency check failed: {e}")
@@ -359,7 +400,7 @@ class ConsistencyChecker:
                     curr_chapter = curr_result.scalar_one_or_none()
                     
                     if prev_chapter and curr_chapter and prev_chapter.chapter_number <= curr_chapter.chapter_number:
-                        issues.append(ConsistencyIssue(
+                        issue = self._issue(
                             issue_type="timeline",
                             severity="error",
                             chapter_id=curr_event.chapter_id,
@@ -370,7 +411,9 @@ class ConsistencyChecker:
                                 "curr_event_id": curr_event.id
                             },
                             suggestion="请检查并修正事件的时间标记"
-                        ))
+                        )
+                        if issue:
+                            issues.append(issue)
         
         return issues
     
@@ -396,12 +439,12 @@ class ConsistencyChecker:
             days_pending = (datetime.now() - fs.created_at).days if fs.created_at else 0
             
             severity = "info"
-            if fs.importance >= 4 and days_pending > 30:
-                severity = "warning"
-            elif fs.importance >= 4 and days_pending > 60:
+            if fs.importance >= 4 and days_pending > 60:
                 severity = "error"
+            elif fs.importance >= 4 and days_pending > 30:
+                severity = "warning"
             
-            issues.append(ConsistencyIssue(
+            issue = self._issue(
                 issue_type="foreshadowing",
                 severity=severity,
                 chapter_id=fs.created_chapter_id,
@@ -413,7 +456,9 @@ class ConsistencyChecker:
                     "description": fs.description
                 },
                 suggestion=f"建议在后续章节中解决此伏笔" if fs.importance >= 3 else None
-            ))
+            )
+            if issue:
+                issues.append(issue)
         
         return issues
     

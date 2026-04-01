@@ -3,22 +3,22 @@ Agent系统API路由
 """
 import logging
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func
 
 from app.core.response import ApiResponse
 from app.core.exceptions import NotFoundException
+from app.core.database import DBSession
 from app.core.auth import get_current_user, CurrentUser
 from app.core.dependencies import NovelOwner
+from app.novels.models import Novel
 from .base import AgentTask, TaskType, TaskStatus
-from .coordinator import CoordinatorAgent
-from .writer import WriterAgent
-from .reviewer import ReviewerAgent
+from .factory import create_default_coordinator
+from .models import AgentTaskRecord
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 logger = logging.getLogger(__name__)
 
-coordinator = CoordinatorAgent()
-coordinator.register_agent(WriterAgent())
-coordinator.register_agent(ReviewerAgent())
+coordinator = create_default_coordinator()
 
 
 @router.get("/status")
@@ -80,31 +80,78 @@ async def create_task(
 @router.get("/novels/{novel_id}/tasks")
 async def get_tasks(
     novel: NovelOwner,
+    db: DBSession,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100)
 ):
     """获取小说的Agent任务列表"""
-    pending_tasks = coordinator.get_pending_tasks()
-    
-    novel_tasks = [t for t in pending_tasks if t.get("novel_id") == novel.id]
-    
-    return ApiResponse.paginated(
-        novel_tasks,
-        len(novel_tasks),
-        page,
-        page_size
-    )
+    query = select(AgentTaskRecord).where(AgentTaskRecord.novel_id == novel.id)
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    query = query.order_by(AgentTaskRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    records = result.scalars().all()
+
+    items = [
+        {
+            "task_id": record.task_id,
+            "novel_id": record.novel_id,
+            "chapter_id": record.chapter_id,
+            "task_type": record.task_type,
+            "status": record.status,
+            "parent_task_id": (record.context or {}).get("_task_meta", {}).get("parent_task_id"),
+            "root_task_id": (record.context or {}).get("_task_meta", {}).get("root_task_id"),
+            "depth": (record.context or {}).get("_task_meta", {}).get("depth", 0),
+            "parameters": record.parameters,
+            "result": record.result,
+            "error": record.error,
+            "agent_id": record.agent_id,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+        }
+        for record in records
+    ]
+
+    return ApiResponse.paginated(items, total, page, page_size)
 
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(
     task_id: str,
-    current_user: CurrentUser
+    current_user: CurrentUser,
+    db: DBSession
 ):
     """获取任务状态"""
-    status = coordinator.get_task_status(task_id)
-    
-    if not status:
+    result = await db.execute(
+        select(AgentTaskRecord)
+        .join(Novel, AgentTaskRecord.novel_id == Novel.id)
+        .where(
+            AgentTaskRecord.task_id == task_id,
+            Novel.author_id == current_user.id
+        )
+    )
+    record = result.scalar_one_or_none()
+
+    if not record:
         raise NotFoundException("任务")
-    
-    return ApiResponse.success(status)
+
+    return ApiResponse.success({
+        "task_id": record.task_id,
+        "novel_id": record.novel_id,
+        "chapter_id": record.chapter_id,
+        "task_type": record.task_type,
+        "status": record.status,
+        "parent_task_id": (record.context or {}).get("_task_meta", {}).get("parent_task_id"),
+        "root_task_id": (record.context or {}).get("_task_meta", {}).get("root_task_id"),
+        "depth": (record.context or {}).get("_task_meta", {}).get("depth", 0),
+        "parameters": record.parameters,
+        "context": record.context,
+        "result": record.result,
+        "error": record.error,
+        "agent_id": record.agent_id,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+        "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+        "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+    })
