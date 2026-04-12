@@ -7,7 +7,7 @@ from typing import Optional
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.core.redis_service import redis_service, NovelCache
 from .models import Novel, NovelCreativeProfile
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/novels", tags=["novels"])
 @router.get("")
 async def get_novels(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
@@ -79,7 +79,7 @@ async def get_novels(
 async def create_novel(
     novel: NovelCreate, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     创建小说

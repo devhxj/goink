@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.core.exceptions import NotFoundException, UnauthorizedException, BadRequestException
 from app.core.redis_service import redis_service
@@ -111,7 +111,7 @@ async def get_chapters_by_novel(
 async def create_chapter(
     chapter: ChapterCreate, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     创建章节
@@ -183,7 +183,7 @@ async def create_chapter(
 async def get_chapter(
     chapter_id: int, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     获取章节详情
@@ -244,7 +244,7 @@ async def update_chapter(
     chapter_id: int, 
     chapter: ChapterUpdate, 
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     collaborative: bool = Query(False, description="是否与AI协作编辑副本"),
     session_id: Optional[str] = Query(None, description="协作编辑会话ID")
 ):
@@ -325,7 +325,7 @@ async def update_chapter(
 async def delete_chapter(
     chapter_id: int, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     删除章节

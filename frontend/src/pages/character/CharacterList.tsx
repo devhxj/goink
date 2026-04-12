@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-de
 import { useNavigate, useParams } from 'react-router-dom'
 import { characterApi } from '@/services/characterService'
 import { getErrorMessage } from '@/types/error'
-import type { Character, Personality } from '@/types/character'
+import type { Character } from '@/types/character'
 import dayjs from 'dayjs'
 
 const { Search } = Input
@@ -78,13 +78,13 @@ function CharacterList() {
       title: '性格特征',
       dataIndex: 'personality',
       key: 'traits',
-      render: (personality: Personality) => (
+      render: (personality: Record<string, unknown>) => (
         <Space wrap>
-          {personality?.traits?.slice(0, 3).map((trait, index) => (
+          {Array.isArray(personality?.traits) && (personality.traits as string[]).slice(0, 3).map((trait: string, index: number) => (
             <Tag key={index} color="blue">{trait}</Tag>
           ))}
-          {personality?.traits?.length > 3 && (
-            <Tag>+{personality.traits.length - 3}</Tag>
+          {Array.isArray(personality?.traits) && (personality.traits as string[]).length > 3 && (
+            <Tag>+{(personality.traits as string[]).length - 3}</Tag>
           )}
         </Space>
       ),

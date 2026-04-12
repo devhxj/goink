@@ -7,7 +7,7 @@ from typing import Optional, List
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.novels.models import Novel
 from .base import MCPToolCategory
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/mcp", tags=["mcp"])
 @router.get("/tools")
 async def list_tools(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     category: Optional[str] = Query(None, description="工具分类筛选")
 ):
     """
@@ -42,7 +42,7 @@ async def list_tools(
 @router.get("/tools/categories")
 async def list_categories(
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     按分类列出所有工具
@@ -57,7 +57,7 @@ async def list_categories(
 async def get_tool_info(
     tool_name: str,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     获取指定工具的详细信息
@@ -75,7 +75,7 @@ async def execute_tool(
     tool_name: str,
     params: dict,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     执行指定的MCP工具
@@ -95,7 +95,7 @@ async def execute_tool(
 async def get_novel_summary(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     registry = get_mcp_registry()
     result = await registry.execute("get_novel_summary", db=db, user_id=current_user.id, novel_id=novel.id)
@@ -109,7 +109,7 @@ async def get_novel_summary(
 async def get_chapter_list(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     status: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100)
@@ -134,7 +134,7 @@ async def get_chapter_list(
 async def get_chapter_content(
     chapter_id: int,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     include_summary: bool = Query(True)
 ):
     from app.chapters.models import Chapter
@@ -170,7 +170,7 @@ async def get_chapter_content(
 async def get_novel_progress(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     registry = get_mcp_registry()
     result = await registry.execute("get_novel_progress", db=db, user_id=current_user.id, novel_id=novel.id)
@@ -184,7 +184,7 @@ async def get_novel_progress(
 async def get_character_list(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     search: Optional[str] = Query(None)
 ):
     registry = get_mcp_registry()
@@ -205,7 +205,7 @@ async def get_character_list(
 async def get_character_detail(
     character_id: int,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     from app.characters.models import Character
     from app.core.exceptions import NotFoundException, UnauthorizedException
@@ -238,7 +238,7 @@ async def get_character_detail(
 async def search_plot_memory(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     query: str = Query(..., description="搜索查询文本"),
     top_k: int = Query(10, ge=1, le=50, description="返回结果数量"),
     chapter_ids: Optional[str] = Query(None, description="限定章节ID，逗号分隔")
@@ -267,7 +267,7 @@ async def search_plot_memory(
 async def get_character_memory(
     character_id: int,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     include_plot_events: bool = Query(True, description="是否包含情节事件")
 ):
     from app.characters.models import Character
@@ -303,7 +303,7 @@ async def get_character_memory(
 async def get_timeline(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     start_chapter: Optional[int] = Query(None, description="起始章节号"),
     end_chapter: Optional[int] = Query(None, description="结束章节号"),
     event_types: Optional[str] = Query(None, description="事件类型，逗号分隔")
@@ -332,7 +332,7 @@ async def get_timeline(
 async def get_recent_context(
     chapter_id: int,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     window_size: int = Query(3, ge=1, le=10, description="前文章节数量"),
     context_size: int = Query(3000, ge=500, le=10000, description="上下文最大字符数")
 ):
@@ -370,7 +370,7 @@ async def get_recent_context(
 async def check_character_consistency(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     chapter_ids: Optional[str] = Query(None, description="章节ID，逗号分隔"),
     character_id: Optional[int] = Query(None, description="指定角色ID")
 ):
@@ -397,7 +397,7 @@ async def check_character_consistency(
 async def check_plot_consistency(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     chapter_ids: Optional[str] = Query(None, description="章节ID，逗号分隔")
 ):
     ids = None
@@ -422,7 +422,7 @@ async def check_plot_consistency(
 async def run_full_consistency_check(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     chapter_ids: Optional[str] = Query(None, description="章节ID，逗号分隔"),
     check_types: Optional[str] = Query(None, description="检查类型，逗号分隔(character,plot,timeline,foreshadowing)")
 ):
@@ -453,7 +453,7 @@ async def run_full_consistency_check(
 async def list_unresolved_plots(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     min_importance: Optional[int] = Query(None, ge=1, le=5, description="最小重要程度"),
     days_pending: Optional[int] = Query(None, ge=1, description="挂起天数筛选")
 ):
@@ -476,7 +476,7 @@ async def list_unresolved_plots(
 async def get_foreshadowing_status(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     registry = get_mcp_registry()
     result = await registry.execute("get_foreshadowing_status", db=db, user_id=current_user.id, novel_id=novel.id)
@@ -490,7 +490,7 @@ async def get_foreshadowing_status(
 async def read_chapter_for_edit(
     chapter_id: int,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     include_line_numbers: bool = Query(True, description="是否包含行号")
 ):
     """
@@ -528,7 +528,7 @@ async def read_chapter_for_edit(
 async def edit_chapter_content(
     chapter_id: int,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     session_id: str = Body(..., description="会话ID"),
     change_type: str = Body(..., description="变更类型: full_replace/partial_edit/insert/delete"),
     new_content: str = Body(..., description="新内容"),
@@ -576,7 +576,7 @@ async def edit_chapter_content(
 async def create_new_chapter(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     chapter_number: Optional[int] = Body(None, description="章节号，不传则自动创建下一章"),
     title: Optional[str] = Body(None, description="章节标题"),
     content: Optional[str] = Body(None, description="章节内容")
@@ -604,7 +604,7 @@ async def create_new_chapter(
 async def generate_chapter_draft(
     novel: NovelOwner,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     chapter_number: Optional[int] = Body(None, description="章节号，不传则自动生成下一章"),
     title: Optional[str] = Body(None, description="章节标题"),
     target_length: int = Body(3000, ge=500, le=12000, description="目标字数"),
@@ -652,7 +652,7 @@ async def generate_chapter_draft(
 @router.get("/changes/pending")
 async def get_pending_changes(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     chapter_id: Optional[int] = Query(None, description="章节ID"),
     session_id: Optional[str] = Query(None, description="会话ID"),
     limit: int = Query(10, ge=1, le=50, description="返回数量限制")

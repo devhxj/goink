@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: 编写后端代码时候必须遵守本规则
+---
 # 后端开发规则
 
 ## 环境要求

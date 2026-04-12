@@ -8,7 +8,7 @@ from sqlalchemy import select, func
 from app.core.response import ApiResponse
 from app.core.exceptions import NotFoundException
 from app.core.database import DBSession
-from app.core.auth import get_current_user, CurrentUser
+from app.core.auth import get_current_user, CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.novels.models import Novel
 from .base import AgentTask, TaskType, TaskStatus
@@ -23,7 +23,7 @@ coordinator = create_default_coordinator()
 
 @router.get("/status")
 async def get_agent_status(
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """获取Agent系统状态"""
     status = coordinator.get_agent_status()
@@ -120,7 +120,7 @@ async def get_tasks(
 @router.get("/tasks/{task_id}")
 async def get_task_status(
     task_id: str,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     db: DBSession
 ):
     """获取任务状态"""

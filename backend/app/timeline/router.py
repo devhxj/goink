@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, DBSession
 from app.core.response import ApiResponse
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.timeline.models import TimelineEntry
 from app.timeline.schemas import (

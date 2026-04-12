@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.core.exceptions import NotFoundException, UnauthorizedException
 from app.core.redis_service import redis_service
@@ -79,7 +79,7 @@ async def get_characters_by_novel(
 async def create_character(
     character: CharacterCreate, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     创建角色
@@ -119,7 +119,7 @@ async def create_character(
 async def get_character(
     character_id: int, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     获取角色详情
@@ -166,7 +166,7 @@ async def update_character(
     character_id: int, 
     character: CharacterUpdate, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     更新角色
@@ -210,7 +210,7 @@ async def update_character(
 async def delete_character(
     character_id: int, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     删除角色
@@ -260,7 +260,7 @@ def _relation_to_dict(rel: CharacterRelation) -> dict:
 @router.get("/relations")
 async def list_relations(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     novel_id: int = Query(..., description="小说ID"),
     character_id: Optional[int] = Query(None, description="角色ID筛选(source或target)"),
     relationship_type: Optional[str] = Query(None, description="关系类型筛选"),
@@ -304,7 +304,7 @@ async def list_relations(
 async def create_relation(
     body: CharacterRelationCreate,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     if body.source_character_id == body.target_character_id:
         raise BadRequestException("source与target不能是同一角色")
@@ -351,7 +351,7 @@ async def update_relation(
     relation_id: int,
     body: CharacterRelationUpdate,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     result = await db.execute(
         select(CharacterRelation).where(CharacterRelation.id == relation_id)
@@ -380,7 +380,7 @@ async def evolve_relation(
     relation_id: int,
     body: CharacterRelationEvolve,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     result = await db.execute(
         select(CharacterRelation).where(CharacterRelation.id == relation_id)
@@ -418,7 +418,7 @@ async def evolve_relation(
 @router.get("/relations/network")
 async def get_relation_network(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     novel_id: int = Query(..., description="小说ID")
 ):
     result = await db.execute(select(Novel).where(Novel.id == novel_id))
@@ -469,7 +469,7 @@ async def get_relation_network(
 async def get_relations_for_character(
     character_id: int,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     from sqlalchemy import or_
 

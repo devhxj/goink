@@ -9,7 +9,7 @@ from typing import Optional, List
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.dependencies import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.session_manager import (
     Session, SessionManager, SessionConfig, MessageRole,
     SessionScope, ScopeType, NovelContext, ChapterContext,
@@ -26,7 +26,7 @@ session_manager.set_storage(session_storage)
 
 @router.post("/create")
 async def create_session(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     novel_id: int = Body(..., description="小说ID"),
     scope_type: str = Body("novel", description="作用域类型: novel/chapters/chapter"),
@@ -146,7 +146,7 @@ async def create_session(
 
 @router.get("/list")
 async def list_sessions(
-    user: CurrentUser,
+    user: CurrentUserDep,
     novel_id: Optional[int] = Query(None, description="按小说ID过滤"),
     scope_type: Optional[str] = Query(None, description="按作用域类型过滤"),
     limit: int = Query(20, ge=1, le=100)
@@ -198,7 +198,7 @@ async def list_sessions(
 
 @router.get("/{session_id}")
 async def get_session(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str
 ):
     """获取会话详情"""
@@ -233,7 +233,7 @@ async def get_session(
 
 @router.get("/{session_id}/messages")
 async def get_messages(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0)
@@ -261,7 +261,7 @@ async def get_messages(
 
 @router.delete("/{session_id}")
 async def delete_session(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str
 ):
     """删除会话"""
@@ -280,7 +280,7 @@ async def delete_session(
 
 @router.put("/{session_id}/scope")
 async def update_session_scope(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     session_id: str,
     scope_type: str = Body(..., description="作用域类型"),
@@ -345,7 +345,7 @@ async def update_session_scope(
 
 @router.put("/{session_id}/title")
 async def update_session_title(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str,
     title: str = Body(..., embed=True, description="会话标题"),
     subtitle: Optional[str] = Body(None, embed=True, description="会话副标题")
@@ -376,7 +376,7 @@ async def update_session_title(
 
 @router.post("/{session_id}/clear")
 async def clear_messages(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str,
     keep_system: bool = Body(True, embed=True, description="是否保留系统消息")
 ):
@@ -409,7 +409,7 @@ async def clear_messages(
 
 @router.get("/{session_id}/stats")
 async def get_session_stats(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str
 ):
     """获取会话统计信息"""
@@ -427,7 +427,7 @@ async def get_session_stats(
 
 @router.put("/{session_id}/context/novel")
 async def update_novel_context(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str,
     title: str = Body(""),
     description: str = Body(""),
@@ -467,7 +467,7 @@ async def update_novel_context(
 
 @router.put("/{session_id}/context/chapter")
 async def update_chapter_context(
-    user: CurrentUser,
+    user: CurrentUserDep,
     session_id: str,
     chapter_number: int = Body(...),
     chapter_title: str = Body(""),

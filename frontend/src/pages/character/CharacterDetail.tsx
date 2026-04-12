@@ -59,18 +59,18 @@ function CharacterDetailPage() {
         </Descriptions.Item>
         <Descriptions.Item label="性格特征">
           <Space wrap>
-            {character.personality?.traits?.map((trait, index) => (
+            {Array.isArray(character.personality?.traits) && (character.personality.traits as string[]).map((trait: string, index: number) => (
               <Tag key={index} color="blue">{trait}</Tag>
             ))}
           </Space>
         </Descriptions.Item>
         <Descriptions.Item label="背景故事" span={2}>
-          {character.personality?.background || '-'}
+          {(character.personality?.background as string) || '-'}
         </Descriptions.Item>
         <Descriptions.Item label="朋友关系">
           <Space wrap>
-            {character.relationships?.friend && character.relationships.friend.length > 0 ? (
-              character.relationships.friend.map((friendId, index) => (
+            {Array.isArray(character.relationships?.friend) && (character.relationships.friend as number[]).length > 0 ? (
+              (character.relationships.friend as number[]).map((friendId: number, index: number) => (
                 <Tag key={index} color="green">角色ID: {friendId}</Tag>
               ))
             ) : (
@@ -80,8 +80,8 @@ function CharacterDetailPage() {
         </Descriptions.Item>
         <Descriptions.Item label="敌对关系">
           <Space wrap>
-            {character.relationships?.enemy && character.relationships.enemy.length > 0 ? (
-              character.relationships.enemy.map((enemyId, index) => (
+            {Array.isArray(character.relationships?.enemy) && (character.relationships.enemy as number[]).length > 0 ? (
+              (character.relationships.enemy as number[]).map((enemyId: number, index: number) => (
                 <Tag key={index} color="red">角色ID: {enemyId}</Tag>
               ))
             ) : (

@@ -8,13 +8,13 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.exceptions import NotFoundException, UnauthorizedException
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.novels.models import Novel
 
 
 async def check_novel_ownership(
     novel_id: Annotated[int, Path(..., description="小说ID")],
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     db: AsyncSession = Depends(get_db)
 ) -> Novel:
     """

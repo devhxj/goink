@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.dependencies import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.editor.service import EditSessionManager, get_edit_session_manager
 from app.editor.models import EditSession, EditChange
 from app.chapters.models import Chapter
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/editor", tags=["editor"])
 
 @router.post("/session/start")
 async def start_edit_session(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     chapter_id: int = Body(..., description="章节ID"),
     ws_session_id: str = Body(..., description="WebSocket会话ID")
@@ -76,7 +76,7 @@ async def start_edit_session(
 
 @router.post("/session/{edit_session_id}/apply")
 async def apply_edit(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     edit_session_id: str,
     change_type: str = Body(..., description="变更类型: full_replace/partial_edit/insert/delete"),
@@ -140,7 +140,7 @@ async def apply_edit(
 
 @router.post("/session/{edit_session_id}/accept")
 async def accept_edit_session(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     edit_session_id: str
 ):
@@ -190,7 +190,7 @@ async def accept_edit_session(
 
 @router.post("/session/{edit_session_id}/reject")
 async def reject_edit_session(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     edit_session_id: str
 ):
@@ -237,7 +237,7 @@ async def reject_edit_session(
 
 @router.get("/session/{edit_session_id}")
 async def get_edit_session_status(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     edit_session_id: str
 ):
@@ -278,7 +278,7 @@ async def get_edit_session_status(
 
 @router.get("/chapter/{chapter_id}/status")
 async def get_chapter_edit_status(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     chapter_id: int
 ):
@@ -326,7 +326,7 @@ async def get_chapter_edit_status(
 
 @router.get("/chapter/{chapter_id}")
 async def get_chapter_for_editor(
-    user: CurrentUser,
+    user: CurrentUserDep,
     db: DBSession,
     chapter_id: int
 ):

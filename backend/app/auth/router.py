@@ -7,9 +7,9 @@ from sqlalchemy import select, or_
 from app.core.response import ApiResponse
 from app.core.jwt import hash_password, verify_password, create_tokens, decode_token, create_access_token
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from .models import User
-from .schemas import UserRegister, UserLogin
+from .schemas import UserRegister, UserLogin, TokenRefresh
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -91,7 +91,7 @@ async def login(login_data: UserLogin, db: DBSession):
 
 @router.post("/refresh")
 async def refresh_token(
-    refresh_token: str,
+    token_data: TokenRefresh,
     db: DBSession
 ):
     """
@@ -100,7 +100,7 @@ async def refresh_token(
     - refresh_token: 刷新令牌
     - db: 数据库会话
     """
-    payload = decode_token(refresh_token)
+    payload = decode_token(token_data.refresh_token)
     
     if payload is None:
         return ApiResponse.error(
@@ -138,7 +138,7 @@ async def refresh_token(
 
 
 @router.get("/me")
-async def get_me(current_user: CurrentUser):
+async def get_me(current_user: CurrentUserDep):
     """
     获取当前用户信息
     
@@ -147,6 +147,5 @@ async def get_me(current_user: CurrentUser):
     return ApiResponse.success({
         "user_id": current_user.id,
         "username": current_user.username,
-        "email": current_user.email,
-        "created_at": current_user.created_at
+        "email": current_user.email
     })

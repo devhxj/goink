@@ -1,17 +1,9 @@
-export interface Personality {
-  traits: string[]
-  background: string
-}
-
 export interface Character {
   id: number
   novel_id: number
   name: string
-  personality: Personality
-  relationships: {
-    friend?: number[]
-    enemy?: number[]
-  }
+  personality: Record<string, unknown>
+  relationships: Record<string, unknown>
   abilities: string[]
   created_at: string
 }
@@ -25,27 +17,15 @@ export interface CharacterDetail extends Character {
 
 export interface CharacterCreate {
   name: string
-  personality: {
-    traits: string[]
-    background: string
-  }
-  relationships?: {
-    friend?: number[]
-    enemy?: number[]
-  }
+  personality?: Record<string, unknown>
+  relationships?: Record<string, unknown>
   abilities?: string[]
 }
 
 export interface CharacterUpdate {
   name?: string
-  personality?: {
-    traits: string[]
-    background: string
-  }
-  relationships?: {
-    friend?: number[]
-    enemy?: number[]
-  }
+  personality?: Record<string, unknown>
+  relationships?: Record<string, unknown>
   abilities?: string[]
 }
 

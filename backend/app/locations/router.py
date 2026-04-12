@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.response import ApiResponse
 from app.core.exceptions import NotFoundException, BadRequestException
 from .models import Location
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/locations", tags=["地点管理"])
 
 @router.get("")
 async def list_locations(
-    user: CurrentUser,
+    user: CurrentUserDep,
     novel_id: int = Query(...),
     location_type: Optional[str] = None,
     search: Optional[str] = None,
@@ -71,7 +71,7 @@ async def list_locations(
 
 @router.post("", status_code=201)
 async def create_location(
-    user: CurrentUser,
+    user: CurrentUserDep,
     data: LocationCreate,
     db: AsyncSession = Depends(get_db),
 ):
@@ -90,7 +90,7 @@ async def create_location(
 
 @router.get("/network")
 async def get_location_network(
-    user: CurrentUser,
+    user: CurrentUserDep,
     novel_id: int = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
@@ -101,7 +101,7 @@ async def get_location_network(
 
 @router.get("/{location_id}")
 async def get_location_detail(
-    user: CurrentUser,
+    user: CurrentUserDep,
     location_id: int,
     db: AsyncSession = Depends(get_db),
 ):
@@ -110,7 +110,7 @@ async def get_location_detail(
         raise NotFoundException("地点不存在")
     parent_name = None
     if location.parent_location_id:
-        parent = await db.get(Location, location.parent_location_id)
+        parent = await db.get(Location, loc.parent_location_id)
         if parent:
             parent_name = parent.name
     return ApiResponse.success({
@@ -126,7 +126,7 @@ async def get_location_detail(
 
 @router.put("/{location_id}")
 async def update_location(
-    user: CurrentUser,
+    user: CurrentUserDep,
     location_id: int,
     data: LocationUpdate,
     db: AsyncSession = Depends(get_db),
@@ -140,7 +140,7 @@ async def update_location(
 
 @router.delete("/{location_id}")
 async def delete_location(
-    user: CurrentUser,
+    user: CurrentUserDep,
     location_id: int,
     db: AsyncSession = Depends(get_db),
 ):

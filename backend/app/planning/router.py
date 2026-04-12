@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.database import get_db, DBSession
 from app.core.response import ApiResponse
 from app.core.exceptions import NotFoundException, UnauthorizedException
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.planning.planner import PlotPlanner
 from app.planning.models import PlotLine, PlotNode, PlotLineType, PlotNodeStatus
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 async def check_plot_line_ownership(
     plot_line_id: int,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ) -> PlotLine:
     """检查情节线所有权"""
     result = await db.execute(
@@ -59,7 +59,7 @@ async def check_plot_line_ownership(
 async def check_plot_node_ownership(
     node_id: int,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ) -> PlotNode:
     """检查情节节点所有权"""
     result = await db.execute(

@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.core.exceptions import NotFoundException, UnauthorizedException
 from app.novels.models import Novel
@@ -73,7 +73,7 @@ async def get_plot_events_by_novel(
 async def create_plot_event(
     event: PlotEventCreate, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     创建情节事件
@@ -113,7 +113,7 @@ async def create_plot_event(
 async def get_plot_event(
     event_id: int, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     获取情节事件详情
@@ -161,7 +161,7 @@ async def update_plot_event(
     event_id: int, 
     event: PlotEventUpdate, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     更新情节事件
@@ -201,7 +201,7 @@ async def update_plot_event(
 async def delete_plot_event(
     event_id: int, 
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """
     删除情节事件

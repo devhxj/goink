@@ -12,12 +12,19 @@ export const authApi = {
   },
 
   refreshToken: async (): Promise<ApiResponse<RefreshTokenResponse>> => {
-    const refreshToken = localStorage.getItem('refresh_token')
-    return apiClient.post('/auth/refresh', null, {
-      headers: {
-        Authorization: `Bearer ${refreshToken}`,
-      },
-    })
+    const authStorage = localStorage.getItem('auth-storage')
+    if (authStorage) {
+      try {
+        const parsed = JSON.parse(authStorage)
+        const refreshToken = parsed?.state?.refreshToken
+        if (refreshToken) {
+          return apiClient.post('/auth/refresh', { refresh_token: refreshToken })
+        }
+      } catch (e) {
+        console.error('Failed to parse auth storage:', e)
+      }
+    }
+    throw new Error('No refresh token found')
   },
 
   getCurrentUser: async (): Promise<ApiResponse<User>> => {

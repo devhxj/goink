@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 
 from app.core.response import ApiResponse
 from app.core.database import DBSession
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
 from app.core.exceptions import NotFoundException, UnauthorizedException
 from app.core.context_builder import ContextBuilder
@@ -193,7 +193,7 @@ async def get_context_history(
 async def get_context_detail(
     context_id: int,
     db: DBSession,
-    current_user: CurrentUser
+    current_user: CurrentUserDep
 ):
     """获取上下文详情"""
     result = await db.execute(
