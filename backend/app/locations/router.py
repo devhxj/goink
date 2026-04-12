@@ -53,7 +53,7 @@ async def list_locations(
     for loc in locations:
         parent_name = None
         if loc.parent_location_id:
-            parent = await db.get(Location, loc.parent_location_id)
+            parent = await db.get(Location, location.parent_location_id)
             if parent:
                 parent_name = parent.name
         items.append({

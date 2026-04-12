@@ -720,7 +720,7 @@ async def create_location(
     parent_location_id: Optional[int] = None,
     ctx: Context = None
 ) -> dict:
-    import json as _json
+    import json
     _tags = json.dumps(tags) if tags else None
     return await _execute_tool(
         "create_location", ctx,
@@ -741,7 +741,7 @@ async def update_location(
     parent_location_id: Optional[int] = None,
     ctx: Context = None
 ) -> dict:
-    import json as _json
+    import json
     _tags = json.dumps(tags) if tags else None
     return await _execute_tool(
         "update_location", ctx,

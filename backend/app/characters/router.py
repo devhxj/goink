@@ -10,7 +10,7 @@ from app.core.response import ApiResponse
 from app.core.database import DBSession
 from app.core.auth import CurrentUserDep
 from app.core.dependencies import NovelOwner
-from app.core.exceptions import NotFoundException, UnauthorizedException
+from app.core.exceptions import NotFoundException, UnauthorizedException, BadRequestException
 from app.core.redis_service import redis_service
 from app.novels.models import Novel
 from .models import Character, CharacterRelation

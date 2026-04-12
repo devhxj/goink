@@ -391,10 +391,10 @@ class ReviewerAgent(BaseAgent):
             await db.refresh(entry)
 
             return {
-                "id": foreshadowing.id,
-                "title": foreshadowing.title,
-                "status": foreshadowing.status,
-                "resolved_chapter_id": foreshadowing.resolved_chapter_id,
-                "resolution_notes": foreshadowing.resolution_notes,
-                "resolved_at": foreshadowing.resolved_at.isoformat() if foreshadowing.resolved_at else None
+                "id": entry.id,
+                "title": entry.title,
+                "status": entry.status,
+                "resolved_chapter_id": entry.resolved_chapter_id,
+                "resolution_notes": entry.detail_json.get("resolution_notes") if entry.detail_json else None,
+                "resolved_at": entry.resolved_at.isoformat() if entry.resolved_at else None
             }
