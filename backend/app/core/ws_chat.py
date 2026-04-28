@@ -37,7 +37,7 @@ from app.novels.models import NovelCreativeProfile
 from app.novels.models import Novel
 from app.editor.service import get_edit_session_manager
 from app.mcp.registry import get_mcp_registry
-from app.workflows.langgraph_workflow import ChapterWorkflow, LANGGRAPH_AVAILABLE
+from app.workflows.langgraph_workflow import ChapterWorkflow, LANGGRAPH_AVAILABLE  # deprecated
 from app.generation.service import ChapterGenerationService
 
 router = APIRouter(tags=["websocket"])
@@ -573,6 +573,8 @@ async def _execute_streaming_chapter_draft(
         await service._update_chapter_memory(chapter.id)
     except Exception as exc:
         logger.warning(f"Failed to update chapter memory after streamed generation: {exc}")
+        from app.core.memory_retry import schedule_memory_retry
+        schedule_memory_retry(novel_id, chapter.id)
 
     return {
         "success": True,
@@ -1224,10 +1226,17 @@ async def _run_chat_with_tools(
                         "如果这些要求不是只针对当前这一章，而是希望后续持续生效，"
                         "请优先先读取 get_creative_profile，再用 update_creative_profile 做增量沉淀。"
                     )
-            except Exception:
+            except Exception as exc:
+                logger.warning(f"Context preparation failed for session {session.session_id}: {exc}")
                 extra_context_for_user = ""
                 creative_profile_text = ""
                 conditional_reminders = []
+                await ws_manager.send_personal_message({
+                    "type": "system_warning",
+                    "task_id": task_id,
+                    "message": "记忆检索或创作配置加载暂时不可用，生成质量可能受影响",
+                    "timestamp": datetime.now().isoformat()
+                }, websocket)
             
             all_tools = registry.get_openai_functions() if tools_enabled else None
             if all_tools:
@@ -1484,14 +1493,15 @@ async def _run_chat_with_tools(
                                         arguments=clean_args
                                     )
                                 else:
-                                    tool_result = await registry.execute(
-                                        tool_name,
-                                        db=db,
-                                        user_id=session.user_id,
-                                        session_id=session.session_id,
-                                        novel_id=novel_id,
-                                        **clean_args
-                                    )
+                                    async with AsyncSessionLocal() as tool_db:
+                                        tool_result = await registry.execute(
+                                            tool_name,
+                                            db=tool_db,
+                                            user_id=session.user_id,
+                                            session_id=session.session_id,
+                                            novel_id=novel_id,
+                                            **clean_args
+                                        )
                                     tool_result_payload = tool_result.model_dump()
                                 if tool_result_payload.get("success"):
                                     tool_cache[cache_key] = tool_result_payload
@@ -1897,133 +1907,8 @@ async def _generate_chapter_ws(
     
     use_langgraph = params.get("use_langgraph")
     if use_langgraph:
-        if not LANGGRAPH_AVAILABLE:
-            await ws_manager.send_personal_message(
-                GenerationProgress.failed(task_id, "LangGraph不可用"),
-                websocket
-            )
-            return
-        workflow = ChapterWorkflow()
-        workflow_result = await workflow.run(
-            task_id=task_id,
-            novel_id=novel_id,
-            chapter_number=chapter_number,
-            target_length=target_length,
-            style=style,
-            context=context_data,
-            model=model,
-            agent_role=params.get("agent_role"),
-            context_size=context_size,
-            extra_parameters={
-                "writing_task": user_prompt,
-                "outline": params.get("chapter_outline"),
-                "tone": params.get("tone")
-            }
-        )
-        if not workflow_result.get("success"):
-            await ws_manager.send_personal_message(
-                GenerationProgress.failed(task_id, workflow_result.get("error", "工作流失败")),
-                websocket
-            )
-            return
-        generated = workflow_result.get("generated_content", "")
-        review_result = workflow_result.get("review_result") or {}
-        consistency_result = workflow_result.get("consistency_result") or {}
-        await ws_manager.send_personal_message(
-            GenerationProgress.review_result(
-                task_id,
-                review_result.get("approved", True),
-                review_result.get("score", 0),
-                review_result.get("issues", [])
-            ),
-            websocket
-        )
-        await ws_manager.send_personal_message(
-            GenerationProgress.consistency_check(
-                task_id,
-                consistency_result.get("passed", True),
-                consistency_result.get("issues", [])
-            ),
-            websocket
-        )
-        chapter_result = await db.execute(
-            select(Chapter).where(
-                Chapter.novel_id == novel_id,
-                Chapter.chapter_number == chapter_number
-            )
-        )
-        saved = chapter_result.scalar_one_or_none()
-        await ws_manager.send_personal_message(
-            GenerationProgress.completed(
-                task_id,
-                saved.id if saved else None,
-                chapter_number,
-                generated,
-                len(generated)
-            ),
-            websocket
-        )
-        return
+        logger.warning(f"[DEPRECATED] LangGraph workflow is deprecated, ignoring use_langgraph=True for task {task_id}")
 
-    if use_langgraph is None and LANGGRAPH_AVAILABLE:
-        service = ChapterGenerationService(db, novel_id)
-        workflow_result = await service.generate_chapter(
-            chapter_number=chapter_number,
-            target_length=target_length,
-            style=style,
-            additional_context={
-                "user_prompt": user_prompt,
-                "author_intent": params.get("author_intent"),
-                "scene_goal": params.get("scene_goal"),
-                "chapter_outline": params.get("chapter_outline"),
-                "must_keep": params.get("must_keep"),
-                "must_avoid": params.get("must_avoid"),
-                "key_events": params.get("key_events"),
-                "focus_characters": params.get("focus_characters")
-            },
-            agent_role=params.get("agent_role"),
-            model=model,
-            use_workflow=True,
-            context_size=context_size
-        )
-        if not workflow_result.get("success"):
-            await ws_manager.send_personal_message(
-                GenerationProgress.failed(task_id, workflow_result.get("error", "章节生成失败")),
-                websocket
-            )
-            return
-        review_result = workflow_result.get("review_result") or {}
-        consistency_result = workflow_result.get("consistency_result") or {}
-        generated = workflow_result.get("content", "")
-        await ws_manager.send_personal_message(
-            GenerationProgress.review_result(
-                task_id,
-                review_result.get("approved", True),
-                review_result.get("score", 0),
-                review_result.get("issues", [])
-            ),
-            websocket
-        )
-        await ws_manager.send_personal_message(
-            GenerationProgress.consistency_check(
-                task_id,
-                consistency_result.get("passed", True),
-                consistency_result.get("issues", [])
-            ),
-            websocket
-        )
-        await ws_manager.send_personal_message(
-            GenerationProgress.completed(
-                task_id,
-                workflow_result.get("chapter_id"),
-                chapter_number,
-                generated,
-                len(generated)
-            ),
-            websocket
-        )
-        return
-    
     system_prompt = get_system_prompt(GenerationType.CHAPTER, style)
     user_message = build_chapter_prompt(
         chapter_number=chapter_number,

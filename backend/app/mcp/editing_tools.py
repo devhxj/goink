@@ -16,25 +16,6 @@ from app.core.context_builder import ContextBuilder
 from app.core.permissions import verify_novel_ownership
 
 
-def _validate_chapter_access(db: AsyncSession, chapter_id: int, novel_id: int) -> tuple[bool, Optional[Chapter], str]:
-    """验证章节访问权限"""
-    async def _check():
-        result = await db.execute(
-            select(Chapter).where(Chapter.id == chapter_id)
-        )
-        chapter = result.scalar_one_or_none()
-        
-        if not chapter:
-            return False, None, f"章节不存在: {chapter_id}"
-        
-        if chapter.novel_id != novel_id:
-            return False, None, f"无权访问此章节: 章节不属于当前小说"
-        
-        return True, chapter, ""
-    
-    return _check()
-
-
 class StartEditSessionTool(BaseMCPTool):
     """开始编辑会话（创建副本）"""
     

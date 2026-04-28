@@ -258,65 +258,8 @@ class RunReviewTool(BaseMCPTool):
         return MCPToolResult(success=True, data=stats, metadata={"tool": self.name, "novel_id": novel_id})
 
 
-# ========== deprecated 旧工具类 — 转发到 RunReviewTool，保证HTTP端点等外部调用不中断 ==========
-
-class CheckCharacterConsistencyTool(BaseMCPTool):
-    """[deprecated] 使用 run_review(scope='character') 替代"""
-    name = "check_character_consistency"
-    description = "[已弃用] 请使用 run_review(scope='character')"
-    category = MCPToolCategory.CONSISTENCY_CHECK
-    parameters_schema = {"type": "object", "properties": {}, "required": []}
-    async def execute(self, db, **kwargs):
-        tool = RunReviewTool()
-        return await tool.execute(db, scope="character", **kwargs)
-
-
-class CheckPlotConsistencyTool(BaseMCPTool):
-    """[deprecated] 使用 run_review(scope='plot') 替代"""
-    name = "check_plot_consistency"
-    description = "[已弃用] 请使用 run_review(scope='plot')"
-    category = MCPToolCategory.CONSISTENCY_CHECK
-    parameters_schema = {"type": "object", "properties": {}, "required": []}
-    async def execute(self, db, **kwargs):
-        tool = RunReviewTool()
-        return await tool.execute(db, scope="plot", **kwargs)
-
-
-class ListUnresolvedPlotsTool(BaseMCPTool):
-    """[deprecated] 使用 run_review(scope='foreshadowing') 替代。原始实现查询旧foreshadowings表，现迁移至TimelineEntry"""
-    name = "list_unresolved_plots"
-    description = "[已弃用] 请使用 run_review(scope='foreshadowing')"
-    category = MCPToolCategory.CONSISTENCY_CHECK
-    parameters_schema = {"type": "object", "properties": {}, "required": []}
-    async def execute(self, db, **kwargs):
-        tool = RunReviewTool()
-        return await tool.execute(db, scope="foreshadowing", **kwargs)
-
-
-class GetForeshadowingStatusTool(BaseMCPTool):
-    """[deprecated] 使用 run_review(scope='foreshadowing_status') 替代。提供伏笔统计信息"""
-    name = "get_foreshadowing_status"
-    description = "[已弃用] 请使用 run_review(scope='foreshadowing_status')"
-    category = MCPToolCategory.CONSISTENCY_CHECK
-    parameters_schema = {"type": "object", "properties": {}, "required": []}
-    async def execute(self, db, **kwargs):
-        tool = RunReviewTool()
-        return await tool.execute(db, scope="foreshadowing_status", **kwargs)
-
-
-class RunFullConsistencyCheckTool(BaseMCPTool):
-    """[deprecated] 使用 run_review(scope='full') 替代"""
-    name = "run_full_consistency_check"
-    description = "[已弃用] 请使用 run_review(scope='full')"
-    category = MCPToolCategory.CONSISTENCY_CHECK
-    parameters_schema = {"type": "object", "properties": {}, "required": []}
-    async def execute(self, db, **kwargs):
-        tool = RunReviewTool()
-        return await tool.execute(db, scope="full", **kwargs)
-
-
 class ConsistencyCheckTools:
-    """审查工具集合 — 只注册新的 RunReviewTool"""
+    """审查工具集合 — 只注册 RunReviewTool"""
 
     @staticmethod
     def register_all(registry: MCPToolRegistry) -> None:

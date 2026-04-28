@@ -1,11 +1,26 @@
 """
-LangGraph工作流 - 章节生成工作流
-基于LangGraph实现的多Agent协作工作流
+LangGraph工作流 - 章节生成工作流 [DEPRECATED]
+
+此模块已弃用。请使用 ws_chat 中的 Tool-Use Loop 作为主路径，
+通过 run_agent_task MCP 工具调度子 Agent 完成章节生成。
+
+弃用原因：
+- 固定状态机与"对话自由创作"的设计理念冲突
+- feedback 未传递给 WriterAgent，修订循环无效
+- 非流式输出，用户体验差
+- 与 Tool-Use Loop 大量逻辑重复
 """
 import logging
+import warnings
 from typing import TypedDict, Annotated, Literal, Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy import select
+
+warnings.warn(
+    "LangGraph workflow is deprecated. Use Tool-Use Loop via ws_chat instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 try:
     from langgraph.graph import StateGraph, END
