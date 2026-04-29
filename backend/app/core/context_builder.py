@@ -481,17 +481,20 @@ class ContextBuilder:
         if total_len <= max_size:
             return "\n\n".join(layer_parts)
         
+        priority_map = {layer: idx for idx, layer in enumerate(layer_order)}
+        
+        indexed_parts = []
+        for i, part in enumerate(layer_parts):
+            layer_name = layer_order[i] if i < len(layer_order) else "dynamic"
+            priority = priority_map.get(layer_name, 99)
+            indexed_parts.append((priority, i, part))
+        
+        indexed_parts.sort(key=lambda x: x[0])
+        
         retained_parts = []
         current_size = 0
         
-        priority_map = {layer: idx for idx, layer in enumerate(layer_order)}
-        
-        sorted_parts = sorted(
-            enumerate(layer_parts),
-            key=lambda x: priority_map.get(layer_order[x[0]] if x[0] < len(layer_order) else "dynamic", 99)
-        )
-        
-        for original_idx, part in sorted_parts:
+        for priority, original_idx, part in indexed_parts:
             part_len = len(part)
             
             if current_size + part_len <= max_size:
@@ -501,12 +504,23 @@ class ContextBuilder:
                 remaining_space = max_size - current_size
                 truncated_part = part[:remaining_space]
                 
-                last_complete_tag = truncated_part.rfind("</")
-                if last_complete_tag > 0:
-                    truncated_part = truncated_part[:last_complete_tag + len(truncated_part[truncated_part.find("<", last_complete_tag-50):last_complete_tag+1]) if "<" in truncated_part[last_complete_tag-50:last_complete_tag] else truncated_part]
+                open_tag_pos = truncated_part.rfind("<")
+                if open_tag_pos > 0:
+                    tag_content = truncated_part[open_tag_pos:]
+                    if not tag_content.rstrip().endswith(">") or tag_content.strip().startswith("</"):
+                        truncated_part = truncated_part[:open_tag_pos].rstrip()
                 
-                retained_parts.append((original_idx, truncated_part))
-                current_size += len(truncated_part)
+                last_close_tag = truncated_part.rfind("</")
+                if last_close_tag > 0:
+                    tag_end = truncated_part.find(">", last_close_tag)
+                    if tag_end > 0:
+                        truncated_part = truncated_part[:tag_end + 1]
+                    else:
+                        truncated_part = truncated_part[:last_close_tag].rstrip()
+                
+                if truncated_part.strip():
+                    retained_parts.append((original_idx, truncated_part))
+                    current_size += len(truncated_part)
                 break
             else:
                 break
@@ -560,7 +574,11 @@ class ContextBuilder:
             
             filtered_results = []
             for result in results:
-                relevance_score = 1 - result["distance"]
+                distance = result["distance"]
+                if distance >= 0:
+                    relevance_score = 1.0 / (1.0 + distance)
+                else:
+                    relevance_score = 1.0
                 
                 if relevance_score < min_relevance_score:
                     logger.debug(f"丢弃低质量结果 (score={relevance_score:.3f}<{min_relevance_score}): {result['content'][:50]}...")

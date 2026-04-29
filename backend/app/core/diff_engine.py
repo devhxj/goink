@@ -284,5 +284,132 @@ class DiffEngine:
         end_idx = min(len(lines), end_line)
         return '\n'.join(lines[start_idx:end_idx])
 
+    @staticmethod
+    def find_best_match(search_text: str, content: str, min_score: float = 0.6) -> tuple[int, int, float] | None:
+        """Find the best matching paragraph for search_text in content.
+
+        Uses rapidfuzz for similarity scoring. Returns (start_line, end_line, score)
+        or None if no match exceeds min_score threshold.
+
+        This is used for error feedback when exact search/replace fails,
+        helping the LLM understand what the actual content looks like.
+        """
+        try:
+            from rapidfuzz import fuzz
+        except ImportError:
+            return None
+
+        lines = content.splitlines()
+        search_lines = search_text.splitlines()
+        search_len = len(search_lines)
+
+        if not lines or not search_lines:
+            return None
+
+        best_score = 0.0
+        best_start = 0
+        best_end = 0
+        window_sizes = [search_len, search_len + 2, search_len + 5, max(1, search_len - 2)]
+
+        for window_size in window_sizes:
+            if window_size <= 0:
+                continue
+            for i in range(len(lines) - window_size + 1):
+                candidate = "\n".join(lines[i:i + window_size])
+                score = fuzz.partial_ratio(search_text, candidate) / 100.0
+                if score > best_score:
+                    best_score = score
+                    best_start = i + 1
+                    best_end = i + window_size
+
+        if best_score >= min_score:
+            return (best_start, best_end, best_score)
+        return None
+
+    @staticmethod
+    def _normalize_whitespace(text: str) -> str:
+        """Normalize whitespace for fuzzy matching.
+        
+        Strips trailing whitespace from each line and normalizes
+        line endings to \\n, making search/replace more resilient
+        to minor whitespace differences from LLM output.
+        """
+        lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        stripped = [line.rstrip() for line in lines]
+        while stripped and not stripped[-1]:
+            stripped.pop()
+        while stripped and not stripped[0]:
+            stripped.pop(0)
+        return '\n'.join(stripped)
+
+    @staticmethod
+    def search_and_replace(
+        content: str,
+        search_text: str,
+        replace_text: str,
+        match_mode: str = "first",
+    ) -> tuple[str, int, str | None]:
+        """Perform search/replace on content.
+
+        Args:
+            content: The original content
+            search_text: Text to search for (can span multiple lines)
+            replace_text: Text to replace with
+            match_mode: "first" for first match only, "all" for all matches
+
+        Returns:
+            (new_content, replacement_count, error_message)
+            error_message is None on success, or contains helpful info on failure
+        """
+        if not search_text:
+            return content, 0, "search_text cannot be empty"
+
+        count = content.count(search_text)
+        if count > 0:
+            if match_mode == "all":
+                new_content = content.replace(search_text, replace_text)
+                return new_content, count, None
+            else:
+                new_content = content.replace(search_text, replace_text, 1)
+                return new_content, 1, None
+
+        norm_search = DiffEngine._normalize_whitespace(search_text)
+        norm_content = DiffEngine._normalize_whitespace(content)
+
+        norm_count = norm_content.count(norm_search)
+        if norm_count > 0:
+            content_lines = content.split('\n')
+            norm_lines = norm_content.split('\n')
+            search_lines_norm = norm_search.split('\n')
+            search_lines_raw = search_text.split('\n')
+
+            match_positions = []
+            for i in range(len(norm_lines) - len(search_lines_norm) + 1):
+                if norm_lines[i:i + len(search_lines_norm)] == search_lines_norm:
+                    match_positions.append(i)
+
+            if match_positions:
+                pos = match_positions[0] if match_mode == "first" else -1
+                if match_mode == "all":
+                    for pos in reversed(match_positions):
+                        content_lines[pos:pos + len(search_lines_raw)] = replace_text.split('\n')
+                    return '\n'.join(content_lines), len(match_positions), None
+                else:
+                    content_lines[pos:pos + len(search_lines_raw)] = replace_text.split('\n')
+                    return '\n'.join(content_lines), 1, None
+
+        best_match = DiffEngine.find_best_match(search_text, content)
+        if best_match:
+            start_line, end_line, score = best_match
+            lines = content.splitlines()
+            nearby = "\n".join(lines[max(0, start_line - 2):min(len(lines), end_line + 2)])
+            return (
+                content,
+                0,
+                f"Exact match not found. Most similar content (lines {start_line}-{end_line}, "
+                f"similarity {score:.0%}):\n{nearby}\nPlease retry based on the actual content above."
+            )
+        return content, 0, "Exact match not found and no similar content found. Please read the content first."
+
 
 diff_engine = DiffEngine()

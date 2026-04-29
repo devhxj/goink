@@ -234,27 +234,27 @@ class ModelContextConfig:
 MODEL_CONFIGS: Dict[str, ModelContextConfig] = {
     "deepseek-chat": ModelContextConfig(
         name="deepseek-chat",
-        context_window=131072,
+        context_window=1048576,
         max_output_tokens=8192,
-        description="DeepSeek-V3.2 - 128K上下文窗口"
+        description="DeepSeek-V3.2 - 1M上下文窗口"
     ),
     "deepseek-reasoner": ModelContextConfig(
         name="deepseek-reasoner",
-        context_window=131072,
+        context_window=1048576,
         max_output_tokens=65536,
-        description="DeepSeek-V3.2 思考模式"
+        description="DeepSeek-V3.2 思考模式 - 1M上下文窗口"
     ),
 }
 
 
 @dataclass
 class SessionConfig:
-    max_messages: int = 100
-    max_tokens: int = 50000
-    context_window: int = 64000
-    summary_threshold: float = 0.8
-    keep_recent_messages: int = 30
-    api_max_history_messages: int = 60
+    max_messages: int = 500
+    max_tokens: int = 800000
+    context_window: int = 1048576
+    summary_threshold: float = 0.9
+    keep_recent_messages: int = 50
+    api_max_history_messages: int = 200
     session_ttl: int = 3600 * 24
     enable_auto_summary: bool = True
     min_compress_ratio: float = 0.8
@@ -388,12 +388,12 @@ class Session:
 class ContextCompressor:
     def __init__(self, config: SessionConfig):
         self.config = config
-    
+
     def estimate_tokens(self, text: str) -> int:
         chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
         other_chars = len(text) - chinese_chars
         return int(chinese_chars / 1.5 + other_chars / 4)
-    
+
     def calculate_importance(self, message: Message) -> float:
         score = 0.5
         if message.role == MessageRole.SYSTEM:
@@ -413,14 +413,14 @@ class ContextCompressor:
             if kw in message.content:
                 score += 0.05
         return min(score, 1.0)
-    
+
     def should_compress(self, session: Session) -> bool:
         usage_ratio = session.get_context_usage_ratio()
         return (
             usage_ratio >= self.config.min_compress_ratio
             or session.get_message_count() >= self.config.max_messages
         )
-    
+
     def compress(self, session: Session, summary_text: Optional[str] = None) -> Session:
         if not self.should_compress(session):
             return session
@@ -446,7 +446,83 @@ class ContextCompressor:
             f"{old_tokens} -> {new_tokens} tokens"
         )
         return session
-    
+
+    async def compress_with_llm(self, session: Session) -> Session:
+        """Compress session using LLM-generated summary for older messages.
+
+        Unlike the sync compress() which uses crude truncation,
+        this method uses LLM to extract key facts from older messages,
+        preserving important context while reducing token usage.
+        """
+        if not self.should_compress(session):
+            return session
+        messages = session.messages
+        if len(messages) <= self.config.keep_recent_messages:
+            return session
+
+        system_messages = [m for m in messages if m.role == MessageRole.SYSTEM]
+        recent_messages = messages[-self.config.keep_recent_messages:]
+        older_messages = messages[len(system_messages):-self.config.keep_recent_messages]
+        important_messages = [m for m in older_messages if m.importance >= 0.7]
+
+        if older_messages:
+            session.summary = await self._generate_llm_summary(
+                older_messages, session.summary
+            )
+
+        new_messages = system_messages + important_messages + recent_messages
+        session.messages = new_messages
+        session.updated_at = datetime.now()
+        old_tokens = sum(m.token_count for m in messages)
+        new_tokens = sum(m.token_count for m in new_messages)
+        logger.info(
+            f"Session {session.session_id} LLM-compressed: "
+            f"{len(messages)} -> {len(new_messages)} messages, "
+            f"{old_tokens} -> {new_tokens} tokens"
+        )
+        return session
+
+    async def _generate_llm_summary(
+        self, older_messages: list[Message], existing_summary: str | None = None
+    ) -> str:
+        """Generate a fact-extraction summary using LLM.
+
+        Instead of simple truncation, uses LLM to selectively extract
+        key facts that are valuable for future creative decisions.
+        """
+        try:
+            from app.core.llm_service import llm_service
+        except ImportError:
+            return self._build_fallback_summary(older_messages)
+
+        summary_prompt = """请从以下对话历史中提取关键信息，包括：
+1. 用户的核心创作意图和偏好
+2. 已做出的重要决策（角色设定、情节方向等）
+3. 已完成的操作（创建了什么、修改了什么）
+4. 未解决的需求或待办事项
+
+忽略日常寒暄和重复内容，只保留对后续创作有价值的要点。"""
+
+        context_parts = []
+        if existing_summary:
+            context_parts.append(f"【已有摘要】\n{existing_summary}")
+        context_parts.append("【新增对话】")
+        for m in older_messages[-10:]:
+            content = (m.content or "").strip()[:200]
+            if content:
+                context_parts.append(f"[{m.role.value}]: {content}")
+
+        try:
+            return await llm_service.generate_text(
+                prompt="\n".join(context_parts),
+                system_prompt=summary_prompt,
+                temperature=0.3,
+                max_tokens=500,
+            )
+        except Exception as e:
+            logger.warning(f"LLM summary generation failed, using fallback: {e}")
+            return self._build_fallback_summary(older_messages)
+
     def build_summary_request_prompt(self, messages: List[Message]) -> str:
         content = "\n".join([
             f"[{m.role.value}]: {m.content[:200]}..."

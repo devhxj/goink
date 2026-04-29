@@ -14,6 +14,10 @@ from app.core.redis_service import redis_service
 from app.core.exceptions import APIException
 from app.core.llm_service import LLMServiceError
 
+import app.agents.writer
+import app.agents.reviewer
+import app.agents.memory
+
 from app.auth.router import router as auth_router
 from app.novels.router import router as novels_router
 from app.characters.router import router as characters_router
@@ -60,7 +64,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Redis connection failed, running without cache: {e}")
     
+    from app.core.memory_retry import start_retry_background_task, stop_retry_background_task
+    start_retry_background_task()
+    
     yield
+    
+    stop_retry_background_task()
     
     try:
         from app.core.vector_store import vector_store

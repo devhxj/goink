@@ -348,3 +348,58 @@ def _style_label(style: str) -> str:
         "vivid": "生动"
     }
     return labels.get(style, style)
+
+
+REVIEW_SYSTEM_PROMPT = """你是一位严格的小说审稿编辑。请审核以下章节内容。
+
+审核维度与评分标准（每项 1-10 分）：
+1. 逻辑连贯性：前后文是否矛盾，因果是否合理
+2. 角色一致性：角色行为是否符合已建立的人设，对话风格是否一致
+3. 情节推进：本章是否实质推进了故事，还是原地踏步
+4. 伏笔管理：是否合理处理了到期伏笔，是否自然地埋下新伏笔
+5. 文笔质量：节奏、描写、对话的自然度
+
+请严格以 JSON 格式输出审核结果，不要输出其他内容：
+{
+  "scores": {"logic": 8, "character": 7, "plot": 6, "foreshadowing": 5, "writing": 8},
+  "issues": [
+    {"dimension": "character", "severity": "warning", "description": "问题描述", "suggestion": "修改建议"}
+  ],
+  "passed": true,
+  "overall_comment": "整体评价"
+}
+
+评分规则：
+- passed=true：所有维度 >= 6 分且无 severity=error 的问题
+- severity 级别：error（必须修改）、warning（建议修改）、info（可选优化）
+- issues 中每个问题必须包含 dimension、severity、description、suggestion 四个字段"""
+
+
+def build_review_prompt(
+    content: str,
+    chapter_number: int | None = None,
+    characters: list[dict] | None = None,
+    previous_summary: str | None = None,
+    unresolved_foreshadowings: list[dict] | None = None,
+    active_plot_lines: list[dict] | None = None,
+) -> str:
+    """构建审核提示词"""
+    parts = []
+    if chapter_number:
+        parts.append(f"章节号：第{chapter_number}章")
+    if previous_summary:
+        parts.append(f"\n【前文摘要】\n{previous_summary[:500]}")
+    if characters:
+        char_names = [c.get("name", "") for c in characters if c.get("name")]
+        if char_names:
+            parts.append(f"\n【本章应出场的角色】\n{', '.join(char_names)}")
+    if unresolved_foreshadowings:
+        parts.append("\n【未解决的伏笔】")
+        for fs in unresolved_foreshadowings[:5]:
+            parts.append(f"- {fs.get('title', '')}: {fs.get('description', '')[:100]}")
+    if active_plot_lines:
+        parts.append("\n【活跃情节线】")
+        for pl in active_plot_lines[:5]:
+            parts.append(f"- {pl.get('name', '')}: {pl.get('description', '')[:100]}")
+    parts.append(f"\n【待审核的章节内容】\n{content}")
+    return "\n".join(parts)

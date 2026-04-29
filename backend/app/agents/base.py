@@ -22,6 +22,7 @@ class AgentRole(str, Enum):
 class TaskType(str, Enum):
     """任务类型枚举"""
     GENERATE_CHAPTER = "generate_chapter"
+    WRITE_CHAPTER = "write_chapter"
     REVIEW_CHAPTER = "review_chapter"
     CHECK_CONSISTENCY = "check_consistency"
     UPDATE_MEMORY = "update_memory"
@@ -36,6 +37,42 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     NEEDS_REVISION = "needs_revision"
+
+
+@dataclass
+class SubAgentSpec:
+    """子Agent规格声明 - 描述子Agent的能力和需求"""
+    task_type: str
+    display_name: str
+    description: str
+    system_prompt: str
+    required_context_keys: List[str] = field(default_factory=list)
+    optional_context_keys: List[str] = field(default_factory=list)
+    requires_chapter_id: bool = False
+    result_description: str = ""
+
+
+@dataclass
+class SubAgentReport:
+    """子Agent执行报告 - 面向主Agent的结构化输出"""
+    task_type: str
+    success: bool
+    summary: str
+    key_findings: List[str] = field(default_factory=list)
+    suggestions: List[str] = field(default_factory=list)
+    data: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "task_type": self.task_type,
+            "success": self.success,
+            "summary": self.summary,
+            "key_findings": self.key_findings,
+            "suggestions": self.suggestions,
+            "data": self.data,
+            "error": self.error,
+        }
 
 
 @dataclass

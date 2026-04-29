@@ -6,13 +6,26 @@ from typing import Dict, Any, Optional
 
 from sqlalchemy import select
 
-from .base import BaseAgent, AgentTask, AgentResult, AgentRole, TaskType
+from .base import BaseAgent, AgentTask, AgentResult, AgentRole, TaskType, SubAgentSpec
+from .registry import register_agent
 from app.core.database import AsyncSessionLocal
 from app.chapters.models import Chapter
 
 logger = logging.getLogger(__name__)
 
+MEMORY_SPEC = SubAgentSpec(
+    task_type="update_memory",
+    display_name="记忆管理专家",
+    description="更新向量记忆索引，确保章节内容可被语义检索",
+    system_prompt="你负责维护小说的向量记忆索引，确保新章节内容能被后续写作正确检索到。",
+    required_context_keys=["chapter_content"],
+    optional_context_keys=[],
+    requires_chapter_id=True,
+    result_description="返回记忆更新结果，包含索引的chunk数量",
+)
 
+
+@register_agent("update_memory", MEMORY_SPEC)
 class MemoryAgent(BaseAgent):
     """记忆Agent - 负责向量索引维护"""
 

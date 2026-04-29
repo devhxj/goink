@@ -1,13 +1,19 @@
 """
 审核Agent - 负责内容审核和一致性检查
+
+支持两层审核：
+1. 规则快速初筛（零成本、毫秒级）
+2. LLM 语义深审（有成本、秒级）- 可通过 use_llm_review 参数控制
 """
+import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 from sqlalchemy import select
 
-from .base import BaseAgent, AgentTask, AgentResult, AgentRole, TaskType
+from .base import BaseAgent, AgentTask, AgentResult, AgentRole, TaskType, SubAgentSpec
+from .registry import register_agent
 from app.core.database import AsyncSessionLocal
 from app.consistency.service import ConsistencyChecker
 from app.timeline.models import TimelineEntry, TimelineEntryCategory, TimelineEntryStatus, TimeHorizon
@@ -16,10 +22,22 @@ from app.chapters.models import Chapter
 
 logger = logging.getLogger(__name__)
 
+REVIEW_SPEC = SubAgentSpec(
+    task_type="review",
+    display_name="审核专家",
+    description="全量审核章节质量，包含规则初筛、LLM语义深审、角色/情节/时间线一致性检查、伏笔管理",
+    system_prompt="你是一位严格的小说编辑审核员，负责全面检查章节质量、角色一致性、情节连贯性和伏笔管理。",
+    required_context_keys=["chapter_content", "chapter_info"],
+    optional_context_keys=["characters", "previous_summary", "consistency_result"],
+    requires_chapter_id=True,
+    result_description="返回审核评分、问题列表、一致性报告和改进建议",
+)
 
+
+@register_agent("review", REVIEW_SPEC)
 class ReviewerAgent(BaseAgent):
     """审核Agent - 负责内容审核和一致性检查"""
-    
+
     def __init__(self, agent_id: str = "reviewer_001"):
         super().__init__(agent_id, AgentRole.REVIEWER)
         self.supported_tasks = {
@@ -27,14 +45,14 @@ class ReviewerAgent(BaseAgent):
             TaskType.CHECK_CONSISTENCY,
             TaskType.MANAGE_FORESHADOWING
         }
-    
+
     def can_handle(self, task_type: TaskType) -> bool:
         return task_type in self.supported_tasks
-    
+
     async def execute(self, task: AgentTask) -> AgentResult:
         """执行审核任务"""
         self.log_task_start(task)
-        
+
         try:
             if task.task_type == TaskType.REVIEW_CHAPTER:
                 result = await self._review_chapter(task)
@@ -48,10 +66,10 @@ class ReviewerAgent(BaseAgent):
                     success=False,
                     error=f"Unsupported task type: {task.task_type}"
                 )
-            
+
             self.log_task_complete(result)
             return result
-            
+
         except Exception as e:
             self.logger.error(f"Error in review task: {e}")
             return self.create_result(
@@ -59,88 +77,54 @@ class ReviewerAgent(BaseAgent):
                 success=False,
                 error=str(e)
             )
-    
+
     async def _review_chapter(self, task: AgentTask) -> AgentResult:
-        """审核章节内容"""
+        """审核章节内容：规则初筛 + LLM 语义深审"""
         content = task.parameters.get("content", "")
         context = task.context
-        
-        issues = []
-        suggestions = []
-        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-        lines = [line.strip() for line in content.splitlines() if line.strip()]
-        chapter_number = task.parameters.get("chapter_number") or context.get("chapter_number")
-        
-        if len(content) < 500:
-            issues.append({
-                "type": "length",
-                "severity": "warning",
-                "message": "章节内容过短，建议扩充"
-            })
+        use_llm_review = task.parameters.get("use_llm_review", True)
 
-        if len(paragraphs) < 3:
-            issues.append({
-                "type": "structure_sparse",
-                "severity": "warning",
-                "message": "章节段落过少，结构显得单薄"
-            })
+        rule_issues, rule_suggestions = self._rule_based_review(content, context)
 
-        if len(content) > 0 and len(set(content)) / max(len(content), 1) < 0.18:
-            issues.append({
-                "type": "repetition",
-                "severity": "warning",
-                "message": "文本重复度偏高，建议压缩重复表达"
-            })
+        llm_result = None
+        if use_llm_review and content.strip():
+            llm_result = await self._llm_review(content, context, task)
 
-        dialogue_lines = [line for line in lines if any(mark in line for mark in ["“", "”", "\"", "："])]
-        if len(dialogue_lines) == 0 and len(content) > 1200:
-            suggestions.append("可适度加入对话，增强场景表现和阅读节奏")
+        all_issues = list(rule_issues)
+        all_suggestions = list(rule_suggestions)
 
-        if paragraphs and any(len(p) > 500 for p in paragraphs):
-            suggestions.append("部分段落过长，建议拆分长段以提升可读性")
-        
-        characters = context.get("characters", [])
-        for char in characters:
-            char_name = char.get("name", "")
-            if char_name and char_name not in content:
-                issues.append({
-                    "type": "character_missing",
-                    "severity": "info",
-                    "message": f"角色 '{char_name}' 未在本章出现"
-                })
-        
-        plot_hints = context.get("plot_hints", [])
-        unresolved_plot_hints = [hint for hint in plot_hints if hint.get("type") in {"unresolved", "foreshadowing", "planned_event"}]
-        for hint in plot_hints:
-            if hint.get("type") == "unresolved":
-                suggestions.append(f"考虑解决伏笔：{hint.get('description', '')}")
+        if llm_result:
+            all_issues.extend(llm_result.get("issues", []))
+            overall = llm_result.get("overall_comment", "")
+            if overall:
+                all_suggestions.append(overall)
 
-        if unresolved_plot_hints and not any(hint.get("description", "")[:8] in content for hint in unresolved_plot_hints):
-            suggestions.append("本章可以呼应至少一个既有伏笔或计划事件，增强连载连贯性")
+        passed_rule = len([i for i in rule_issues if i.get("severity") == "error"]) == 0
+        passed_llm = llm_result.get("passed", True) if llm_result else True
+        passed = passed_rule and passed_llm
 
-        active_plot_lines = context.get("active_plot_lines", [])
-        if active_plot_lines and not any(line.get("name", "") in content for line in active_plot_lines):
-            suggestions.append("可以推进当前活跃情节线，避免主线停滞")
+        rule_score = max(0, 100 - len([i for i in rule_issues if i.get("severity") == "warning"]) * 10 - len([i for i in rule_issues if i.get("severity") == "info"]) * 3)
+        llm_scores = llm_result.get("scores", {}) if llm_result else {}
+        avg_llm_score = sum(llm_scores.values()) / len(llm_scores) * 10 if llm_scores else rule_score
+        final_score = int((rule_score + avg_llm_score) / 2) if llm_scores else rule_score
 
-        current_arc = context.get("current_arc_summary")
-        if current_arc and chapter_number:
-            suggestions.append(f"第{chapter_number}章建议继续贴合当前卷目标：{current_arc}")
-        
-        passed = len([i for i in issues if i.get("severity") == "error"]) == 0
-        score = max(0, 100 - len([i for i in issues if i.get("severity") == "warning"]) * 10 - len([i for i in issues if i.get("severity") == "info"]) * 3)
-        
+        result_data = {
+            "content_length": len(content),
+            "issues_found": len(all_issues),
+            "issues": all_issues,
+            "passed": passed,
+            "approved": passed,
+            "score": final_score,
+            "rule_score": rule_score,
+            "llm_scores": llm_scores,
+            "review_method": "rule+llm" if llm_result else "rule_only",
+        }
+
         return self.create_result(
             task=task,
             success=passed,
-            result={
-                "content_length": len(content),
-                "issues_found": len(issues),
-                "issues": issues,
-                "passed": passed,
-                "approved": passed,
-                "score": score
-            },
-            suggestions=suggestions,
+            result=result_data,
+            suggestions=[s for s in all_suggestions if s],
             next_actions=[] if passed else [
                 {
                     "type": "create_task",
@@ -148,12 +132,83 @@ class ReviewerAgent(BaseAgent):
                     "chapter_id": task.chapter_id,
                     "parameters": {
                         "revision": True,
-                        "issues": issues
+                        "issues": all_issues
                     }
                 }
             ]
         )
-    
+
+    def _rule_based_review(self, content: str, context: dict) -> tuple[list[dict], list[str]]:
+        """规则快速初筛（零成本、毫秒级）"""
+        issues = []
+        suggestions = []
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+        if len(content) < 500:
+            issues.append({"type": "length", "severity": "warning", "message": "章节内容过短，建议扩充"})
+
+        if len(paragraphs) < 3:
+            issues.append({"type": "structure_sparse", "severity": "warning", "message": "章节段落过少，结构显得单薄"})
+
+        if len(content) > 0 and len(set(content)) / max(len(content), 1) < 0.18:
+            issues.append({"type": "repetition", "severity": "warning", "message": "文本重复度偏高，建议压缩重复表达"})
+
+        dialogue_lines = [line for line in lines if any(mark in line for mark in [""", """, "\"", "："])]
+        if len(dialogue_lines) == 0 and len(content) > 1200:
+            suggestions.append("可适度加入对话，增强场景表现和阅读节奏")
+
+        if paragraphs and any(len(p) > 500 for p in paragraphs):
+            suggestions.append("部分段落过长，建议拆分长段以提升可读性")
+
+        return issues, suggestions
+
+    async def _llm_review(self, content: str, context: dict, task: AgentTask) -> dict | None:
+        """LLM 语义深审（有成本、秒级）"""
+        try:
+            from app.core.llm_service import llm_service
+            from app.core.prompt_templates import REVIEW_SYSTEM_PROMPT, build_review_prompt
+
+            chapter_number = task.parameters.get("chapter_number") or context.get("chapter_number")
+            characters = context.get("characters", [])
+            previous_summary = context.get("previous_summary", "")
+            unresolved_foreshadowings = context.get("unresolved_foreshadowings", [])
+            active_plot_lines = context.get("active_plot_lines", [])
+
+            prompt = build_review_prompt(
+                content=content[:6000],
+                chapter_number=chapter_number,
+                characters=characters,
+                previous_summary=previous_summary,
+                unresolved_foreshadowings=unresolved_foreshadowings,
+                active_plot_lines=active_plot_lines,
+            )
+
+            response = await llm_service.generate_text(
+                prompt=prompt,
+                system_prompt=REVIEW_SYSTEM_PROMPT,
+                temperature=0.3,
+                max_tokens=1024,
+            )
+
+            return self._parse_llm_review_response(response)
+
+        except Exception as e:
+            self.logger.warning(f"LLM review failed, falling back to rule-only: {e}")
+            return None
+
+    @staticmethod
+    def _parse_llm_review_response(response: str) -> dict:
+        """解析 LLM 审核的 JSON 响应"""
+        try:
+            start = response.find("{")
+            end = response.rfind("}") + 1
+            if start >= 0 and end > start:
+                return json.loads(response[start:end])
+        except json.JSONDecodeError:
+            pass
+        return {"passed": True, "issues": [], "scores": {}, "overall_comment": ""}
+
     async def _check_consistency(self, task: AgentTask) -> AgentResult:
         """检查一致性"""
         chapter_id = task.chapter_id
@@ -177,7 +232,7 @@ class ReviewerAgent(BaseAgent):
             }
 
         passed = not any(issue.get("severity") == "error" for issue in consistency_issues)
-        
+
         return self.create_result(
             task=task,
             success=passed,
@@ -190,12 +245,12 @@ class ReviewerAgent(BaseAgent):
                 "summary": summary
             }
         )
-    
+
     async def _manage_foreshadowing(self, task: AgentTask) -> AgentResult:
         """管理伏笔"""
         parameters = task.parameters
         action = parameters.get("action", "list")
-        
+
         if action == "list":
             foreshadowing = await self._list_foreshadowing(task)
             success = not isinstance(foreshadowing, dict) or not foreshadowing.get("error")
@@ -238,7 +293,7 @@ class ReviewerAgent(BaseAgent):
                 success=False,
                 error=f"Unknown foreshadowing action: {action}"
             )
-    
+
     async def _check_character_consistency(self, task: AgentTask) -> List[Dict[str, Any]]:
         """检查角色一致性"""
         async with AsyncSessionLocal() as db:
@@ -246,7 +301,7 @@ class ReviewerAgent(BaseAgent):
             chapters = await checker._get_chapters([task.chapter_id] if task.chapter_id else None)
             issues = await checker.check_character_consistency(chapters)
             return [issue.model_dump() for issue in issues]
-    
+
     async def _check_plot_consistency(self, task: AgentTask) -> List[Dict[str, Any]]:
         """检查情节一致性"""
         async with AsyncSessionLocal() as db:
@@ -254,7 +309,7 @@ class ReviewerAgent(BaseAgent):
             chapters = await checker._get_chapters([task.chapter_id] if task.chapter_id else None)
             issues = await checker.check_plot_consistency(chapters)
             return [issue.model_dump() for issue in issues]
-    
+
     async def _check_timeline_consistency(self, task: AgentTask) -> List[Dict[str, Any]]:
         """检查时间线一致性"""
         async with AsyncSessionLocal() as db:
@@ -262,7 +317,7 @@ class ReviewerAgent(BaseAgent):
             chapters = await checker._get_chapters([task.chapter_id] if task.chapter_id else None)
             issues = await checker.check_timeline_consistency(chapters)
             return [issue.model_dump() for issue in issues]
-    
+
     async def _list_foreshadowing(self, task: AgentTask) -> List[Dict[str, Any]] | Dict[str, Any]:
         """列出伏笔（通过时间线系统查询）"""
         parameters = task.parameters
@@ -301,7 +356,7 @@ class ReviewerAgent(BaseAgent):
                 }
                 for entry in items
             ]
-    
+
     async def _create_foreshadowing(self, task: AgentTask) -> Dict[str, Any]:
         """创建伏笔（写入时间线系统）"""
         parameters = task.parameters
@@ -386,7 +441,7 @@ class ReviewerAgent(BaseAgent):
             if not entry.detail_json:
                 entry.detail_json = {}
             entry.detail_json["resolution_notes"] = parameters.get("resolution_notes")
-            entry.resolved_at = datetime.now()
+            entry.resolved_at = datetime.now(timezone.utc)
             await db.commit()
             await db.refresh(entry)
 

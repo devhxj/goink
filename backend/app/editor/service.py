@@ -75,7 +75,7 @@ class EditSessionManager:
             select(EditSession).where(
                 EditSession.chapter_id == chapter_id,
                 EditSession.status == EditSessionStatus.PENDING
-            )
+            ).order_by(EditSession.created_at.desc()).limit(1)
         )
         return result.scalar_one_or_none()
     
@@ -121,18 +121,19 @@ class EditSessionManager:
                         new_content.splitlines()
                     )
             elif change_type == "insert":
-                lines = edit_session.working_content.splitlines() if edit_session.working_content else []
+                lines = (edit_session.working_content or "").splitlines(keepends=True)
                 insert_lines = new_content.splitlines()
-                if start_line is not None:
-                    lines = lines[:start_line] + insert_lines + lines[start_line:]
-                else:
-                    lines = lines + insert_lines
-                edit_session.working_content = "\n".join(lines)
+                insert_with_newlines = [line if line.endswith('\n') else line + '\n' for line in insert_lines]
+                insert_idx = max(0, (start_line or len(lines)) - 1) if start_line is not None else len(lines)
+                lines = lines[:insert_idx] + insert_with_newlines + lines[insert_idx:]
+                edit_session.working_content = ''.join(lines)
             elif change_type == "delete":
                 if start_line is not None and end_line is not None:
-                    lines = edit_session.working_content.splitlines() if edit_session.working_content else []
-                    lines = lines[:start_line] + lines[end_line:]
-                    edit_session.working_content = "\n".join(lines)
+                    lines = (edit_session.working_content or "").splitlines(keepends=True)
+                    start_idx = max(0, start_line - 1)
+                    end_idx = min(len(lines), end_line)
+                    lines = lines[:start_idx] + lines[end_idx:]
+                    edit_session.working_content = ''.join(lines)
             
             diff_result = diff_engine.compute_diff(
                 old_working_content,
@@ -203,6 +204,24 @@ class EditSessionManager:
 
         if edit_session.status == EditSessionStatus.REJECTED:
             raise ValueError("编辑会话已被拒绝，不能再接受")
+
+        source_updated_at = (edit_session.extra_metadata or {}).get("source_chapter_updated_at")
+        if source_updated_at and chapter.updated_at:
+            from datetime import datetime as dt
+            try:
+                source_dt = dt.fromisoformat(source_updated_at)
+                if chapter.updated_at > source_dt:
+                    chapter_word_count = chapter.word_count or 0
+                    edit_word_count = len(edit_session.working_content or "")
+                    if abs(chapter_word_count - edit_word_count) > chapter_word_count * 0.3:
+                        raise ValueError(
+                            f"章节在编辑期间已被外部修改（原字数={chapter_word_count}，"
+                            f"编辑后字数={edit_word_count}），请先确认是否要覆盖。"
+                        )
+            except ValueError:
+                raise
+            except Exception:
+                pass
 
         chapter.content = edit_session.working_content
         chapter.word_count = len(edit_session.working_content) if edit_session.working_content else 0

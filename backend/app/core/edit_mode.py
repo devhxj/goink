@@ -59,9 +59,10 @@ class EditModeConfig:
 【编辑章节最佳实践】
 1. 编辑前先 read_chapter_for_edit 了解当前内容
 2. 如果你有完整的修改后全文且改动超过30%，用 apply_edit 的 full_replace 模式
-3. 如果只改几段话，优先使用 search_replace 模式（提供 search_text 原文片段 + new_content 替换内容），无需知道行号
-4. 不要重复调用 start_edit_session，已有会话可直接 apply_edit
-5. 编辑是副本机制，用户需确认后才生效
+3. 如果只改几段话，优先使用 search_replace 模式（提供 search_text 原文片段 + new_content 替换内容），支持跨行匹配，match_mode 可选 first/all
+4. 如果你知道精确行号范围，使用 line_range_replace 模式（提供 start_line + end_line + new_content）
+5. 不要重复调用 start_edit_session，已有会话可直接 apply_edit
+6. 编辑是副本机制，用户需确认后才生效
 
 【故事时间线管理】
 时间线采用双轨维护：
@@ -167,6 +168,7 @@ class EditModeConfig:
             "resolve_timeline_entry",
             "update_character_relationship",
             "get_pending_changes",
+            "run_subagent",
         ],
         EditMode.REVIEW: [
             "get_novel_summary",
@@ -214,7 +216,7 @@ class EditModeConfig:
         },
         "generation": {
             "create_new_chapter", "generate_chapter_draft", "prepare_story_brief",
-            "search_story_memory", "run_agent_task",
+            "search_story_memory", "run_agent_task", "run_subagent",
         },
     }
 

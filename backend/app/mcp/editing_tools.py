@@ -2,6 +2,7 @@
 编辑类MCP工具 - 支持副本编辑机制
 注意：accept_edit和reject_edit是用户操作，不暴露给AI
 """
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -14,6 +15,8 @@ from app.editor.service import get_edit_session_manager
 from app.editor.models import EditSession, EditSessionStatus, EditChange
 from app.core.context_builder import ContextBuilder
 from app.core.permissions import verify_novel_ownership
+
+_subagent_running_var: ContextVar[bool] = ContextVar("_subagent_running_var", default=False)
 
 
 class StartEditSessionTool(BaseMCPTool):
@@ -114,8 +117,9 @@ class ApplyEditTool(BaseMCPTool):
         "应用编辑到副本内容。必须先用 start_edit_session 获取 edit_session_id（如有活跃会话可直接用）。"
         "\n【变更类型选择指南】"
         "\n- full_replace：你有完整的修改后全文，且改动幅度超过30% → 传 new_content 为完整替换文本"
-        "\n- search_replace（推荐）：你知道要改的是哪段原文 → 传 search_text(要找的原文) + new_content(替换内容)，无需知道行号"
-        "\n- partial_edit：你知道精确的行号范围，只改其中几段 → 传 start_line + end_line + new_content"
+        "\n- search_replace（推荐）：你知道要改的是哪段原文 → 传 search_text(要找的原文) + new_content(替换内容)，无需知道行号。支持跨行匹配和 match_mode 控制替换范围。"
+        "\n- line_range_replace：你知道精确的行号范围 → 传 start_line + end_line + new_content"
+        "\n- partial_edit：同 line_range_replace（兼容旧调用）"
         "\n- insert：在指定位置插入新内容"
         "\n- delete：删除指定范围的内容"
         "\n多次编辑会累积变更计数。编辑只修改副本，需用户确认后才生效。"
@@ -130,7 +134,7 @@ class ApplyEditTool(BaseMCPTool):
             },
             "change_type": {
                 "type": "string",
-                "enum": ["full_replace", "partial_edit", "search_replace", "insert", "delete"],
+                "enum": ["full_replace", "partial_edit", "search_replace", "line_range_replace", "insert", "delete"],
                 "description": "变更类型（推荐用 search_replace 做局部修改）"
             },
             "new_content": {
@@ -139,15 +143,21 @@ class ApplyEditTool(BaseMCPTool):
             },
             "search_text": {
                 "type": "string",
-                "description": "要搜索的原文片段（search_replace模式必填，用于定位要替换的位置）"
+                "description": "要搜索的原文片段（search_replace模式必填，支持跨行匹配）"
+            },
+            "match_mode": {
+                "type": "string",
+                "enum": ["first", "all"],
+                "default": "first",
+                "description": "匹配模式：first=只替换第一处匹配，all=替换所有匹配（search_replace模式时使用）"
             },
             "start_line": {
                 "type": "integer",
-                "description": "起始行号（partial_edit/insert/delete时必填）"
+                "description": "起始行号（line_range_replace/partial_edit/insert/delete时必填）"
             },
             "end_line": {
                 "type": "integer",
-                "description": "结束行号（partial_edit/delete时必填）"
+                "description": "结束行号（line_range_replace/partial_edit/delete时必填）"
             },
             "reason": {
                 "type": "string",
@@ -167,26 +177,27 @@ class ApplyEditTool(BaseMCPTool):
         edit_session_id: str,
         change_type: str,
         new_content: str,
-        start_line: Optional[int] = None,
-        end_line: Optional[int] = None,
-        search_text: Optional[str] = None,
-        reason: Optional[str] = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        search_text: str | None = None,
+        match_mode: str = "first",
+        reason: str | None = None,
         **kwargs
     ) -> MCPToolResult:
         try:
             manager = get_edit_session_manager(db)
             edit_session = await manager.get_edit_session_by_id(edit_session_id)
-            
+
             if not edit_session:
                 return MCPToolResult(success=False, error="编辑会话不存在")
-            
+
             chapter_result = await db.execute(
                 select(Chapter).where(Chapter.id == edit_session.chapter_id)
             )
             chapter = chapter_result.scalar_one_or_none()
             if not chapter:
                 return MCPToolResult(success=False, error="章节不存在")
-            
+
             novel = await verify_novel_ownership(db, chapter.novel_id, user_id)
             if not novel:
                 return MCPToolResult(success=False, error="无权访问此小说或小说不存在")
@@ -200,35 +211,60 @@ class ApplyEditTool(BaseMCPTool):
                         success=False,
                         error="search_replace 模式必须提供 search_text 参数（要搜索的原文片段）"
                     )
+                from app.core.diff_engine import DiffEngine
                 working = edit_session.working_content or ""
-                if search_text not in working:
+                new_working, replace_count, error_msg = DiffEngine.search_and_replace(
+                    content=working,
+                    search_text=search_text,
+                    replace_text=new_content,
+                    match_mode=match_mode,
+                )
+                if error_msg:
+                    return MCPToolResult(success=False, error=error_msg)
+
+                edit_session.working_content = new_working
+                edit_session.change_count = (edit_session.change_count or 0) + replace_count
+                await db.commit()
+                await db.refresh(edit_session)
+
+                diff_data = await manager.get_diff(edit_session_id)
+
+                return MCPToolResult(
+                    success=True,
+                    data={
+                        "edit_session_id": edit_session_id,
+                        "change_count": edit_session.change_count,
+                        "replacements_made": replace_count,
+                        "working_content": edit_session.working_content,
+                        "diff": diff_data.get("diff", {}),
+                        "message": f"替换了 {replace_count} 处匹配。共 {edit_session.change_count} 处改动。等待用户确认。"
+                    },
+                    metadata={
+                        "tool": self.name,
+                        "change_count": edit_session.change_count,
+                        "edit_session_id": edit_session_id,
+                        "requires_user_confirmation": True
+                    }
+                )
+
+            if change_type == "line_range_replace":
+                if start_line is None or end_line is None:
                     return MCPToolResult(
                         success=False,
-                        error=f"在副本内容中未找到 search_text。请确认搜索文本是否正确（区分大小写），或改用 partial_edit 模式通过行号指定范围。"
-                    )
-                lines = working.splitlines()
-                for i, line in enumerate(lines):
-                    if search_text in line:
-                        effective_start_line = i + 1
-                        effective_end_line = i + 1
-                        break
-                if effective_start_line is None:
-                    return MCPToolResult(
-                        success=False,
-                        error=f"未能在任何行中找到 search_text 内容"
+                        error="line_range_replace 模式必须提供 start_line 和 end_line 参数"
                     )
 
             await manager.apply_change(
                 edit_session=edit_session,
-                change_type="partial_edit" if change_type == "search_replace" else change_type,
+                change_type="partial_edit" if change_type in ("partial_edit", "line_range_replace") else change_type,
                 new_content=new_content,
                 start_line=effective_start_line,
                 end_line=effective_end_line,
                 reason=reason
             )
-            
+
             diff_data = await manager.get_diff(edit_session_id)
-            
+
             return MCPToolResult(
                 success=True,
                 data={
@@ -239,7 +275,7 @@ class ApplyEditTool(BaseMCPTool):
                     "message": f"变更已应用到副本，共 {edit_session.change_count} 处改动。等待用户确认。"
                 },
                 metadata={
-                    "tool": self.name, 
+                    "tool": self.name,
                     "change_count": edit_session.change_count,
                     "edit_session_id": edit_session_id,
                     "requires_user_confirmation": True
@@ -516,28 +552,18 @@ class RunAgentTaskTool(BaseMCPTool):
             if not novel:
                 return MCPToolResult(success=False, error="无权访问此小说或小说不存在")
             
-            from app.agents.base import AgentTask, TaskType
-            from app.agents.factory import create_default_coordinator
+            from app.agents.base import AgentTask, TaskType, AgentRole
+            from app.agents.reviewer import ReviewerAgent
+            from app.agents.memory import MemoryAgent
             from app.consistency.service import ConsistencyChecker
             
-            coordinator = create_default_coordinator()
-            
             task_parameters = parameters or {}
-            nested_agent_role = task_parameters.get("agent_role")
-            nested_agent_id = task_parameters.get("agent_id")
-            nested_model = task_parameters.get("model")
-            if agent_role:
-                task_parameters["agent_role"] = agent_role
-            elif nested_agent_role:
-                task_parameters["agent_role"] = nested_agent_role
-            if agent_id:
-                task_parameters["agent_id"] = agent_id
-            elif nested_agent_id:
-                task_parameters["agent_id"] = nested_agent_id
             if model:
                 task_parameters["model"] = model
-            elif nested_model:
-                task_parameters["model"] = nested_model
+            if agent_role:
+                task_parameters["agent_role"] = agent_role
+            if agent_id:
+                task_parameters["agent_id"] = agent_id
             
             context: Dict[str, Any] = {}
             if chapter_id:
@@ -586,7 +612,16 @@ class RunAgentTaskTool(BaseMCPTool):
                 context=context
             )
             
-            result = await coordinator.execute(task)
+            if normalized_type in ("review_chapter", "check_consistency", "manage_foreshadowing"):
+                agent = ReviewerAgent()
+                result = await agent.execute(task)
+            elif normalized_type == "update_memory":
+                agent = MemoryAgent()
+                result = await agent.execute(task)
+            else:
+                from app.agents.factory import create_default_coordinator
+                coordinator = create_default_coordinator()
+                result = await coordinator.execute(task)
             
             return MCPToolResult(
                 success=result.success,
@@ -604,6 +639,142 @@ class RunAgentTaskTool(BaseMCPTool):
 
 class GetPendingChangesTool(BaseMCPTool):
     """获取待确认变更列表"""
+
+
+class RunSubagentTool(BaseMCPTool):
+    """调度子Agent执行专业任务"""
+
+    name = "run_subagent"
+    description = (
+        "调度子Agent执行专业任务。可用任务类型：\n"
+        "- write_chapter: 写作/续写章节内容\n"
+        "- review: 全量审核章节（规则初筛+LLM语义深审+一致性检查+伏笔管理）\n"
+        "- update_memory: 更新向量记忆索引\n\n"
+        "你只需指定任务类型和目标（如章节ID），后端会自动准备上下文。\n"
+        "子Agent会返回结构化报告，包含摘要、关键发现和建议。"
+    )
+    category = MCPToolCategory.WRITING_ASSISTANT
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "task_type": {
+                "type": "string",
+                "description": "任务类型：write_chapter / review / update_memory"
+            },
+            "chapter_id": {
+                "type": "integer",
+                "description": "目标章节ID（写作/审核/一致性检查时必填）"
+            },
+            "instruction": {
+                "type": "string",
+                "description": "给子Agent的额外指令（如写作要求、审核重点、修订意见等）"
+            },
+            "parameters": {
+                "type": "object",
+                "description": "任务特定参数（可选，如 model、style、target_length 等）"
+            }
+        },
+        "required": ["task_type"]
+    }
+
+    async def execute(self, **kwargs) -> MCPToolResult:
+        if _subagent_running_var.get():
+            return MCPToolResult(
+                success=False,
+                error="子Agent不允许启动子Agent，避免无限递归"
+            )
+
+        task_type = str(kwargs.get("task_type", ""))
+        chapter_id = kwargs.get("chapter_id")
+        instruction = kwargs.get("instruction")
+        parameters = kwargs.get("parameters", {})
+        novel_id = kwargs.get("novel_id")
+        db = kwargs.get("db")
+
+        if not novel_id or not db:
+            return MCPToolResult(success=False, error="novel_id and db are required")
+
+        from app.agents.registry import get_agent_for_task, get_all_specs
+        from app.agents.context_provider import build_subagent_context
+        from app.agents.base import AgentTask, TaskType, SubAgentReport
+        import uuid
+
+        TYPE_ALIASES = {
+            "write": "write_chapter",
+            "writing": "write_chapter",
+            "generate": "write_chapter",
+            "generate_chapter": "write_chapter",
+            "review_chapter": "review",
+            "check_consistency": "review",
+            "manage_foreshadowing": "review",
+            "review": "review",
+            "memory": "update_memory",
+        }
+
+        normalized_type = TYPE_ALIASES.get(task_type, task_type)
+
+        entry = get_agent_for_task(normalized_type)
+        if not entry:
+            available = list(get_all_specs().keys())
+            return MCPToolResult(
+                success=False,
+                error=f"未知的任务类型 '{task_type}'，可用类型: {', '.join(available)}"
+            )
+
+        agent_cls, spec = entry
+
+        if spec.requires_chapter_id and not chapter_id:
+            return MCPToolResult(
+                success=False,
+                error=f"任务类型 '{normalized_type}' 需要 chapter_id 参数"
+            )
+
+        try:
+            context = await build_subagent_context(
+                db=db,
+                novel_id=novel_id,
+                spec=spec,
+                chapter_id=chapter_id,
+                instruction=instruction,
+                extra_parameters=parameters,
+            )
+
+            task_type_enum = TaskType(normalized_type) if normalized_type in [e.value for e in TaskType] else TaskType.GENERATE_CHAPTER
+
+            task = AgentTask(
+                task_id=f"sub_{uuid.uuid4().hex[:12]}",
+                task_type=task_type_enum,
+                novel_id=novel_id,
+                chapter_id=chapter_id,
+                parameters=parameters,
+                context=context,
+            )
+
+            agent = agent_cls()
+            token = _subagent_running_var.set(True)
+            try:
+                result = await agent.execute(task)
+            finally:
+                _subagent_running_var.reset(token)
+
+            report = SubAgentReport(
+                task_type=normalized_type,
+                success=result.success,
+                summary=result.result.get("summary", "任务完成") if result.success else f"任务失败: {result.error}",
+                key_findings=result.result.get("key_findings", []) if result.success else [],
+                suggestions=result.suggestions,
+                data=result.result,
+                error=result.error,
+            )
+
+            return MCPToolResult(
+                success=report.success,
+                data=report.to_dict(),
+                error=report.error,
+            )
+
+        except Exception as e:
+            return MCPToolResult(success=False, error=f"子Agent执行失败: {str(e)}")
     
     name = "get_pending_changes"
     description = "获取待确认的副本编辑变更列表，可按章节或会话筛选"
@@ -753,5 +924,6 @@ class EditingTools:
         registry.register(EditChapterContentTool())
         registry.register(GetEditStatusTool())
         registry.register(RunAgentTaskTool())
+        registry.register(RunSubagentTool())
         registry.register(GetPendingChangesTool())
         registry.register(ReadChapterForEditTool())

@@ -574,7 +574,7 @@ async def _execute_streaming_chapter_draft(
     except Exception as exc:
         logger.warning(f"Failed to update chapter memory after streamed generation: {exc}")
         from app.core.memory_retry import schedule_memory_retry
-        schedule_memory_retry(novel_id, chapter.id)
+        await schedule_memory_retry(novel_id, chapter.id)
 
     return {
         "success": True,
@@ -1188,13 +1188,11 @@ async def _run_chat_with_tools(
             conditional_reminders = []
             
             try:
-                if session_manager.compressor.should_compress(session) and session_manager.config.enable_auto_summary:
-                    summary_prompt = session_manager.compressor.build_summary_request_prompt(session.messages)
-                    summary = await llm_service.generate_text(
-                        prompt=summary_prompt,
-                        system_prompt="你是对话摘要助手，请提炼关键信息与设定。"
-                    )
-                    session_manager.compress_session(session, summary=summary)
+                if session_manager.compressor.should_compress(session):
+                    if session_manager.config.enable_auto_summary:
+                        session = await session_manager.compressor.compress_with_llm(session)
+                    else:
+                        session = session_manager.compressor.compress(session)
                 
                 context_builder = ContextBuilder(db, novel_id)
                 retrieved = await context_builder.search_relevant_context(query=user_message, top_k=5)
@@ -1285,6 +1283,8 @@ async def _run_chat_with_tools(
             failed_tool_keys: Dict[str, int] = {}
             max_tool_retries = 3
             recent_tool_patterns: List[str] = []
+            max_tool_loops = 50
+            max_context_tokens = session_manager.config.max_tokens
             READ_ONLY_TOOLS = {
                 "search_story_memory", "prepare_story_brief", "get_novel_summary",
                 "get_chapter_list", "get_chapter_content", "get_character_list",
@@ -1292,7 +1292,7 @@ async def _run_chat_with_tools(
                 "get_timeline_context", "get_story_timeline", "run_review",
                 "get_location_list", "get_location_detail"
             }
-            while loop_count < 50:
+            while loop_count < max_tool_loops:
                 tool_outputs: List[Dict[str, Any]] = []
                 if tools:
                     tools = [t for t in tools if t["function"]["name"] not in disabled_tools]
@@ -1698,10 +1698,28 @@ async def _run_chat_with_tools(
                         prefix_messages +
                         history_messages
                     )
+                    
+                    estimated_tokens = sum(
+                        session_manager.compressor.estimate_tokens(m.get("content", ""))
+                        for m in full_messages
+                        if m.get("content")
+                    )
+                    if estimated_tokens > max_context_tokens:
+                        logger.warning(
+                            f"Token budget exceeded at loop {loop_count + 1}: "
+                            f"{estimated_tokens} > {max_context_tokens}, forcing stop"
+                        )
+                        session_manager.add_message(
+                            session,
+                            MessageRole.SYSTEM,
+                            "上下文长度已接近模型限制，请基于已有信息直接输出结论，不要再调用工具。"
+                        )
+                        history_messages = session_manager.get_messages_for_api(session, include_context=False)
+                        full_messages = prefix_messages + history_messages
+                    
                     logger.info(
                         f"Loop {loop_count + 1}: rebuilt full_messages with "
-                        f"{len(full_messages)} messages (last 3 roles: "
-                        f"{[m.get('role', '?') for m in full_messages[-3:]]})"
+                        f"{len(full_messages)} messages, ~{estimated_tokens} tokens"
                     )
                     
                     current_pattern = "|".join(sorted(f"{item['tool']}:{json.dumps(item.get('arguments', {}), ensure_ascii=False, sort_keys=True)[:100]}" for item in tool_outputs))
@@ -1986,11 +2004,38 @@ async def _generate_chapter_ws(
     
     await db.commit()
     await db.refresh(chapter)
+
+    from app.core.chapter_post_processor import ChapterPostProcessor
+    try:
+        post_processor = ChapterPostProcessor(db, novel_id)
+        process_result = await post_processor.process(
+            content=chapter.content or "",
+            chapter_number=chapter.chapter_number,
+            chapter_id=chapter.id,
+        )
+        if process_result.get("was_truncated"):
+            chapter.content = process_result["final_content"]
+        else:
+            chapter.content = process_result.get("final_content", chapter.content)
+        chapter.word_count = len(chapter.content or "")
+        await db.commit()
+    except Exception as exc:
+        logger.warning(f"Chapter post-processing failed (non-fatal) in _generate_chapter_ws: {exc}")
+
+    try:
+        service = ChapterGenerationService(db, novel_id)
+        chapter.summary = await service._generate_chapter_summary(chapter.content or "")
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to generate chapter summary in _generate_chapter_ws: {e}")
+
     try:
         service = ChapterGenerationService(db, novel_id)
         await service._update_chapter_memory(chapter.id)
     except Exception as e:
         logger.warning(f"Failed to update chapter memory after WS fallback generation: {e}")
+        from app.core.memory_retry import schedule_memory_retry
+        await schedule_memory_retry(novel_id, chapter.id)
     
     await ws_manager.send_personal_message(
         GenerationProgress.completed(
