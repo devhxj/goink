@@ -367,8 +367,11 @@ async def run_review(
 
 
 @mcp.tool()
-async def get_story_timeline(
+async def get_timeline(
     novel_id: int,
+    mode: str = "context",
+    current_chapter: Optional[int] = None,
+    max_entries: int = 15,
     category: Optional[str] = None,
     status: Optional[str] = None,
     time_horizon: Optional[str] = None,
@@ -378,8 +381,9 @@ async def get_story_timeline(
     ctx: Context = None
 ) -> dict:
     return await _execute_tool(
-        "get_story_timeline", ctx,
-        novel_id=novel_id, category=category, status=status,
+        "get_timeline", ctx,
+        novel_id=novel_id, mode=mode, current_chapter=current_chapter,
+        max_entries=max_entries, category=category, status=status,
         time_horizon=time_horizon, search=search, page=page, page_size=page_size
     )
 
@@ -419,19 +423,6 @@ async def update_timeline_entry(
         target_chapter=target_chapter, time_horizon=time_horizon,
         status=status, importance=importance, tags=tags,
         resolved_chapter_id=resolved_chapter_id, resolution_notes=resolution_notes,
-    )
-
-
-@mcp.tool()
-async def get_timeline_context(
-    novel_id: int,
-    current_chapter: int,
-    max_entries: int = 15,
-    ctx: Context = None
-) -> dict:
-    return await _execute_tool(
-        "get_timeline_context", ctx,
-        novel_id=novel_id, current_chapter=current_chapter, max_entries=max_entries
     )
 
 

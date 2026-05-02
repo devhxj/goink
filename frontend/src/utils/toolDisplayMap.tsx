@@ -204,12 +204,12 @@ const toolDisplayMap: Record<string, ToolDisplayInfo> = {
     userAction: '正在进行全面体检（角色+情节+时间线+伏笔）…',
   },
 
-  get_story_timeline: {
-    displayName: '查看故事追踪板',
-    displayDescription: '查看统一的故事时间线，包含所有伏笔、章节规划、用户指令等条目，可按分类/状态筛选',
+  get_timeline: {
+    displayName: '查看故事时间线',
+    displayDescription: '获取故事时间线，支持智能上下文模式和全文查询模式',
     icon: <ClockCircleOutlined />,
     color: '#fa8c16',
-    userAction: '正在打开故事追踪板…',
+    userAction: '正在查看故事时间线…',
   },
 
   add_timeline_entry: {
@@ -226,15 +226,6 @@ const toolDisplayMap: Record<string, ToolDisplayInfo> = {
     icon: <EditOutlined />,
     color: '#fa8c16',
     userAction: '正在更新某条记录的内容…',
-  },
-
-
-  get_timeline_context: {
-    displayName: '获取AI写作参考',
-    displayDescription: '为AI生成章节准备精简的故事上下文，自动筛选当前最相关的伏笔、规划和指令',
-    icon: <AimOutlined />,
-    color: '#fa8c16',
-    userAction: '正在为本次写作准备参考资料…',
   },
 
 

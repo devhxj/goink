@@ -217,8 +217,7 @@ _TOOL_SYNC_NAMES = {
     "prepare_story_brief": "构建写前认知",
     "get_recent_context": "获取写作上下文",
     "get_character_memory": "回顾角色经历",
-    "get_story_timeline": "查看故事追踪板",
-    "get_timeline_context": "获取AI写作参考",
+    "get_timeline": "查看故事时间线",
     "add_timeline_entry": "记录追踪条目",
     "update_timeline_entry": "更新追踪条目",
     "get_location_list": "查看地点列表",
@@ -256,8 +255,7 @@ _TOOL_SYNC_KINDS = {
     "prepare_story_brief": "memory",
     "get_recent_context": "memory",
     "get_character_memory": "memory",
-    "get_story_timeline": "view",
-    "get_timeline_context": "memory",
+    "get_timeline": "view",
     "add_timeline_entry": "write",
     "update_timeline_entry": "edit",
     "get_location_list": "view",
@@ -337,8 +335,7 @@ async def _build_tool_call_presentation(
         "search_plot_memory": ("搜索情节内容", "browse"),
         "get_recent_context": ("获取写作上下文", "memory"),
         "get_character_memory": ("回顾角色经历", "memory"),
-        "get_story_timeline": ("查看故事追踪板", "view"),
-        "get_timeline_context": ("获取AI写作参考", "memory"),
+        "get_timeline": ("查看故事时间线", "view"),
         "add_timeline_entry": ("记录追踪条目", "write"),
         "update_timeline_entry": ("更新追踪条目", "edit"),
         "run_review": ("执行审查", "review"),
@@ -1017,7 +1014,7 @@ async def _run_chat_with_tools(
                 "search_story_memory", "prepare_story_brief", "get_novel_summary",
                 "get_chapter_list", "get_chapter_content", "get_character_list",
                 "get_character_detail", "get_writing_characters",
-                "get_timeline_context", "get_story_timeline", "run_review",
+                "get_timeline", "run_review",
                 "get_location_list", "get_location_detail"
             }
             while loop_count < max_tool_loops:
@@ -1284,7 +1281,7 @@ async def _run_chat_with_tools(
                                 if tool_name in ("add_timeline_entry", "update_timeline_entry"):
                                     stale_keys = [
                                         key for key in list(tool_cache.keys())
-                                        if key.startswith(("get_story_timeline:", "get_timeline_context:", "run_review:", "prepare_story_brief:"))
+                                        if key.startswith(("get_timeline:", "run_review:", "prepare_story_brief:"))
                                     ]
                                     for stale_key in stale_keys:
                                         tool_cache.pop(stale_key, None)

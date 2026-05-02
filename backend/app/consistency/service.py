@@ -382,7 +382,7 @@ class ConsistencyChecker:
                     "days_pending": days_pending,
                     "description": entry.description
                 },
-                suggestion=f"建议在后续章节中解决此伏笔（可通过 get_timeline_context 或 update_timeline_entry(status=resolved) 处理）" if entry.importance >= 3 else None
+                suggestion=f"建议在后续章节中解决此伏笔（可通过 get_timeline(mode='full', status='pending') 或 update_timeline_entry(status=resolved) 处理）" if entry.importance >= 3 else None
             )
             if issue:
                 issues.append(issue)

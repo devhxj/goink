@@ -33,7 +33,7 @@ class EditModeConfig:
   - 正式回复（content）：必须包含对用户友好的信息，如"我来帮你查看XX的内容""好的，让我先了解当前的角色阵容"
   - **不要把所有有用信息都放在思考里而让正式回复为空或只有寥寥几字**
 - 工具调用输出原则——**按任务聚合，不要逐个汇报**：
-  - ❌ 错误："我要调用 get_novel_summary 查看小说概况，然后调用 get_character_list 查角色，再调用 get_timeline_context 查时间线"
+  - ❌ 错误："我要调用 get_novel_summary 查看小说概况，然后调用 get_character_list 查角色，再调用 get_timeline 查时间线"
   - ✅ 正确："我来帮你全面了解一下这本小说的总体情况"（然后静默调用所需工具，完成后给用户一个整合的总结）
   - 当用户问一件事需要多个工具配合时，**用一句话说明你要做什么这件事**，而不是罗列你要调哪些工具
   - 只有在工具调用出错或结果异常时才单独提及该工具
@@ -59,16 +59,17 @@ class EditModeConfig:
 
 【故事时间线管理】
 时间线采用双轨维护：
-- 在 AI IDE 对话创作中，以模型主动调用 get_timeline_context / add_timeline_entry / update_timeline_entry 为主
+- 在 AI IDE 对话创作中，以模型主动调用 get_timeline / add_timeline_entry / update_timeline_entry 为主
 - 在直接章节生成或模型漏记时，后端会做章节后处理作为兜底，自动提取新伏笔、下章安排并尝试回收已解决伏笔
 这意味着：后端兜底不会替代 MCP 能力，而是避免遗漏
-1. 生成章节前应调用 get_timeline_context 了解当前有哪些待处理的伏笔、规划、用户指令
+1. 生成章节前应调用 get_timeline(mode="context") 了解当前有哪些待处理的伏笔、规划、用户指令
 2. 章节生成完成后，如果你在本章埋下了新的伏笔、有后续安排、或需要更新规划，应主动调用 add_timeline_entry 或 update_timeline_entry 记录到时间线
 3. 不要在正文末尾输出伏笔/规划等结构化信息，所有时间线维护通过工具完成
 4. 如果在写作过程中回收了某个伏笔（之前埋下的线索在本章有了交代），应调用 update_timeline_entry 设置 status=resolved
 5. 如果用户要求修改某个规划或伏笔，调用 update_timeline_entry 更新内容
 6. 如果用户说"这个伏笔不要了"或"这个规划取消"，调用 update_timeline_entry 并设置 status=abandoned
 7. 时间线是跨章节的记忆系统，帮助保持故事的连贯性和一致性。添加新条目前先查重，已有近似条目则更新而非重复创建
+8. **时间线状态维护**：每章写作完成后，检查时间线中是否有状态不合理的条目（例如：明显已在前几章回收的伏笔仍是 pending、已完成章节的规划未标记 completed、已过期的安排未更新），主动调用 update_timeline_entry 修正状态
 
 【人物关系管理】
 1. 生成章节前应优先调用 get_writing_characters 了解角色阵容和关系网络，确保角色言行一致。
@@ -111,8 +112,7 @@ class EditModeConfig:
             "search_story_memory", "prepare_story_brief", "get_character_memory",
             "edit_chapter",
             "run_subagent",
-            "get_story_timeline", "add_timeline_entry", "update_timeline_entry",
-            "get_timeline_context",
+            "get_timeline", "add_timeline_entry", "update_timeline_entry",
             "run_review",
             "get_character_network", "get_character_relationships", "update_character_relationship",
             "get_location_list", "get_location_detail", "create_location",
@@ -147,8 +147,7 @@ class EditModeConfig:
             "get_writing_characters",
             "get_character_detail",
             "search_story_memory",
-            "get_timeline_context",
-            "get_story_timeline",
+            "get_timeline",
             "run_review",
             "edit_chapter",
             "add_timeline_entry",
@@ -165,8 +164,7 @@ class EditModeConfig:
             "get_writing_characters",
             "get_character_detail",
             "search_story_memory",
-            "get_timeline_context",
-            "get_story_timeline",
+            "get_timeline",
             "run_review",
         ],
         EditMode.PLAN: [
@@ -177,8 +175,7 @@ class EditModeConfig:
             "prepare_story_brief",
             "get_writing_characters",
             "search_story_memory",
-            "get_story_timeline",
-            "get_timeline_context",
+            "get_timeline",
         ],
     }
 
@@ -197,7 +194,7 @@ class EditModeConfig:
             "update_location", "delete_location",
         },
         "timeline": {
-            "prepare_story_brief", "get_story_timeline", "get_timeline_context",
+            "prepare_story_brief", "get_timeline",
             "add_timeline_entry", "update_timeline_entry", "run_review",
         },
         "generation": {

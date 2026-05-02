@@ -1,11 +1,6 @@
 """
-故事时间线MCP工具集（Layer4 TimelineEntry）
-供AI调用的5个核心工具：查询/添加/更新/解决/获取上下文
-
-注意与 Layer2 PlotLine/PlotNode 的区分：
-- 本模块管理的是 TimelineEntry（伏笔追踪/情节里程碑/章节计划/用户指令）
-- PlotLine/PlotNode 是独立的情节规划系统（main/sub/character/background线），不在本模块中
-- 两者数据独立、表不同，不要混淆
+故事时间线MCP工具集
+供AI调用的工具：查询/添加/更新时间线条目
 """
 from typing import Any, Dict, List, Optional
 
@@ -20,38 +15,54 @@ from app.timeline.service import TimelineService
 from app.core.permissions import verify_novel_ownership
 
 
-class GetStoryTimelineTool(BaseMCPTool):
-    """获取故事时间线"""
+class GetTimelineTool(BaseMCPTool):
+    """获取故事时间线（支持两种模式）"""
 
-    name = "get_story_timeline"
+    name = "get_timeline"
     description = (
-        "获取当前小说的完整故事时间线，包含伏笔、章节规划、用户指令等所有条目。"
-        "支持按分类、状态、时间范围筛选。返回结果按目标章节号排序。"
-        "无需传novel_id，系统会注入当前小说ID。"
-        "\n适用场景：需要全面了解故事规划、查看未回收伏笔、确认未来安排时调用。"
+        "获取故事时间线。支持两种模式：\n"
+        "- context（默认）：智能筛选与当前章节最相关的未完成条目（伏笔、规划、用户指令），适合写作前调用\n"
+        "- full：全文查询，支持按分类/状态筛选和分页，适合全面查阅\n"
+        "无需传novel_id，系统会注入当前小说ID。\n"
+        "\n使用建议：写作前默认调用 context 模式即可，如需查看已完成的历史记录或搜索特定内容再使用 full 模式。"
     )
-    category = MCPToolCategory.NOVEL_MANAGEMENT
+    category = MCPToolCategory.MEMORY_RETRIEVAL
     parameters_schema = {
         "type": "object",
         "properties": {
+            "mode": {
+                "type": "string",
+                "enum": ["context", "full"],
+                "default": "context",
+                "description": "查询模式：context（智能精简，写作前调用）/ full（全文查询，全面查阅用）"
+            },
+            "current_chapter": {
+                "type": "integer",
+                "description": "当前章节号（context 模式必填，full 模式忽略）"
+            },
+            "max_entries": {
+                "type": "integer",
+                "default": 15,
+                "description": "最大返回条数 1-50（仅 context 模式生效）"
+            },
             "category": {
                 "type": "string",
                 "enum": ["foreshadowing", "plot_node", "chapter_plan", "user_directive"],
-                "description": "按分类筛选：foreshadowing(伏笔)/plot_node(情节节点)/chapter_plan(章节规划)/user_directive(用户指令)"
+                "description": "按分类筛选（仅 full 模式生效）"
             },
             "status": {
                 "type": "string",
                 "enum": ["pending", "active", "completed", "resolved", "abandoned", "deferred"],
-                "description": "按状态筛选"
+                "description": "按状态筛选（仅 full 模式生效）"
             },
             "time_horizon": {
                 "type": "string",
                 "enum": ["next", "near_term", "long_term", "undefined"],
-                "description": "按时间范围筛选：next(下一章)/near_term(近期)/long_term(远期)"
+                "description": "按时间范围筛选（仅 full 模式生效）"
             },
-            "search": {"type": "string", "description": "搜索关键词（匹配标题和描述）"},
-            "page": {"type": "integer", "default": 1, "description": "页码"},
-            "page_size": {"type": "integer", "default": 20, "description": "每页数量，最大100"},
+            "search": {"type": "string", "description": "搜索关键词，匹配标题和描述（仅 full 模式生效）"},
+            "page": {"type": "integer", "default": 1, "description": "页码（仅 full 模式生效）"},
+            "page_size": {"type": "integer", "default": 20, "description": "每页数量，最大100（仅 full 模式生效）"},
         },
     }
 
@@ -60,6 +71,9 @@ class GetStoryTimelineTool(BaseMCPTool):
         db,
         novel_id: int,
         user_id: int,
+        mode: str = "context",
+        current_chapter: Optional[int] = None,
+        max_entries: int = 15,
         category: Optional[str] = None,
         status: Optional[str] = None,
         time_horizon: Optional[str] = None,
@@ -72,22 +86,38 @@ class GetStoryTimelineTool(BaseMCPTool):
             novel = await verify_novel_ownership(db, novel_id, user_id)
             if not novel:
                 return MCPToolResult(success=False, error="无权访问此小说或小说不存在")
-            
+
             service = TimelineService(db, novel_id)
-            items, total = await service.get_timeline(
-                page=page, page_size=page_size, category=category,
-                status=status, time_horizon=time_horizon, search=search,
-            )
-            return MCPToolResult(
-                success=True,
-                data={
-                    "items": [_entry_to_dict(e) for e in items],
-                    "total": total,
-                    "page": page,
-                    "page_size": page_size,
-                },
-                metadata={"tool": self.name, "novel_id": novel_id}
-            )
+
+            if mode == "context":
+                if current_chapter is None:
+                    return MCPToolResult(success=False, error="context 模式需要提供 current_chapter")
+                entries, summary_text = await service.get_context_for_generation(current_chapter, max_entries)
+                return MCPToolResult(
+                    success=True,
+                    data={
+                        "entries": [_entry_to_dict(e) for e in entries],
+                        "total_count": len(entries),
+                        "summary_text": summary_text,
+                        "current_chapter": current_chapter,
+                    },
+                    metadata={"tool": self.name, "novel_id": novel_id, "mode": "context"}
+                )
+            else:
+                items, total = await service.get_timeline(
+                    page=page, page_size=page_size, category=category,
+                    status=status, time_horizon=time_horizon, search=search,
+                )
+                return MCPToolResult(
+                    success=True,
+                    data={
+                        "items": [_entry_to_dict(e) for e in items],
+                        "total": total,
+                        "page": page,
+                        "page_size": page_size,
+                    },
+                    metadata={"tool": self.name, "novel_id": novel_id, "mode": "full"}
+                )
         except Exception as e:
             return MCPToolResult(success=False, error=f"获取时间线失败: {str(e)}")
 
@@ -302,61 +332,6 @@ class UpdateTimelineEntryTool(BaseMCPTool):
             return MCPToolResult(success=False, error=f"更新时间线条目失败: {str(e)}")
 
 
-class GetTimelineContextTool(BaseMCPTool):
-    """获取AI生成用的精简时间线上下文"""
-
-    name = "get_timeline_context"
-    description = (
-        "获取精简的故事时间线上下文，专为AI生成章节时设计。"
-        "智能筛选与当前章节最相关的条目（未完成的伏笔、近期的规划、用户指令等）。"
-        "无需传novel_id，系统会注入当前小说ID。"
-        "\n这是生成章节前应该调用的工具，帮助AI了解当前有哪些待处理的事项和约束。"
-        "\n如果返回的结果不够，可以再调用 get_story_timeline 查看完整时间线。"
-    )
-    category = MCPToolCategory.MEMORY_RETRIEVAL
-    parameters_schema = {
-        "type": "object",
-        "properties": {
-            "current_chapter": {"type": "integer", "description": "当前章节号（必填）"},
-            "max_entries": {"type": "integer", "default": 15, "description": "最大返回条数(1-50)"},
-        },
-        "required": ["current_chapter"],
-    }
-
-    async def execute(
-        self,
-        db,
-        novel_id: int,
-        user_id: int,
-        current_chapter: int,
-        max_entries: int = 15,
-        **kwargs
-    ) -> MCPToolResult:
-        try:
-            novel = await verify_novel_ownership(db, novel_id, user_id)
-            if not novel:
-                return MCPToolResult(success=False, error="无权访问此小说或小说不存在")
-            
-            service = TimelineService(db, novel_id)
-            entries, summary_text = await service.get_context_for_generation(current_chapter, max_entries)
-            return MCPToolResult(
-                success=True,
-                data={
-                    "entries": [_entry_to_dict(e) for e in entries],
-                    "total_count": len(entries),
-                    "summary_text": summary_text,
-                    "current_chapter": current_chapter,
-                },
-                metadata={
-                    "tool": self.name,
-                    "novel_id": novel_id,
-                    "max_entries": max_entries,
-                }
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"获取时间线上下文失败: {str(e)}")
-
-
 def _entry_to_dict(entry: TimelineEntry) -> Dict[str, Any]:
     return {
         "id": entry.id,
@@ -380,7 +355,6 @@ def _entry_to_dict(entry: TimelineEntry) -> Dict[str, Any]:
 
 
 def register_timeline_tools(registry: MCPToolRegistry):
-    registry.register(GetStoryTimelineTool())
+    registry.register(GetTimelineTool())
     registry.register(AddTimelineEntryTool())
     registry.register(UpdateTimelineEntryTool())
-    registry.register(GetTimelineContextTool())
