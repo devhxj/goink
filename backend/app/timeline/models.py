@@ -15,6 +15,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.novels.models import Novel
     from app.chapters.models import Chapter
+    from app.story_arcs.models import StoryArc
 
 
 class TimelineEntryCategory(str, enum.Enum):
@@ -56,6 +57,9 @@ class TimelineEntry(Base):
     target_chapter: Mapped[Optional[int]] = mapped_column(Integer, index=True)
     time_horizon: Mapped[Optional[str]] = mapped_column(String(20))
 
+    arc_id: Mapped[Optional[int]] = mapped_column(ForeignKey("story_arcs.id", ondelete="SET NULL"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+
     importance: Mapped[int] = mapped_column(Integer, default=3)
     source: Mapped[str] = mapped_column(String(50), default="ai")
     source_chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"))
@@ -77,10 +81,12 @@ class TimelineEntry(Base):
     novel: Mapped["Novel"] = relationship(back_populates="timeline_entries")
     source_chapter: Mapped["Chapter"] = relationship(foreign_keys=[source_chapter_id])
     resolved_chapter: Mapped["Chapter"] = relationship(foreign_keys=[resolved_chapter_id])
+    arc: Mapped[Optional["StoryArc"]] = relationship(foreign_keys=[arc_id])
 
     __table_args__ = (
         Index('idx_timeline_novel_category', 'novel_id', 'category'),
         Index('idx_timeline_novel_status', 'novel_id', 'status'),
         Index('idx_timeline_novel_chapter', 'novel_id', 'target_chapter'),
         Index('idx_timeline_horizon', 'time_horizon'),
+        Index('idx_timeline_arc', 'arc_id'),
     )

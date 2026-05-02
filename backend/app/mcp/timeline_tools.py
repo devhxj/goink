@@ -160,6 +160,8 @@ class AddTimelineEntryTool(BaseMCPTool):
                             "description": "时间范围"
                         },
                         "importance": {"type": "integer", "default": 3, "description": "重要程度1-5"},
+                        "arc_id": {"type": ["integer", "null"], "description": "所属叙事弧线ID（可选，plot_node类条目可关联到StoryArc）"},
+                        "sequence": {"type": "integer", "default": 0, "description": "同章节内排序序号"},
                     },
                     "required": ["category", "title"]
                 }
@@ -202,6 +204,8 @@ class AddTimelineEntryTool(BaseMCPTool):
                         source_chapter_id=op.get("source_chapter_id"),
                         related_entry_ids=op.get("related_entry_ids"),
                         tags=op.get("tags"),
+                        arc_id=op.get("arc_id"),
+                        sequence=op.get("sequence", 0),
                     )
                     entry = await service.add_entry(data, auto_commit=False)
                     return {"success": True, "data": _entry_to_dict(entry)}
@@ -263,6 +267,8 @@ class UpdateTimelineEntryTool(BaseMCPTool):
             },
             "importance": {"type": "integer", "description": "新的重要程度(1-5)"},
             "tags": {"type": "array", "items": {"type": "string"}, "description": "新的标签列表"},
+            "arc_id": {"type": ["integer", "null"], "description": "所属叙事弧线ID"},
+            "sequence": {"type": "integer", "description": "同章节内排序序号"},
             "resolved_chapter_id": {"type": ["integer", "null"], "description": "解决时关联的章节ID（仅状态变更时可选）"},
             "resolution_notes": {"type": "string", "description": "解决说明（仅状态变更为resolved/completed时可选）"},
         },
@@ -283,6 +289,8 @@ class UpdateTimelineEntryTool(BaseMCPTool):
         status: Optional[str] = None,
         importance: Optional[int] = None,
         tags: Optional[List[str]] = None,
+        arc_id: Optional[int] = None,
+        sequence: Optional[int] = None,
         resolved_chapter_id: Optional[int] = None,
         resolution_notes: Optional[str] = None,
         **kwargs
@@ -309,6 +317,10 @@ class UpdateTimelineEntryTool(BaseMCPTool):
                 update_data["importance"] = importance
             if tags is not None:
                 update_data["tags"] = tags
+            if arc_id is not None:
+                update_data["arc_id"] = arc_id
+            if sequence is not None:
+                update_data["sequence"] = sequence
             if resolved_chapter_id is not None:
                 update_data["resolved_chapter_id"] = resolved_chapter_id
             if resolution_notes is not None:
@@ -345,6 +357,8 @@ def _entry_to_dict(entry: TimelineEntry) -> Dict[str, Any]:
         "importance": entry.importance,
         "source": entry.source,
         "source_chapter_id": entry.source_chapter_id,
+        "arc_id": entry.arc_id,
+        "sequence": entry.sequence,
         "version": entry.version,
         "last_editor": entry.last_editor,
         "tags": entry.tags,

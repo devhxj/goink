@@ -158,41 +158,21 @@ class ChapterGenerationService:
         additional_context: Optional[Dict[str, Any]] = None,
         context_size: int = 3600
     ) -> Dict[str, Any]:
-        """准备生成上下文（统一走 StoryBrief）"""
+        """准备生成上下文"""
         logger.info(f"Preparing context for chapter {chapter_number}")
-        story_brief = await self.context_builder.build_story_brief(
+        layered_context = await self.context_builder.build_writing_context(
             chapter_number=chapter_number,
             context_size=context_size,
-            additional_context=additional_context or {},
-            retrieval_top_k=3,
+            include_previous_chapters=True,
+            include_characters=True,
         )
 
-        layered_context = story_brief.get("layered_context", {})
         context: Dict[str, Any] = {
             "previous_summary": layered_context.get("previous_summary"),
             "characters": layered_context.get("characters", []),
             "plot_hints": layered_context.get("plot_hints", []),
-            "story_outline": story_brief.get("outline", {}),
-            "active_plot_lines": story_brief.get("active_plot_lines", []),
-            "upcoming_plot_nodes": story_brief.get("upcoming_plot_nodes", []),
-            "due_plot_nodes": story_brief.get("due_plot_nodes", []),
-            "timeline_entries": story_brief.get("timeline_entries", []),
-            "priority_timeline_entries": story_brief.get("priority_timeline_entries", []),
-            "unresolved_foreshadowings": story_brief.get("foreshadowing_entries", []),
-            "due_foreshadowings": story_brief.get("due_foreshadowing_entries", []),
-            "retrieved_memory": story_brief.get("retrieved_memory", []),
-            "prewrite_recommendations": story_brief.get("prewrite_recommendations", []),
-            "chapter_mission": story_brief.get("chapter_mission", {}),
-            "story_brief": story_brief.get("brief_text", ""),
-            "author_preferences": story_brief.get("creative_profile", {}),
+            "author_preferences": {},
         }
-
-        active_lines = story_brief.get("active_plot_lines", [])
-        if active_lines:
-            context["current_arc_summary"] = "；".join(
-                f"{line['name']}: {line.get('description') or ''}".strip()
-                for line in active_lines[:3]
-            )
 
         if additional_context:
             key_events = additional_context.get("key_events")

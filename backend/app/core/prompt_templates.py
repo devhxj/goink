@@ -381,7 +381,7 @@ def build_review_prompt(
     characters: list[dict] | None = None,
     previous_summary: str | None = None,
     unresolved_foreshadowings: list[dict] | None = None,
-    active_plot_lines: list[dict] | None = None,
+    active_story_arcs: list[dict] | None = None,
 ) -> str:
     """构建审核提示词"""
     parts = []
@@ -397,9 +397,9 @@ def build_review_prompt(
         parts.append("\n【未解决的伏笔】")
         for fs in unresolved_foreshadowings[:5]:
             parts.append(f"- {fs.get('title', '')}: {fs.get('description', '')[:100]}")
-    if active_plot_lines:
-        parts.append("\n【活跃情节线】")
-        for pl in active_plot_lines[:5]:
+    if active_story_arcs:
+        parts.append("\n【叙事弧线】")
+        for pl in active_story_arcs[:5]:
             parts.append(f"- {pl.get('name', '')}: {pl.get('description', '')[:100]}")
     parts.append(f"\n【待审核的章节内容】\n{content}")
     return "\n".join(parts)

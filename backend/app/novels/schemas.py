@@ -40,6 +40,15 @@ class CreativeProfileBase(BaseModel):
     must_keep: list[str] | None = Field(default=None, description="长期必须保留或遵守的规则")
     must_avoid: list[str] | None = Field(default=None, description="长期明确避免的内容")
     long_term_goals: list[str] | None = Field(default=None, description="长线创作目标")
+    premise: str | None = Field(default=None, description="故事前提")
+    theme: str | None = Field(default=None, description="主题")
+    act_structure: dict[str, Any] | None = Field(default=None, description="幕结构")
+    beginning: str | None = Field(default=None, description="开端")
+    middle: str | None = Field(default=None, description="发展")
+    climax: str | None = Field(default=None, description="高潮")
+    ending: str | None = Field(default=None, description="结局")
+    total_chapters: int | None = Field(default=None, description="总章节数")
+    current_chapter: int = Field(default=1, description="当前章节")
     extra_metadata: dict[str, Any] | None = Field(default=None, description="额外配置")
 
 

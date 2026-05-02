@@ -8,10 +8,11 @@ from enum import Enum
 
 
 class TimelineEntryCategory(str, Enum):
-    """时间线条目分类。注意：foreshadowing(伏笔) 与 PlotLine/PlotNode(情节线) 是完全独立的两个系统：
-    - foreshadowing: Layer4 伏笔管理，追踪"埋下的钩子何时被回收"
-    - plot_node: Layer4 情节里程碑，标记关键转折点（与Layer2的PlotLine系统无关）
-    - PlotLine/PlotNode: Layer2 独立的情节规划结构（main/sub线+节点），有自己独立的表和API"""
+    """时间线条目分类。
+    - foreshadowing: 伏笔管理，追踪"埋下的钩子何时被回收"
+    - plot_node: 情节里程碑，标记关键转折点，可通过 arc_id 关联到 StoryArc
+    - chapter_plan: 章节安排
+    - user_directive: 用户指令"""
     FORESHADOWING = "foreshadowing"
     PLOT_NODE = "plot_node"
     CHAPTER_PLAN = "chapter_plan"
@@ -47,6 +48,8 @@ class TimelineEntryCreate(BaseModel):
     source_chapter_id: int | None = Field(default=None, description="来源章节 ID")
     related_entry_ids: list[int] | None = Field(default=None, description="关联条目 ID 列表")
     tags: list[str] | None = Field(default=None, description="标签列表")
+    arc_id: int | None = Field(default=None, description="所属叙事弧线 ID")
+    sequence: int = Field(default=0, description="同章节内排序序号")
 
 
 class TimelineEntryUpdate(BaseModel):
@@ -60,6 +63,8 @@ class TimelineEntryUpdate(BaseModel):
     importance: int | None = Field(default=None, ge=1, le=5)
     related_entry_ids: list[int] | None = Field(default=None)
     tags: list[str] | None = Field(default=None)
+    arc_id: int | None = Field(default=None, description="所属叙事弧线 ID")
+    sequence: int | None = Field(default=None, description="同章节内排序序号")
     resolved_chapter_id: int | None = Field(default=None, description="解决时关联的章节 ID（可选）")
     resolution_notes: str | None = Field(default=None, description="解决说明（仅 status 为 resolved/completed 时生效）")
 
@@ -87,6 +92,8 @@ class TimelineEntryResponse(BaseModel):
     resolved_chapter_id: int | None
     related_entry_ids: list[int] | None
     tags: list[str] | None
+    arc_id: int | None
+    sequence: int
     version: int
     last_editor: str | None
     original_ai_output: dict[str, Any] | None

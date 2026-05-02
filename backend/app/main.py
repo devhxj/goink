@@ -27,7 +27,7 @@ from app.memory.router import router as memory_router
 from app.rag.router import router as rag_router
 from app.agents.router import router as agents_router
 from app.consistency.router import router as consistency_router
-from app.planning.router import router as planning_router
+from app.story_arcs.router import router as story_arcs_router
 from app.mcp.router import router as mcp_router
 from app.mcp.server import get_mcp_transport
 from app.core.ws_chat import router as ws_chat_router
@@ -43,7 +43,7 @@ from app.chapters.models import Chapter
 from app.memory.models import MemoryChunk
 from app.rag.models import RAGContext
 from app.agents.models import AgentTaskRecord
-from app.planning.models import PlotLine, PlotNode, PlotOutline
+from app.story_arcs.models import StoryArc
 from app.editor.models import EditSession, EditChange
 from app.timeline.models import TimelineEntry
 from app.novels.models import UserCreativeProfile
@@ -192,7 +192,7 @@ app.include_router(memory_router, prefix="/api/v1")
 app.include_router(rag_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(consistency_router, prefix="/api/v1")
-app.include_router(planning_router, prefix="/api/v1")
+app.include_router(story_arcs_router, prefix="/api/v1")
 app.include_router(mcp_router, prefix="/api/v1")
 app.include_router(generation_router, prefix="/api/v1")
 app.include_router(sessions_router, prefix="/api/v1")

@@ -172,24 +172,6 @@ async def get_writing_characters(
 
 
 @mcp.tool()
-async def prepare_story_brief(
-    novel_id: int,
-    chapter_number: int,
-    context_size: int = 3600,
-    retrieval_top_k: int = 3,
-    ctx: Context|None = None
-) -> dict:
-    return await _execute_tool(
-        "prepare_story_brief",
-        ctx,
-        novel_id=novel_id,
-        chapter_number=chapter_number,
-        context_size=context_size,
-        retrieval_top_k=retrieval_top_k
-    )
-
-
-@mcp.tool()
 async def search_story_memory(
     novel_id: int,
     query: str,
@@ -619,6 +601,60 @@ async def delete_location(
     return await _execute_tool(
         "delete_location", ctx,
         novel_id=novel_id, location_id=location_id
+    )
+
+
+@mcp.tool()
+async def get_story_arcs(
+    novel_id: int,
+    arc_type: Optional[str] = None,
+    status: Optional[str] = None,
+    ctx: Context = None
+) -> dict:
+    return await _execute_tool(
+        "get_story_arcs", ctx,
+        novel_id=novel_id, arc_type=arc_type, status=status
+    )
+
+
+@mcp.tool()
+async def add_story_arc(
+    novel_id: int,
+    name: str,
+    description: Optional[str] = None,
+    arc_type: str = "sub",
+    start_chapter: Optional[int] = None,
+    end_chapter: Optional[int] = None,
+    importance: int = 1,
+    ctx: Context = None
+) -> dict:
+    return await _execute_tool(
+        "add_story_arc", ctx,
+        novel_id=novel_id, name=name, description=description,
+        arc_type=arc_type, start_chapter=start_chapter,
+        end_chapter=end_chapter, importance=importance
+    )
+
+
+@mcp.tool()
+async def update_story_arc(
+    novel_id: int,
+    arc_id: int,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    arc_type: Optional[str] = None,
+    start_chapter: Optional[int] = None,
+    end_chapter: Optional[int] = None,
+    importance: Optional[int] = None,
+    status: Optional[str] = None,
+    ctx: Context = None
+) -> dict:
+    return await _execute_tool(
+        "update_story_arc", ctx,
+        novel_id=novel_id, arc_id=arc_id, name=name,
+        description=description, arc_type=arc_type,
+        start_chapter=start_chapter, end_chapter=end_chapter,
+        importance=importance, status=status
     )
 
 

@@ -2,20 +2,19 @@
 审查类MCP工具（整合版）
 
 架构说明（重要）：
-本系统有3层故事数据架构，工具按层归属：
+本系统有2层故事数据架构：
 
-  Layer 1: PlotOutline     → 整体大纲（premise/三幕结构）
-  Layer 2: PlotLine+Node   → 情节线规划（main/sub/character/background线+节点）
-  Layer 3: TimelineEntry   → 故事追踪（伏笔、情节里程碑、章节规划、用户指令）
+  Layer 1: StoryArc          → 叙事弧线（主线/支线/角色线/背景线），跨越多章节的故事线
+  Layer 2: TimelineEntry     → 故事追踪（伏笔、情节里程碑、章节规划、用户指令）
            └─ category=foreshadowing: 伏笔/钩子（待回收）
-           └─ category=plot_node:      情节里程碑
+           └─ category=plot_node:      情节里程碑（可通过 arc_id 关联到 StoryArc）
            └─ category=chapter_plan:  章节写作计划
            └─ category=user_directive: 用户指令
 
 关键区分：
-- "plots" 指 Layer 2 的 PlotLine/PlotNode 系统（独立情节规划结构）
-- "foreshadowing" 指 Layer 3 TimelineEntry 的 foreshadowing 分类（伏笔管理）
-- 两者是完全独立的系统，不要混淆！
+- "叙事弧线" 指 StoryArc 系统（宏观故事线结构）
+- "伏笔" 指 TimelineEntry 的 foreshadowing 分类（微观追踪）
+- 两者是不同层级的概念，不要混淆！
 
 工具映射：
 - check_character_consistency → run_review(scope='character')
@@ -49,8 +48,8 @@ class RunReviewTool(BaseMCPTool):
         "\n- 查看还有哪些伏笔(foreshadowing)没有回收 → scope='foreshadowing'"
         "\n- 查看伏笔的整体统计数据（解决率/各状态分布/优先级分布）→ scope='foreshadowing_status'"
         "\n- 全面体检发现潜在问题 → scope='full'"
-        "\n注意：'伏笔'(foreshadowing)属于时间线追踪系统(Layer4 TimelineEntry)，"
-        "与'情节规划'(Layer2 PlotLine/PlotNode)是不同的系统。"
+        "\n注意：'伏笔'(foreshadowing)属于时间线追踪系统(TimelineEntry)，"
+        "与'叙事弧线'(StoryArc)是不同层级的概念。"
     )
     category = MCPToolCategory.CONSISTENCY_CHECK
     parameters_schema = {

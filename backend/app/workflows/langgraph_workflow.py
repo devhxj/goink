@@ -177,39 +177,27 @@ class ChapterWorkflow:
     async def _prepare_context_node(self, state: WorkflowState) -> Dict[str, Any]:
         """准备上下文节点"""
         logger.info(f"[{state['task_id']}] Preparing context for chapter {state['chapter_number']}")
-        
+
         try:
             from app.core.database import AsyncSessionLocal
-            
+
             async with AsyncSessionLocal() as db:
                 builder = ContextBuilder(db, state["novel_id"])
-                story_brief = await builder.build_story_brief(
+                layered_context = await builder.build_writing_context(
                     chapter_number=state["chapter_number"],
                     context_size=state.get("context_size", 3000),
-                    additional_context=state.get("extra_parameters") or {},
+                    include_previous_chapters=True,
+                    include_characters=True,
                 )
-                layered_context = story_brief.get("layered_context", {})
                 context = {
                     "previous_summary": layered_context.get("previous_summary"),
                     "characters": layered_context.get("characters", []),
                     "plot_hints": layered_context.get("plot_hints", []),
-                    "story_outline": story_brief.get("outline", {}),
-                    "active_plot_lines": story_brief.get("active_plot_lines", []),
-                    "upcoming_plot_nodes": story_brief.get("upcoming_plot_nodes", []),
-                    "due_plot_nodes": story_brief.get("due_plot_nodes", []),
-                    "timeline_entries": story_brief.get("timeline_entries", []),
-                    "priority_timeline_entries": story_brief.get("priority_timeline_entries", []),
-                    "unresolved_foreshadowings": story_brief.get("foreshadowing_entries", []),
-                    "due_foreshadowings": story_brief.get("due_foreshadowing_entries", []),
-                    "retrieved_memory": story_brief.get("retrieved_memory", []),
-                    "prewrite_recommendations": story_brief.get("prewrite_recommendations", []),
-                    "chapter_mission": story_brief.get("chapter_mission", {}),
-                    "story_brief": story_brief.get("brief_text", ""),
-                    "author_preferences": story_brief.get("creative_profile", {}),
+                    "author_preferences": {},
                 }
                 incoming_context = state.get("context") or {}
                 merged_context = {**context, **incoming_context}
-                
+
                 return {
                     "context": merged_context,
                     "status": "context_prepared",

@@ -49,7 +49,7 @@ async def init_db():
     from app.memory.models import MemoryChunk
     from app.rag.models import RAGContext
     from app.agents.models import AgentTaskRecord
-    from app.planning.models import PlotLine, PlotNode, PlotOutline
+    from app.story_arcs.models import StoryArc
     from app.editor.models import EditSession, EditChange
     from app.timeline.models import TimelineEntry
     from app.novels.models import UserCreativeProfile

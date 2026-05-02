@@ -13,7 +13,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.characters.models import Character
     from app.chapters.models import Chapter
-    from app.planning.models import PlotLine, PlotNode, PlotOutline
+    from app.story_arcs.models import StoryArc
     from app.timeline.models import TimelineEntry
     from app.locations.models import Location
 
@@ -33,9 +33,7 @@ class Novel(Base):
 
     characters: Mapped[list["Character"]] = relationship(back_populates="novel")
     chapters: Mapped[list["Chapter"]] = relationship(back_populates="novel")
-    plot_lines: Mapped[list["PlotLine"]] = relationship(back_populates="novel", cascade="all, delete-orphan")
-    plot_nodes: Mapped[list["PlotNode"]] = relationship(back_populates="novel", cascade="all, delete-orphan")
-    plot_outline: Mapped["PlotOutline"] = relationship(back_populates="novel", uselist=False, cascade="all, delete-orphan")
+    story_arcs: Mapped[list["StoryArc"]] = relationship(back_populates="novel", cascade="all, delete-orphan")
     creative_profile: Mapped["NovelCreativeProfile"] = relationship(back_populates="novel", uselist=False, cascade="all, delete-orphan")
     timeline_entries: Mapped[list["TimelineEntry"]] = relationship(back_populates="novel", cascade="all, delete-orphan")
     locations: Mapped[list["Location"]] = relationship(back_populates="novel")
@@ -46,7 +44,7 @@ class Novel(Base):
 
 
 class NovelCreativeProfile(Base):
-    """作者创作偏好与协作配置"""
+    """作者创作偏好与协作配置 + 故事大纲"""
     __tablename__ = "novel_creative_profiles"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -60,6 +58,17 @@ class NovelCreativeProfile(Base):
     must_keep: Mapped[Optional[List[str]]] = mapped_column(JSON)
     must_avoid: Mapped[Optional[List[str]]] = mapped_column(JSON)
     long_term_goals: Mapped[Optional[List[str]]] = mapped_column(JSON)
+
+    premise: Mapped[Optional[str]] = mapped_column(Text)
+    theme: Mapped[Optional[str]] = mapped_column(String(255))
+    act_structure: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
+    beginning: Mapped[Optional[str]] = mapped_column(Text)
+    middle: Mapped[Optional[str]] = mapped_column(Text)
+    climax: Mapped[Optional[str]] = mapped_column(Text)
+    ending: Mapped[Optional[str]] = mapped_column(Text)
+    total_chapters: Mapped[Optional[int]] = mapped_column(Integer)
+    current_chapter: Mapped[int] = mapped_column(Integer, default=1)
+
     extra_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

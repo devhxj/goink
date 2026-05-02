@@ -214,7 +214,6 @@ _TOOL_SYNC_NAMES = {
     "update_creative_profile": "设置创作规则",
     "search_plot_memory": "搜索情节内容",
     "search_story_memory": "搜索故事记忆",
-    "prepare_story_brief": "构建写前认知",
     "get_recent_context": "获取写作上下文",
     "get_character_memory": "回顾角色经历",
     "get_timeline": "查看故事时间线",
@@ -252,7 +251,6 @@ _TOOL_SYNC_KINDS = {
     "update_creative_profile": "memory",
     "search_plot_memory": "browse",
     "search_story_memory": "memory",
-    "prepare_story_brief": "memory",
     "get_recent_context": "memory",
     "get_character_memory": "memory",
     "get_timeline": "view",
@@ -1011,7 +1009,7 @@ async def _run_chat_with_tools(
             max_tool_loops = 50
             max_context_tokens = session_manager.config.max_tokens
             READ_ONLY_TOOLS = {
-                "search_story_memory", "prepare_story_brief", "get_novel_summary",
+                "search_story_memory", "get_novel_summary",
                 "get_chapter_list", "get_chapter_content", "get_character_list",
                 "get_character_detail", "get_writing_characters",
                 "get_timeline", "run_review",
@@ -1281,7 +1279,7 @@ async def _run_chat_with_tools(
                                 if tool_name in ("add_timeline_entry", "update_timeline_entry"):
                                     stale_keys = [
                                         key for key in list(tool_cache.keys())
-                                        if key.startswith(("get_timeline:", "run_review:", "prepare_story_brief:"))
+                                        if key.startswith(("get_timeline:", "run_review:"))
                                     ]
                                     for stale_key in stale_keys:
                                         tool_cache.pop(stale_key, None)

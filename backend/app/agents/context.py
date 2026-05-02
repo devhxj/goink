@@ -25,7 +25,7 @@ class WritingContext:
     characters: list[dict] = field(default_factory=list)
     plot_hints: list[dict] = field(default_factory=list)
     story_outline: dict = field(default_factory=dict)
-    active_plot_lines: list[dict] = field(default_factory=list)
+    active_story_arcs: list[dict] = field(default_factory=list)
     due_plot_nodes: list[dict] = field(default_factory=list)
     upcoming_plot_nodes: list[dict] = field(default_factory=list)
     timeline_entries: list[dict] = field(default_factory=list)
@@ -33,10 +33,6 @@ class WritingContext:
     unresolved_foreshadowings: list[dict] = field(default_factory=list)
     due_foreshadowings: list[dict] = field(default_factory=list)
     retrieved_memory: list[dict] = field(default_factory=list)
-    prewrite_recommendations: list[str] = field(default_factory=list)
-    chapter_mission: dict = field(default_factory=dict)
-    story_brief: str = ""
-    current_arc_summary: str = ""
     author_preferences: dict = field(default_factory=dict)
     feedback: str = ""
 
@@ -81,7 +77,7 @@ class WritingContext:
             characters=ctx.get("characters", []),
             plot_hints=ctx.get("plot_hints", []),
             story_outline=ctx.get("story_outline", {}),
-            active_plot_lines=ctx.get("active_plot_lines", []),
+            active_story_arcs=ctx.get("active_story_arcs", []),
             due_plot_nodes=ctx.get("due_plot_nodes", []),
             upcoming_plot_nodes=ctx.get("upcoming_plot_nodes", []),
             timeline_entries=ctx.get("timeline_entries", []),
@@ -89,10 +85,6 @@ class WritingContext:
             unresolved_foreshadowings=ctx.get("unresolved_foreshadowings", []),
             due_foreshadowings=ctx.get("due_foreshadowings", []),
             retrieved_memory=ctx.get("retrieved_memory", []),
-            prewrite_recommendations=ctx.get("prewrite_recommendations", []),
-            chapter_mission=ctx.get("chapter_mission", {}),
-            story_brief=ctx.get("story_brief", ""),
-            current_arc_summary=ctx.get("current_arc_summary", ""),
             author_preferences=ctx.get("author_preferences", {}),
             feedback=params.get("feedback", ""),
         )

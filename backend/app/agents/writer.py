@@ -16,7 +16,7 @@ WRITER_SPEC = SubAgentSpec(
     display_name="写作专家",
     description="写作/续写章节内容，支持指定风格、长度和写作指令",
     system_prompt="你是一位专业的小说作家，擅长创作引人入胜的故事。\n你的写作风格流畅自然，善于刻画人物性格，构建紧张的情节冲突。\n请严格遵循任务要求、风格、语气和章节目标。\n如果任务中给出明确写作指令、提纲、修订意见或重点场景，必须优先执行。",
-    required_context_keys=["chapter_info", "story_brief"],
+    required_context_keys=["chapter_info"],
     optional_context_keys=["characters", "previous_summary", "layered_context"],
     requires_chapter_id=True,
     result_description="返回生成的章节内容、字数和编辑会话ID",
@@ -181,12 +181,6 @@ class WriterAgent(BaseAgent):
             prompt += f"\n【作者意图】\n{wc.author_intent}\n"
         if wc.outline:
             prompt += f"\n【章节提纲】\n{wc.outline}\n"
-        if wc.story_brief:
-            prompt += (
-                "\n【写前 StoryBrief】\n"
-                "以下信息已经按 Plot / Timeline / Foreshadowing 区分整理，请先理解再下笔：\n"
-                f"{wc.story_brief}\n"
-            )
         if wc.must_keep:
             prompt += "\n【必须保留/实现】\n"
             for item in wc.must_keep:
@@ -204,9 +198,6 @@ class WriterAgent(BaseAgent):
 
         if wc.previous_summary:
             prompt += f"\n【前文摘要】\n{wc.previous_summary}\n"
-
-        if wc.current_arc_summary:
-            prompt += f"\n【当前卷/主线目标】\n{wc.current_arc_summary}\n"
 
         if wc.author_preferences:
             prompt += "\n【作者长期协作配置】\n"
@@ -255,10 +246,10 @@ class WriterAgent(BaseAgent):
             for hint in wc.plot_hints:
                 prompt += f"- {hint.get('description', '')}\n"
 
-        if wc.active_plot_lines:
-            prompt += "\n【Plot｜当前活跃情节线】\n"
-            for line in wc.active_plot_lines[:5]:
-                prompt += f"- {line.get('name', '')}: {line.get('description', '')}\n"
+        if wc.active_story_arcs:
+            prompt += "\n【Story Arcs｜叙事弧线】\n"
+            for arc in wc.active_story_arcs[:5]:
+                prompt += f"- {arc.get('name', '')}: {arc.get('description', '')}\n"
 
         if wc.due_plot_nodes:
             prompt += "\n【Plot Nodes｜本章优先推进】\n"
@@ -291,22 +282,6 @@ class WriterAgent(BaseAgent):
             prompt += "\n【Foreshadowing｜本章建议优先处理】\n"
             for item in wc.due_foreshadowings[:5]:
                 prompt += f"- {item.get('title', '')}: {item.get('description', '')}\n"
-
-        if wc.chapter_mission:
-            prompt += "\n【本章任务分配】\n"
-            if wc.chapter_mission.get("must_resolve_foreshadowing_ids"):
-                prompt += "- 优先考虑回收至少一个已到期伏笔。\n"
-            if wc.chapter_mission.get("should_advance_plot_node_ids"):
-                prompt += "- 本章必须实质推进当前 Plot 节点，不能只做气氛铺垫。\n"
-            if wc.chapter_mission.get("must_respect_timeline_ids"):
-                prompt += "- 本章要落实近期 Timeline 安排或用户指令。\n"
-            if wc.chapter_mission.get("should_introduce_new_foreshadowing"):
-                prompt += "- 若剧情自然允许，可埋一个与主线直接相关的新伏笔。\n"
-
-        if wc.prewrite_recommendations:
-            prompt += "\n【写前检查清单】\n"
-            for item in wc.prewrite_recommendations[:5]:
-                prompt += f"- {item}\n"
 
         if wc.retrieved_memory:
             prompt += "\n【检索到的前文记忆片段】\n"

@@ -74,46 +74,6 @@ async def _get_characters(db: AsyncSession, novel_id: int, chapter_id: int | Non
     ]
 
 
-@register_context_builder("story_brief")
-async def _get_story_brief(db: AsyncSession, novel_id: int, chapter_id: int | None) -> str | None:
-    try:
-        from app.core.context_builder import ContextBuilder
-        builder = ContextBuilder(db, novel_id)
-        chapter_number = 1
-        if chapter_id:
-            ch_result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
-            ch = ch_result.scalar_one_or_none()
-            if ch:
-                chapter_number = ch.chapter_number
-        brief = await builder.build_story_brief(
-            chapter_number=chapter_number,
-            context_size=3000,
-        )
-        return brief.get("brief_text", "")
-    except Exception as e:
-        logger.warning(f"Failed to build story brief: {e}")
-        return None
-
-
-async def _build_story_brief_snapshot(
-    db: AsyncSession,
-    novel_id: int,
-    chapter_id: int | None,
-) -> dict[str, Any]:
-    from app.core.context_builder import ContextBuilder
-
-    builder = ContextBuilder(db, novel_id)
-    chapter_number = 1
-    if chapter_id:
-        ch_result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
-        chapter = ch_result.scalar_one_or_none()
-        if chapter:
-            chapter_number = chapter.chapter_number
-
-    return await builder.build_story_brief(
-        chapter_number=chapter_number,
-        context_size=3000,
-    )
 
 
 @register_context_builder("previous_summary")
@@ -153,13 +113,14 @@ async def _get_layered_context(db: AsyncSession, novel_id: int, chapter_id: int 
         return {}
 
 
-@register_context_builder("active_plot_lines")
-async def _get_active_plot_lines(db: AsyncSession, novel_id: int, chapter_id: int | None) -> list[dict[str, Any]]:
+@register_context_builder("active_story_arcs")
+async def _get_active_story_arcs(db: AsyncSession, novel_id: int, chapter_id: int | None) -> list[dict[str, Any]]:
     try:
-        story_brief = await _build_story_brief_snapshot(db, novel_id, chapter_id)
-        return story_brief.get("active_plot_lines", [])
+        from app.story_arcs.service import StoryArcService
+        service = StoryArcService(db, novel_id)
+        return await service.get_active_arcs(chapter_id or 1)
     except Exception as e:
-        logger.warning(f"Failed to load active plot lines: {e}")
+        logger.warning(f"Failed to load active story arcs: {e}")
         return []
 
 
@@ -170,8 +131,22 @@ async def _get_unresolved_foreshadowings(
     chapter_id: int | None,
 ) -> list[dict[str, Any]]:
     try:
-        story_brief = await _build_story_brief_snapshot(db, novel_id, chapter_id)
-        return story_brief.get("foreshadowing_entries", [])
+        from app.timeline.models import TimelineEntry, TimelineEntryCategory, TimelineEntryStatus
+        from sqlalchemy import select
+        result = await db.execute(
+            select(TimelineEntry)
+            .where(
+                TimelineEntry.novel_id == novel_id,
+                TimelineEntry.category == TimelineEntryCategory.FORESHADOWING.value,
+                TimelineEntry.status.in_([TimelineEntryStatus.PENDING.value, TimelineEntryStatus.ACTIVE.value]),
+            )
+            .order_by(TimelineEntry.importance.desc())
+            .limit(10)
+        )
+        return [
+            {"id": e.id, "title": e.title, "description": e.description, "importance": e.importance, "status": e.status}
+            for e in result.scalars().all()
+        ]
     except Exception as e:
         logger.warning(f"Failed to load unresolved foreshadowings: {e}")
         return []

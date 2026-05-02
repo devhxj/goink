@@ -112,6 +112,8 @@ class TimelineService:
             source_chapter_id=data.source_chapter_id,
             related_entry_ids=data.related_entry_ids,
             tags=data.tags,
+            arc_id=data.arc_id,
+            sequence=data.sequence,
             version=1,
             last_editor=data.source,
         )

@@ -36,7 +36,7 @@ REVIEW_SPEC = SubAgentSpec(
         "characters",
         "previous_summary",
         "consistency_result",
-        "active_plot_lines",
+        "active_story_arcs",
         "unresolved_foreshadowings",
     ],
     allowed_tools=[
@@ -194,7 +194,7 @@ class ReviewerAgent(BaseAgent):
             characters = context.get("characters", [])
             previous_summary = context.get("previous_summary", "")
             unresolved_foreshadowings = context.get("unresolved_foreshadowings", [])
-            active_plot_lines = context.get("active_plot_lines", [])
+            active_story_arcs = context.get("active_story_arcs", [])
 
             prompt = build_review_prompt(
                 content=content[:6000],
@@ -202,7 +202,7 @@ class ReviewerAgent(BaseAgent):
                 characters=characters,
                 previous_summary=previous_summary,
                 unresolved_foreshadowings=unresolved_foreshadowings,
-                active_plot_lines=active_plot_lines,
+                active_story_arcs=active_story_arcs,
             )
 
             return await llm_service.generate_json(
