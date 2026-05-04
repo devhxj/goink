@@ -21,6 +21,7 @@ class ChapterUpdate(BaseModel):
     content: str | None = None
     summary: str | None = None
     status: str | None = None
+    outline_json: dict | None = None
 
 
 class ChapterResponse(ChapterBase):
@@ -29,9 +30,11 @@ class ChapterResponse(ChapterBase):
     chapter_number: int
     status: str
     word_count: int
+    outline_json: dict | None = None
+    writing_status: str
     created_at: datetime
     updated_at: datetime | None = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
