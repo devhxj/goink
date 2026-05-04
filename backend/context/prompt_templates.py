@@ -422,8 +422,8 @@ CHAPTER_OUTLINE_SYSTEM_PROMPT = """你是一位资深的故事架构师。
 - estimated_words: 预估字数
 
 ## 输出格式
-严格输出 JSON 数组，不要包含任何其他内容：
-[{
+严格输出 JSON，不要包含任何其他内容：
+{"chapters": [{
   "chapter_number": 15,
   "title": "章节标题",
   "scenes": [
@@ -439,7 +439,7 @@ CHAPTER_OUTLINE_SYSTEM_PROMPT = """你是一位资深的故事架构师。
   "tone": "紧张/温馨/悲伤/热血/悬疑/...",
   "chapter_hook": "章末钩子描述",
   "estimated_words": 3000
-}]"""
+}]}"""
 
 
 def build_chapter_outline_user_prompt(
