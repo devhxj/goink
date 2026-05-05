@@ -48,3 +48,17 @@
 - [ ] post_process 中接入 `agents/memory.py` 的完整记忆更新流程
 - [ ] 或在 review/memory agent 中暴露可复用的独立函数
 **优先级**：中（当前能跑，但质量有提升空间）
+
+## 5. Memory Agent 未实现独立 LLM 能力
+
+**问题**：`agents/memory.py` 当前只是一个薄包装，直接调 `vector_store.delete_chapter_chunks` / `build_chapter_chunks` / `add_chunks`，没有任何 LLM 调用。
+
+**本意设计**：Memory Agent 应该是一个独立 LLM，有自己的上下文，接受主 agent 的指令后自主探索——类似 Coding Agent 的 Search Agent 或 Explore Agent。它应该能主动搜索向量库、分析上下文关联、决定存储策略。
+
+**当前实现**：纯后端操作，和 MCP 工具没有本质区别，只是数据层包装。
+
+**需要做的**：
+- [ ] Memory Agent 需要独立的 LLM 实例和自己的上下文
+- [ ] 接受主 agent 指令后自主探索向量库
+- [ ] 智能决定 chunk 策略、关联标记
+**优先级**：中（当前能跑，但记忆检索质量受限）
