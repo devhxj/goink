@@ -1,8 +1,9 @@
 """
 章节创作工作流 MCP 工具
 
-create_chapter_workflow: LLM 调用后，工具内部阻塞执行 LangGraph，
-包含大纲生成、审批、正文写作、后处理。
+create_chapter_workflow: LLM 调用后，工具内部阻塞执行 LangGraph。
+工具拷贝 session → work_msgs 供图节点 LLM 使用 → 图节点追加到 work_msgs 和 delta →
+工具返回 delta 给循环注入 session。
 """
 from __future__ import annotations
 
@@ -57,21 +58,21 @@ class CreateChapterWorkflowTool(BaseMCPTool):
             from langgraph.errors import GraphInterrupt
 
             from chat.session_manager import session_manager, MessageRole
-            from chapters.workflow import create_initial_state, chapter_graph, _current_ws
+            from chapters.workflow import (
+                create_initial_state, chapter_graph,
+                _work_msgs, _delta, _current_ws,
+            )
 
+            # 设置 ContextVar，供图节点使用
             _current_ws.set(websocket)
 
-            # 1. 追加 tool_result（紧跟 tool_call，符合协议）
-            tool_call_id = kwargs.get("tool_id") or f"call_{chat_session.session_id}"
-            session_manager.add_message(
-                chat_session,
-                MessageRole.TOOL,
-                "章节创作工作流已启动，请根据系统提示词和以下信息继续创作。",
-                metadata={
-                    "tool_call_id": tool_call_id,
-                    "tool_name": "create_chapter_workflow",
-                },
-            )
+            # === 拷贝 session 到 work_msgs ===
+            session_msgs = session_manager.get_messages_for_api(chat_session, include_context=True)
+            # 转换为普通 list，图节点可以追加
+            work: list[dict] = list(session_msgs)  # [system1, system2, ...history..., user: 当前消息]
+            delta: list[dict] = []
+            _work_msgs.set(work)
+            _delta.set(delta)
 
             state = create_initial_state(
                 novel_id=novel_id,
@@ -82,99 +83,72 @@ class CreateChapterWorkflowTool(BaseMCPTool):
             )
             config: dict = {"configurable": {"thread_id": chat_session.session_id}}
 
-            # 2. 运行图到 interrupt（大纲生成后暂停）
+            # === 运行图到 interrupt（build_layer2 → generate_outline → interrupt） ===
+            # 图节点 _build_layer2 会把 Layer2 追加到 work 和 delta
+            # 图节点 _generate_outline 会生成大纲并追加到 work 和 delta
             try:
                 await chapter_graph.ainvoke(state, config)  # type: ignore[arg-type]
+                # 不应该走到这里（没有 interrupt 说明图跑完了）
+                return MCPToolResult(success=True, data={"inject": list(delta)})
             except GraphInterrupt as gi:
                 interrupt_data = gi.args[0] if gi.args else None
-                if isinstance(interrupt_data, dict) and interrupt_data.get("type") == "await_approval":
-                    outline_texts: list[str] = interrupt_data.get("outline_texts", [])
-                    outlines: list[dict] = interrupt_data.get("outlines", [])
+                if not isinstance(interrupt_data, dict) or interrupt_data.get("type") != "await_approval":
+                    return MCPToolResult(success=False, error="工作流中断数据异常")
 
-                    # 3. 从 graph state 取 Layer 2，追加到 session
-                    mid_state = chapter_graph.get_state(config)  # type: ignore[arg-type]
-                    layer2 = (mid_state.values or {}).get("layer2_context", "") if mid_state else ""
-                    if layer2:
-                        session_manager.add_message(
-                            chat_session, MessageRole.USER, layer2,
-                            metadata={"context_layer": "layer2"},
-                        )
+                outline_texts: list[str] = interrupt_data.get("outline_texts", [])
+                outlines: list[dict] = interrupt_data.get("outlines", [])
 
-                    # 4. 发送大纲给用户
-                    combined_text = "\n\n---\n\n".join(outline_texts)
-                    await websocket.send_json({
-                        "type": "outline_generated",
-                        "novel_id": novel_id,
-                        "chapter_numbers": chapter_numbers,
-                        "content": combined_text,
-                        "outlines": outlines,
-                    })
+            # === 审批阶段 ===
+            # 大纲已在 _generate_outline 追加到 work 和 delta
+            # 发送大纲给用户
+            combined_text = "\n\n---\n\n".join(outline_texts)
+            await websocket.send_json({
+                "type": "outline_generated",
+                "novel_id": novel_id,
+                "chapter_numbers": chapter_numbers,
+                "content": combined_text,
+                "outlines": outlines,
+            })
 
-                    # 5. 等待用户审批
-                    approval_raw = await websocket.receive_json()
+            # 等待用户审批
+            approval_raw = await websocket.receive_json()
+            approved = approval_raw.get("approved", False)
 
-                    approved = approval_raw.get("approved", False)
+            if approved:
+                # === 恢复图：build_layer3 → write_chapter → post_process ===
+                # _build_layer3 追加 Layer3 到 work 和 delta
+                # _write_chapter 流式输出 + 追加正文到 work 和 delta
+                # _post_process 做摘要/review/向量记忆
+                await chapter_graph.ainvoke(Command(resume=True), config)  # type: ignore[arg-type]
 
-                    # 6. 追加大纲到 session
-                    approval_msg = (
-                        "【大纲已审批通过，开始创作章节...】"
-                        if approved else f"【大纲审批未通过，用户意见：{approval_raw.get('feedback', '请重新生成')}】"
-                    )
-                    session_manager.add_message(
-                        chat_session, MessageRole.USER, approval_msg,
-                        metadata={"workflow_event": "approval"},
-                    )
-                    for i, ot in enumerate(outline_texts):
-                        session_manager.add_message(
-                            chat_session, MessageRole.ASSISTANT, ot,
-                            metadata={"workflow_event": "outline", "chapter_idx": i},
-                        )
+                # === 追加维护指令（仅 delta，不入 work） ===
+                delta.append({
+                    "role": "user",
+                    "content": (
+                        "正文已写入完成。请根据本章内容，全面检查并维护小说状态：\n"
+                        "- 新出现的角色 → 创建角色；角色属性变化 → 更新角色\n"
+                        "- 角色关系变化 → 更新关系\n"
+                        "- 新出现的地点 → 创建或更新地点\n"
+                        "- 伏笔埋下/推进/回收 → 更新时间线\n"
+                        "- 更新故事状态文档\n"
+                        "- 更新读者认知（已知信息、悬念、误知）\n"
+                        "- 故事弧线推进或新增 → 更新或创建弧线\n"
+                        "- 如有创作偏好变化 → 更新 creative profile\n"
+                        "完成后向用户汇报本章成果。",
+                    ),
+                    "workflow_event": "state_maintenance_instruction",
+                })
 
-                    if approved:
-                        # 7. 恢复图：build_layer3 → write_chapter（流式）→ post_process
-                        await chapter_graph.ainvoke(Command(resume=True), config)  # type: ignore[arg-type]
-
-                        # 8. 取最终状态，追加 Layer 3 和正文到 session
-                        final_state = chapter_graph.get_state(config)  # type: ignore[arg-type]
-                        final_values = final_state.values if final_state else {}
-
-                        layer3 = final_values.get("layer3_context", "")
-                        if layer3:
-                            session_manager.add_message(
-                                chat_session, MessageRole.USER, layer3,
-                                metadata={"context_layer": "layer3"},
-                            )
-
-                        completed = final_values.get("completed_chapters", [])
-                        for ch in completed:
-                            session_manager.add_message(
-                                chat_session, MessageRole.ASSISTANT,
-                                ch.get("content", ""),
-                                metadata={"workflow_event": "chapter_body", "chapter_number": ch.get("chapter_number")},
-                            )
-
-                        # 9. 追加 user 消息驱动 LLM 全面维护小说状态
-                        session_manager.add_message(
-                            chat_session, MessageRole.USER,
-                            "正文已写入完成。请根据本章内容，全面检查并维护小说状态：\n"
-                            "- 新出现的角色 → 创建角色；角色属性变化 → 更新角色\n"
-                            "- 角色关系变化 → 更新关系\n"
-                            "- 新出现的地点 → 创建或更新地点\n"
-                            "- 伏笔埋下/推进/回收 → 更新时间线\n"
-                            "- 更新故事状态文档\n"
-                            "- 更新读者认知（已知信息、悬念、误知）\n"
-                            "- 故事弧线推进或新增 → 更新或创建弧线\n"
-                            "- 如有创作偏好变化 → 更新 creative profile\n"
-                            "完成后向用户汇报本章成果。",
-                            metadata={"workflow_event": "state_maintenance_instruction"},
-                        )
-
-                        return MCPToolResult(success=True, data={"__appended__": True, "status": "completed"})
-                    else:
-                        return MCPToolResult(success=True, data={"__appended__": True, "status": "outline_rejected"})
-
-            # 不应该走到这里
-            return MCPToolResult(success=True, data={"__appended__": True, "status": "completed"})
+                return MCPToolResult(success=True, data={"inject": list(delta)})
+            else:
+                # 审批未通过，只追加结果说明到 delta
+                feedback = approval_raw.get("feedback", "请重新生成")
+                delta.append({
+                    "role": "user",
+                    "content": f"大纲审批未通过，用户意见：{feedback}",
+                    "workflow_event": "outline_rejected",
+                })
+                return MCPToolResult(success=True, data={"inject": list(delta)})
 
         except Exception as e:
             logger.error(f"Chapter workflow failed: {e}", exc_info=True)

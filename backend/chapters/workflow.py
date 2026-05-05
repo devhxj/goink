@@ -2,6 +2,11 @@
 章节创作 LangGraph 工作流
 
 build_layer2 → generate_outline → [interrupt审批] → build_layer3 → write_chapter → post_process
+
+消息组织：
+- _work_msgs (ContextVar): 工具从 session 拷贝 + 图节点追加，供 LLM 调用用
+- _delta (ContextVar): 图节点生成的消息，最终返回给循环注入 session
+- 图节点不直接操作 session，只读写 ContextVar
 """
 from __future__ import annotations
 
@@ -17,8 +22,11 @@ from langgraph.types import interrupt
 
 logger = logging.getLogger(__name__)
 
-# 用于将 websocket 和 session 从工具传递给图节点
+# 工具设置，图节点读取
 _current_ws: ContextVar = ContextVar("workflow_ws", default=None)
+_work_msgs: ContextVar[list[dict]] = ContextVar("workflow_work_msgs", default=[])
+# 图节点追加，工具最终取回
+_delta: ContextVar[list[dict]] = ContextVar("workflow_delta", default=[])
 
 
 class WorkflowState(TypedDict):
@@ -80,6 +88,7 @@ class ChapterResult:
 
 
 def _format_outline(outline: dict) -> str:
+    """将大纲 JSON 格式化为 Markdown 文本"""
     lines = [
         f"## 第{outline.get('chapter_number', '?')}章：{outline.get('title', '未命名')}",
         "",
@@ -120,25 +129,32 @@ def _format_outline(outline: dict) -> str:
     return "\n".join(lines)
 
 
-# -------- nodes --------
+# ======== nodes ========
 
 async def _build_layer2(state: WorkflowState) -> dict[str, Any]:
+    """构建 Layer2 详细上下文，追加到 work_msgs 和 delta"""
     from core.database import AsyncSessionLocal
     from context.context_builder import build_layer2_context
 
     logger.info(f"Building Layer2 for ch{state['chapter_numbers']}")
     async with AsyncSessionLocal() as db:
         layer2 = await build_layer2_context(db, state["novel_id"], state["instruction"])
+
+    work = _work_msgs.get()
+    delta = _delta.get()
+    msg = {"role": "user", "content": layer2 or "", "context_layer": "layer2"}
+    work.append(msg)
+    delta.append(msg)
+
     return {"layer2_context": layer2 or "", "status": "layer2_built"}
 
 
 async def _generate_outline(state: WorkflowState) -> dict[str, Any]:
-    from context.prompt_templates import (
-        CHAPTER_OUTLINE_SYSTEM_PROMPT,
-        build_chapter_outline_user_prompt,
-    )
+    """生成大纲：从 work_msgs 取完整上下文，调 LLM 生成结构化 JSON，追加格式化文本到 work_msgs 和 delta"""
+    from context.prompt_templates import CHAPTER_OUTLINE_SYSTEM_PROMPT, build_chapter_outline_user_prompt
     from core.llm_service import llm_service
 
+    # 用 instruction + layer2 构建本次 user_prompt，work_msgs 已含 system1/system2/history/layer2
     user_prompt = build_chapter_outline_user_prompt(
         chapter_numbers=state["chapter_numbers"],
         instruction=state["instruction"],
@@ -150,8 +166,7 @@ async def _generate_outline(state: WorkflowState) -> dict[str, Any]:
         system_prompt=CHAPTER_OUTLINE_SYSTEM_PROMPT,
         model=state.get("model"),
     )
-    # generate_json uses response_format=json_object, so output is always a dict.
-    # If wrapped in {"chapters": [...]}, extract; otherwise treat as single outline.
+    # 解包 {"chapters": [...]} 或单章 dict
     if isinstance(result, dict) and "chapters" in result and isinstance(result["chapters"], list):
         outlines = result["chapters"]
     elif isinstance(result, dict):
@@ -161,13 +176,22 @@ async def _generate_outline(state: WorkflowState) -> dict[str, Any]:
     if not outlines:
         return {"errors": state["errors"] + ["大纲生成失败：空结果"], "status": "error"}
 
+    # 补 chapter_number（如果 LLM 没填）
     for i, ol in enumerate(outlines):
         if not ol.get("chapter_number") and i < len(state["chapter_numbers"]):
             ol["chapter_number"] = state["chapter_numbers"][i]
 
     outline_texts = [_format_outline(ol) for ol in outlines]
+    combined = "\n\n---\n\n".join(outline_texts)
 
-    # interrupt: 暂停图等外部审批
+    # 追加到 work_msgs（后续节点如 write_chapter 可用）
+    work = _work_msgs.get()
+    delta = _delta.get()
+    msg = {"role": "assistant", "content": combined, "workflow_event": "outline"}
+    work.append(msg)
+    delta.append(msg)
+
+    # interrupt: 暂停图等外部审批，审批逻辑在工具中处理
     approved = interrupt({
         "type": "await_approval",
         "outlines": outlines,
@@ -183,6 +207,7 @@ async def _generate_outline(state: WorkflowState) -> dict[str, Any]:
 
 
 async def _build_layer3(state: WorkflowState) -> dict[str, Any]:
+    """构建 Layer3 精准上下文，追加到 work_msgs 和 delta"""
     from core.database import AsyncSessionLocal
     from context.context_builder import build_layer3_context
 
@@ -193,55 +218,56 @@ async def _build_layer3(state: WorkflowState) -> dict[str, Any]:
     logger.info(f"Building Layer3 for ch{chapter_number}")
     async with AsyncSessionLocal() as db:
         layer3 = await build_layer3_context(db, state["novel_id"], outline)
+
+    work = _work_msgs.get()
+    delta = _delta.get()
+    msg = {"role": "user", "content": layer3 or "", "context_layer": "layer3"}
+    work.append(msg)
+    delta.append(msg)
+
     return {"layer3_context": layer3 or "", "status": "layer3_built"}
 
 
 async def _write_chapter(state: WorkflowState) -> dict[str, Any]:
+    """写正文：从 work_msgs 组装完整上下文，流式调 LLM，追加到 work_msgs 和 delta"""
     idx = state["current_chapter_idx"]
     chapter_number = state["chapter_numbers"][idx]
     outline = state["outlines"][idx] if idx < len(state["outlines"]) else {}
     outline_text = state["outline_texts"][idx] if idx < len(state["outline_texts"]) else ""
 
-    system_prompt = (
-        "你是一位专业的小说作家，有二十年以上的类型小说创作经验。\n"
-        "严格遵循大纲结构，保持前后文连贯，语言自然流畅。"
-    )
-
-    user_prompt = (
-        f"请根据以下大纲创作第{chapter_number}章正文。\n\n"
-        f"【大纲】\n{outline_text}\n\n"
-        f"【Layer 3 精准上下文】\n{state['layer3_context']}\n\n"
-        f"请开始创作第{chapter_number}章正文，字数约{outline.get('estimated_words', 3000)}字。"
-    )
-
     from core.llm_service import llm_service
 
+    # work_msgs 已包含 system1 + system2 + history + layer2 + outline + layer3
+    # 注意：system1 和 system2 在 work_msgs 的前两条，LLM 会自然看到
+    # 我们在末尾追加一条 user 指令即可
+    user_prompt = (
+        f"请根据以上大纲和上下文创作第{chapter_number}章正文。\n\n"
+        f"大纲：\n{outline_text}\n\n"
+        f"字数要求：约{outline.get('estimated_words', 3000)}字。"
+    )
+
+    # 流式输出到前端
     ws = _current_ws.get()
     content_parts: list[str] = []
-    if ws:
-        async for chunk in llm_service.generate_stream(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            model=state.get("model"),
-        ):
-            if chunk:
-                content_parts.append(chunk)
+    async for chunk in llm_service.generate_stream(
+        prompt=user_prompt,
+        system_prompt="你是一位专业的小说作家，严格遵循大纲，语言自然流畅。",
+        model=state.get("model"),
+    ):
+        if chunk:
+            content_parts.append(chunk)
+            if ws:
                 await ws.send_json({
                     "type": "content_chunk",
                     "content": chunk,
                     "chapter_number": chapter_number,
                 })
-        content = "".join(content_parts)
-    else:
-        content = await llm_service.generate_text(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            model=state.get("model"),
-        )
 
+    content = "".join(content_parts)
     title = outline.get("title") or f"第{chapter_number}章"
     word_count = len(content)
 
+    # 保存到 Chapter 表
     from core.database import AsyncSessionLocal
     from sqlalchemy import select
     from chapters.models import Chapter
@@ -254,7 +280,6 @@ async def _write_chapter(state: WorkflowState) -> dict[str, Any]:
             )
         )
         chapter = result.scalar_one_or_none()
-
         if chapter:
             chapter.content = content
             chapter.title = title
@@ -276,6 +301,13 @@ async def _write_chapter(state: WorkflowState) -> dict[str, Any]:
             db.add(chapter)
         await db.commit()
 
+    # 追加到 work_msgs（下一批节点可见）和 delta
+    work = _work_msgs.get()
+    delta = _delta.get()
+    msg = {"role": "assistant", "content": content, "workflow_event": "chapter_body", "chapter_number": chapter_number}
+    work.append(msg)
+    delta.append(msg)
+
     ch_result = ChapterResult(
         chapter_number=chapter_number,
         title=title,
@@ -291,6 +323,7 @@ async def _write_chapter(state: WorkflowState) -> dict[str, Any]:
 
 
 async def _post_process(state: WorkflowState) -> dict[str, Any]:
+    """后处理：摘要 + review + 向量记忆入库（后端操作，不涉及 session）"""
     chapter = state["completed_chapters"][-1]
     chapter_number = chapter["chapter_number"]
     content = chapter["content"]
@@ -340,9 +373,7 @@ async def _post_process(state: WorkflowState) -> dict[str, Any]:
                 vector_store.delete_chapter_chunks(state["novel_id"], ch.id)
                 vector_store.add_chunks(state["novel_id"], chunk_data)
 
-    results = await asyncio.gather(
-        save_summary(), do_review(), update_memory(), return_exceptions=True
-    )
+    results = await asyncio.gather(save_summary(), do_review(), update_memory(), return_exceptions=True)
     summary = results[0] if not isinstance(results[0], Exception) else None
 
     if summary and isinstance(summary, str):
@@ -371,7 +402,7 @@ async def _post_process(state: WorkflowState) -> dict[str, Any]:
     }
 
 
-# -------- routing --------
+# ======== routing ========
 
 def _route_after_outline(state: WorkflowState) -> str:
     if state.get("user_approved"):
@@ -385,7 +416,7 @@ def _route_after_post_process(state: WorkflowState) -> str:
     return END  # type: ignore[return-value]
 
 
-# -------- graph --------
+# ======== graph ========
 
 def _build_graph():  # type: ignore[no-any-return]
     graph = StateGraph(WorkflowState)

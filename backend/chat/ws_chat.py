@@ -1126,9 +1126,6 @@ async def _run_chat_with_tools(
                         metadata=tool_meta
                     )
                     for item in tool_outputs:
-                        result = item.get("result") or {}
-                        if isinstance(result, dict) and result.get("__appended__"):
-                            continue  # 工具已自行追加所有消息
                         session_manager.add_message(
                             session,
                             MessageRole.TOOL,
@@ -1140,6 +1137,20 @@ async def _run_chat_with_tools(
                                 "activity_kind": item.get("activity_kind"),
                             }
                         )
+                        # 工具返回了 inject 消息列表，需要注入到 session
+                        result_payload = item.get("result") or {}
+                        inject_msgs = result_payload.get("inject") if isinstance(result_payload, dict) else None
+                        if inject_msgs and isinstance(inject_msgs, list):
+                            for inj in inject_msgs:
+                                role = inj.get("role", "user")
+                                content = inj.get("content", "")
+                                meta = {k: v for k, v in inj.items() if k not in ("role", "content")}
+                                session_manager.add_message(
+                                    session,
+                                    MessageRole(role),
+                                    content,
+                                    metadata=meta or None,
+                                )
                     history_messages = session_manager.get_messages_for_api(session, include_context=False)
                     full_messages = (
                         prefix_messages +
