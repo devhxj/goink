@@ -154,11 +154,17 @@ async def websocket_chat(
                 
                 elif message_type == "chat":
                     if not current_session:
-                        current_session = session_manager.create_session(
-                            user_id=user_id,
-                            novel_id=novel_id,
-                        )
-                        await session_manager.save_session(current_session)
+                        session_id = data.get("session_id")
+                        if session_id:
+                            current_session = await session_manager.load_session(session_id)
+                            if current_session and current_session.user_id != user_id:
+                                current_session = None
+                        if not current_session:
+                            current_session = session_manager.create_session(
+                                user_id=user_id,
+                                novel_id=novel_id,
+                            )
+                            await session_manager.save_session(current_session)
                     
                     task_id = f"chat_{current_session.session_id}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
                     task_flags[task_id] = True
