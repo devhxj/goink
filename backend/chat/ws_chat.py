@@ -132,7 +132,7 @@ async def websocket_chat(
             message_type = data.get("type")
 
             # 审批消息拦截：工作流等在 _approval_event 上，直接通知
-            from chapters.workflow import _approval_event as _evt, _approval_result as _res
+            from mcp_tools.workflow_tools import _approval_event as _evt, _approval_result as _res
             if _evt is not None and not _evt.is_set():
                 _res.update(data)
                 _evt.set()
@@ -744,6 +744,7 @@ async def _run_chat_with_tools(
             tool_cache: dict[str, dict[str, Any]] = {}
             disabled_tools: set[str] = set()
             failed_tool_keys: dict[str, int] = {}
+            pending_injects: dict[str, list[dict[str, Any]]] = {}
             max_tool_retries = 3
             recent_tool_patterns: list[str] = []
             max_tool_loops = 50
@@ -947,7 +948,9 @@ async def _run_chat_with_tools(
                                         tool_id=tool_id,
                                         **clean_args
                                     )
-                                    tool_result_payload = tool_result.model_dump()
+                                    if tool_result.inject:
+                                        pending_injects[tool_id] = tool_result.inject
+                                    tool_result_payload = tool_result.model_dump(exclude={"inject"})
                                 if tool_result_payload.get("success"):
                                     tool_cache[cache_key] = tool_result_payload
                             
@@ -1150,8 +1153,7 @@ async def _run_chat_with_tools(
                             }
                         )
                         # 工具返回了 inject 消息列表，需要注入到 session
-                        result_payload = item.get("result") or {}
-                        inject_msgs = result_payload.get("inject") if isinstance(result_payload, dict) else None
+                        inject_msgs = pending_injects.pop(item.get("tool_id", ""), None)
                         if inject_msgs and isinstance(inject_msgs, list):
                             for inj in inject_msgs:
                                 role = inj.get("role", "user")

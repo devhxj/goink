@@ -11,7 +11,7 @@ from .location_tools import register_location_tools
 from .story_arc_tools import register_story_arc_tools
 from .story_state_tools import register_story_state_tools
 from .reader_perspective_tools import register_reader_perspective_tools
-from .workflow_tools import CreateChapterWorkflowTool
+from .workflow_tools import CreateOutlineTool
 
 _registry: MCPToolRegistry | None = None
 
@@ -30,6 +30,6 @@ def get_mcp_registry() -> MCPToolRegistry:
         register_story_arc_tools(registry)
         register_story_state_tools(registry)
         register_reader_perspective_tools(registry)
-        CreateChapterWorkflowTool.register_all(registry)
+        CreateOutlineTool.register_all(registry)
         _registry = registry
     return _registry

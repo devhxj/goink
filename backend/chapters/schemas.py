@@ -42,7 +42,7 @@ class ChapterResponse(ChapterBase):
     def outline_text(self) -> str | None:
         if not self.outline_json:
             return None
-        from chapters.workflow import _format_outline
+        from chapters.utils import _format_outline
         return _format_outline(self.outline_json)
 
 

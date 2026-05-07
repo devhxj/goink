@@ -99,3 +99,13 @@
 - [ ] 移除 CoordinatorAgent / AgentTask / SubAgentSpec 等过度抽象层
 - [ ] WriterAgent subagent 与章节工作流冗余，考虑移除或整合
 **优先级**：高（架构方向问题，越早重构代价越小）
+
+## 8. 编辑会话 accept/reject 与 LLM 状态维护的一致性
+
+**问题**：新方案中 LLM 通过 `edit_chapter` 写正文后立即收到维护指令，基于 pending 内容做 review 和状态维护。但如果用户 reject 了编辑会话，内容回退而状态已经改了，造成不一致。
+
+**方案 A**：认了这个 gap。后续重写时重新维护，多跑一轮。
+**方案 B**：大纲审批过的 `full_replace` 自动 accept，不走 pending。
+**方案 C**：维护指令等 accept 后注入（但 accept 不在 LLM 循环内，实现在后端）。
+
+**优先级**：中（需要决策后实施）

@@ -293,17 +293,41 @@ class EditChapterTool(BaseMCPTool):
             )
 
             diff_data = await manager.get_diff(edit_session.edit_session_id)
+            data: dict[str, Any] = {
+                "edit_session_id": edit_session.edit_session_id,
+                "chapter_id": chapter_id,
+                "change_count": edit_session.change_count,
+                "working_content": edit_session.working_content,
+                "diff": diff_data.get("diff", {}),
+                "reused_existing": reused,
+                "message": f"已应用，共 {edit_session.change_count} 处改动。",
+            }
+
+            # 大幅写入时注入维护提醒
+            inject: list[dict[str, Any]] | None = None
+            if change_type == "full_replace" and len(new_content or "") > 500:
+                inject = [{
+                    "role": "user",
+                    "content": (
+                        "已写入大量内容，请：\n"
+                        "1. 调用 run_subagent（task_type=\"review\"）对本章进行审核\n"
+                        "2. 全面检查并维护小说状态：\n"
+                        "   - 新出现的角色 → 创建角色；角色属性变化 → 更新角色\n"
+                        "   - 角色关系变化 → 更新关系\n"
+                        "   - 伏笔埋下/推进/回收 → 更新时间线\n"
+                        "   - 更新故事状态文档\n"
+                        "   - 更新读者认知（已知信息、悬念、误知）\n"
+                        "   - 故事弧线推进或新增 → 更新或创建弧线\n"
+                        "   - 如有创作偏好变化 → 更新 creative profile\n"
+                        "3. 向用户汇报本章成果"
+                    ),
+                    "workflow_event": "maintenance_reminder",
+                }]
+
             return MCPToolResult(
                 success=True,
-                data={
-                    "edit_session_id": edit_session.edit_session_id,
-                    "chapter_id": chapter_id,
-                    "change_count": edit_session.change_count,
-                    "working_content": edit_session.working_content,
-                    "diff": diff_data.get("diff", {}),
-                    "reused_existing": reused,
-                    "message": f"已应用，共 {edit_session.change_count} 处改动。",
-                },
+                data=data,
+                inject=inject,
                 metadata={
                     "tool": self.name,
                     "change_count": edit_session.change_count,

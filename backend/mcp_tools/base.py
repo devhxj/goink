@@ -16,6 +16,7 @@ class MCPToolResult(BaseModel):
     data: Any | None = None
     error: str | None = None
     metadata: dict[str, Any] | None = None
+    inject: list[dict[str, Any]] | None = None
 
 
 class MCPToolCategory(str, Enum):

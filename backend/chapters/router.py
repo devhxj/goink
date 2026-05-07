@@ -13,7 +13,7 @@ from core.exceptions import NotFoundException, UnauthorizedException, BadRequest
 from core.redis_service import redis_service
 from text.utils import count_words
 from editor.service import get_edit_session_manager
-from chapters.workflow import _format_outline
+from chapters.utils import _format_outline
 from editor.models import ChangeSource
 from novels.models import Novel
 from .models import Chapter

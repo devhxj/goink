@@ -153,7 +153,7 @@ _TOOL_SYNC_NAMES = {
     "update_character": "更新角色设定",
     "update_character_relationship": "更新人物关系",
     "run_subagent": "调度AI子任务",
-    "create_chapter_workflow": "章节创作工作流",
+    "create_outline": "章节大纲审批",
     "get_reader_perspective": "查看读者视角",
     "add_reader_perspective_entry": "添加读者视角",
     "update_reader_perspective_entry": "更新读者视角",
@@ -191,7 +191,7 @@ _TOOL_SYNC_KINDS = {
     "update_character": "edit",
     "update_character_relationship": "edit",
     "run_subagent": "plan",
-    "create_chapter_workflow": "plan",
+    "create_outline": "plan",
     "get_reader_perspective": "view",
     "add_reader_perspective_entry": "write",
     "update_reader_perspective_entry": "edit",
@@ -270,11 +270,15 @@ async def _build_tool_call_presentation(
         "create_character": ("创建新角色", "create"),
         "update_character": ("更新角色设定", "edit"),
         "update_character_relationship": ("更新人物关系", "edit"),
+        "create_outline": ("章节大纲审批", "plan"),
         "run_subagent": ("调度AI子任务", "plan"),
     }
 
     if tool_name in _TOOL_BASE_NAMES:
         base_text, activity_kind = _TOOL_BASE_NAMES[tool_name]
+    elif tool_name in _TOOL_SYNC_NAMES:
+        base_text = _TOOL_SYNC_NAMES[tool_name]
+        activity_kind = _TOOL_SYNC_KINDS.get(tool_name, "general")
     elif tool_name == "run_subagent":
         task_type = arguments.get("task_type")
         if task_type == "review":
