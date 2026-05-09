@@ -43,68 +43,65 @@ class GetLocationsTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from locations.service import LocationService
-            svc = LocationService(db, novel_id)
+        from locations.service import LocationService
+        svc = LocationService(db, novel_id)
 
-            if args.mode == "detail":
-                if not args.location_id:
-                    return MCPToolResult(success=False, error="detail 模式需要 location_id")
-                location = await svc.get_by_id(args.location_id)
-                if not location:
-                    return MCPToolResult(success=False, error=f"地点 {args.location_id} 不存在")
+        if args.mode == "detail":
+            if not args.location_id:
+                return MCPToolResult(success=False, error="detail 模式需要 location_id")
+            location = await svc.get_by_id(args.location_id)
+            if not location:
+                return MCPToolResult(success=False, error=f"地点 {args.location_id} 不存在")
 
-                parent_name = None
-                if location.parent_location_id:
-                    parent = await svc.get_by_id(location.parent_location_id)
-                    if parent:
-                        parent_name = parent.name
+            parent_name = None
+            if location.parent_location_id:
+                parent = await svc.get_by_id(location.parent_location_id)
+                if parent:
+                    parent_name = parent.name
 
-                child_locs = await svc.get_children(args.location_id)
-                children = [{"id": c.id, "name": c.name, "type": c.location_type}
-                           for c in child_locs]
+            child_locs = await svc.get_children(args.location_id)
+            children = [{"id": c.id, "name": c.name, "type": c.location_type}
+                       for c in child_locs]
 
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "id": location.id,
-                        "name": location.name,
-                        "type": location.location_type,
-                        "description": location.description,
-                        "geo_info": location.geo_info,
-                        "related_characters": location.related_characters,
-                        "related_chapters": location.related_chapters,
-                        "tags": location.tags,
-                        "parent_name": parent_name,
-                        "children": children,
-                        "children_count": len(children),
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "location_id": args.location_id, "mode": "detail"}
-                )
+            return MCPToolResult(
+                success=True,
+                data={
+                    "id": location.id,
+                    "name": location.name,
+                    "type": location.location_type,
+                    "description": location.description,
+                    "geo_info": location.geo_info,
+                    "related_characters": location.related_characters,
+                    "related_chapters": location.related_chapters,
+                    "tags": location.tags,
+                    "parent_name": parent_name,
+                    "children": children,
+                    "children_count": len(children),
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "location_id": args.location_id, "mode": "detail"}
+            )
+        else:
+            if args.search:
+                locations = await svc.search(args.search)
+            elif args.location_type:
+                locations = await svc.get_by_type(args.location_type)
             else:
-                if args.search:
-                    locations = await svc.search(args.search)
-                elif args.location_type:
-                    locations = await svc.get_by_type(args.location_type)
-                else:
-                    locations = await svc.get_all()
+                locations = await svc.get_all()
 
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "locations": [
-                            {"id": l.id, "name": l.name, "type": l.location_type,
-                             "description": l.description[:100] if l.description else None,
-                             "tags": l.tags}
-                            for l in locations
-                        ],
-                        "total": len(locations),
-                        "types": list(set(l.location_type for l in locations)),
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "mode": "list"}
-                )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"获取地点信息失败: {str(e)}")
+            return MCPToolResult(
+                success=True,
+                data={
+                    "locations": [
+                        {"id": l.id, "name": l.name, "type": l.location_type,
+                         "description": l.description[:100] if l.description else None,
+                         "tags": l.tags}
+                        for l in locations
+                    ],
+                    "total": len(locations),
+                    "types": list(set(l.location_type for l in locations)),
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "mode": "list"}
+            )
 
 
 class CreateLocationArgs(BaseModel):
@@ -137,35 +134,32 @@ class CreateLocationTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from locations.schemas import LocationCreate, LocationType
-            from locations.service import LocationService
+        from locations.schemas import LocationCreate, LocationType
+        from locations.service import LocationService
 
-            loc_data = LocationCreate(
-                name=args.name,
-                location_type=LocationType(args.location_type) if args.location_type else LocationType.OTHER,
-                description=args.description,
-                tags=args.tags,
-                parent_location_id=args.parent_location_id,
-            )
+        loc_data = LocationCreate(
+            name=args.name,
+            location_type=LocationType(args.location_type) if args.location_type else LocationType.OTHER,
+            description=args.description,
+            tags=args.tags,
+            parent_location_id=args.parent_location_id,
+        )
 
-            svc = LocationService(db, novel_id)
-            location = await svc.create(loc_data)
+        svc = LocationService(db, novel_id)
+        location = await svc.create(loc_data)
 
-            await _invalidate_novel_cache(novel_id)
+        await _invalidate_novel_cache(novel_id)
 
-            return MCPToolResult(
-                success=True,
-                data={
-                    "id": location.id,
-                    "name": location.name,
-                    "type": location.location_type,
-                    "novel_id": novel_id,
-                },
-                metadata={"tool": self.name, "novel_id": novel_id, "location_id": location.id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"创建地点失败: {str(e)}")
+        return MCPToolResult(
+            success=True,
+            data={
+                "id": location.id,
+                "name": location.name,
+                "type": location.location_type,
+                "novel_id": novel_id,
+            },
+            metadata={"tool": self.name, "novel_id": novel_id, "location_id": location.id}
+        )
 
 
 class UpdateLocationArgs(BaseModel):
@@ -198,39 +192,36 @@ class UpdateLocationTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from locations.schemas import LocationUpdate, LocationType
-            from locations.service import LocationService
+        from locations.schemas import LocationUpdate, LocationType
+        from locations.service import LocationService
 
-            svc = LocationService(db, novel_id)
-            update_fields = args.model_dump(exclude_unset=True)
-            update_fields.pop("location_id", None)
-            if "location_type" in update_fields:
-                update_fields["location_type"] = LocationType(update_fields["location_type"])
+        svc = LocationService(db, novel_id)
+        update_fields = args.model_dump(exclude_unset=True)
+        update_fields.pop("location_id", None)
+        if "location_type" in update_fields:
+            update_fields["location_type"] = LocationType(update_fields["location_type"])
 
-            if not update_fields:
-                return MCPToolResult(success=False, error="至少需要提供一个要修改的字段")
+        if not update_fields:
+            return MCPToolResult(success=False, error="至少需要提供一个要修改的字段")
 
-            data = LocationUpdate(**update_fields)
-            location = await svc.update(args.location_id, data)
-            if not location:
-                return MCPToolResult(success=False, error=f"地点 {args.location_id} 不存在或不属于当前小说")
+        data = LocationUpdate(**update_fields)
+        location = await svc.update(args.location_id, data)
+        if not location:
+            return MCPToolResult(success=False, error=f"地点 {args.location_id} 不存在或不属于当前小说")
 
-            await _invalidate_novel_cache(novel_id)
+        await _invalidate_novel_cache(novel_id)
 
-            return MCPToolResult(
-                success=True,
-                data={
-                    "id": location.id,
-                    "name": location.name,
-                    "type": location.location_type,
-                    "description": location.description,
-                    "tags": location.tags,
-                },
-                metadata={"tool": self.name, "novel_id": novel_id, "location_id": args.location_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"更新地点失败: {str(e)}")
+        return MCPToolResult(
+            success=True,
+            data={
+                "id": location.id,
+                "name": location.name,
+                "type": location.location_type,
+                "description": location.description,
+                "tags": location.tags,
+            },
+            metadata={"tool": self.name, "novel_id": novel_id, "location_id": args.location_id}
+        )
 
 
 class DeleteLocationArgs(BaseModel):
@@ -258,20 +249,17 @@ class DeleteLocationTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from locations.service import LocationService
-            svc = LocationService(db, novel_id)
-            deleted = await svc.delete(args.location_id)
-            if not deleted:
-                return MCPToolResult(success=False, error=f"地点 {args.location_id} 不存在、不属于当前小说或已删除")
-            await _invalidate_novel_cache(novel_id)
-            return MCPToolResult(
-                success=True,
-                data={"deleted": True, "location_id": args.location_id},
-                metadata={"tool": self.name, "novel_id": novel_id, "location_id": args.location_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"删除地点失败: {str(e)}")
+        from locations.service import LocationService
+        svc = LocationService(db, novel_id)
+        deleted = await svc.delete(args.location_id)
+        if not deleted:
+            return MCPToolResult(success=False, error=f"地点 {args.location_id} 不存在、不属于当前小说或已删除")
+        await _invalidate_novel_cache(novel_id)
+        return MCPToolResult(
+            success=True,
+            data={"deleted": True, "location_id": args.location_id},
+            metadata={"tool": self.name, "novel_id": novel_id, "location_id": args.location_id}
+        )
 
 
 def register_location_tools(registry) -> None:

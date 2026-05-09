@@ -37,24 +37,21 @@ class SearchStoryMemoryTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            builder = ContextBuilder(db, novel_id)
-            results = await builder.search_relevant_context(
-                query=args.query,
-                top_k=args.top_k,
-                min_relevance_score=args.min_relevance_score
-            )
-            return MCPToolResult(
-                success=True,
-                data={
-                    "query": args.query,
-                    "results": results,
-                    "total": len(results)
-                },
-                metadata={"tool": self.name, "novel_id": novel_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"Search failed: {str(e)}")
+        builder = ContextBuilder(db, novel_id)
+        results = await builder.search_relevant_context(
+            query=args.query,
+            top_k=args.top_k,
+            min_relevance_score=args.min_relevance_score
+        )
+        return MCPToolResult(
+            success=True,
+            data={
+                "query": args.query,
+                "results": results,
+                "total": len(results)
+            },
+            metadata={"tool": self.name, "novel_id": novel_id}
+        )
 
 
 def register_memory_tools(registry: MCPToolRegistry) -> None:

@@ -51,40 +51,37 @@ class GetTimelineTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            service = TimelineService(db, novel_id)
+        service = TimelineService(db, novel_id)
 
-            if args.mode == "context":
-                if args.current_chapter is None:
-                    return MCPToolResult(success=False, error="context 模式需要提供 current_chapter")
-                entries, summary_text = await service.get_context_for_generation(args.current_chapter, args.max_entries)
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "entries": [_entry_to_dict(e) for e in entries],
-                        "total_count": len(entries),
-                        "summary_text": summary_text,
-                        "current_chapter": args.current_chapter,
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "mode": "context"}
-                )
-            else:
-                items, total = await service.get_timeline(
-                    page=args.page, page_size=args.page_size, category=args.category,
-                    status=args.status, time_horizon=args.time_horizon, search=args.search,
-                )
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "items": [_entry_to_dict(e) for e in items],
-                        "total": total,
-                        "page": args.page,
-                        "page_size": args.page_size,
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "mode": "full"}
-                )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"获取时间线失败: {str(e)}")
+        if args.mode == "context":
+            if args.current_chapter is None:
+                return MCPToolResult(success=False, error="context 模式需要提供 current_chapter")
+            entries, summary_text = await service.get_context_for_generation(args.current_chapter, args.max_entries)
+            return MCPToolResult(
+                success=True,
+                data={
+                    "entries": [_entry_to_dict(e) for e in entries],
+                    "total_count": len(entries),
+                    "summary_text": summary_text,
+                    "current_chapter": args.current_chapter,
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "mode": "context"}
+            )
+        else:
+            items, total = await service.get_timeline(
+                page=args.page, page_size=args.page_size, category=args.category,
+                status=args.status, time_horizon=args.time_horizon, search=args.search,
+            )
+            return MCPToolResult(
+                success=True,
+                data={
+                    "items": [_entry_to_dict(e) for e in items],
+                    "total": total,
+                    "page": args.page,
+                    "page_size": args.page_size,
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "mode": "full"}
+            )
 
 
 class AddTimelineEntryArgs(BaseModel):
@@ -117,58 +114,54 @@ class AddTimelineEntryTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            entries = args.entries
-            if not entries or len(entries) == 0:
-                return MCPToolResult(success=False, error="entries不能为空")
-            if len(entries) > 6:
-                return MCPToolResult(success=False, error="最多支持6个条目")
+        entries = args.entries
+        if not entries or len(entries) == 0:
+            return MCPToolResult(success=False, error="entries不能为空")
+        if len(entries) > 6:
+            return MCPToolResult(success=False, error="最多支持6个条目")
 
-            service = TimelineService(db, novel_id)
+        service = TimelineService(db, novel_id)
 
-            async def _add_single(op: dict) -> dict:
-                try:
-                    data = TimelineEntryCreate(
-                        category=op["category"],
-                        title=op["title"],
-                        description=op.get("description"),
-                        detail_json=op.get("detail_json"),
-                        target_chapter=op.get("target_chapter"),
-                        time_horizon=op.get("time_horizon"),
-                        importance=op.get("importance", 3),
-                        source="ai_generated",
-                        source_chapter_id=op.get("source_chapter_id"),
-                        related_entry_ids=op.get("related_entry_ids"),
-                        tags=op.get("tags"),
-                        arc_id=op.get("arc_id"),
-                        sequence=op.get("sequence", 0),
-                    )
-                    entry = await service.add_entry(data, auto_commit=False)
-                    return {"success": True, "data": _entry_to_dict(entry)}
-                except Exception as e:
-                    return {"success": False, "error": str(e)}
+        async def _add_single(op: dict) -> dict:
+            try:
+                data = TimelineEntryCreate(
+                    category=op["category"],
+                    title=op["title"],
+                    description=op.get("description"),
+                    detail_json=op.get("detail_json"),
+                    target_chapter=op.get("target_chapter"),
+                    time_horizon=op.get("time_horizon"),
+                    importance=op.get("importance", 3),
+                    source="ai_generated",
+                    source_chapter_id=op.get("source_chapter_id"),
+                    related_entry_ids=op.get("related_entry_ids"),
+                    tags=op.get("tags"),
+                    arc_id=op.get("arc_id"),
+                    sequence=op.get("sequence", 0),
+                )
+                entry = await service.add_entry(data, auto_commit=False)
+                return {"success": True, "data": _entry_to_dict(entry)}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
 
-            results = []
-            for op in entries:
-                results.append(await _add_single(op))
-            success_count = sum(1 for r in results if r.get("success"))
-            if success_count > 0:
-                await db.commit()
-            else:
-                await db.rollback()
-            await _invalidate_novel_cache(novel_id)
-            return MCPToolResult(
-                success=success_count > 0,
-                data={
-                    "total": len(entries),
-                    "successful": success_count,
-                    "results": results
-                },
-                metadata={"tool": self.name, "novel_id": novel_id}
-            )
-        except Exception as e:
+        results = []
+        for op in entries:
+            results.append(await _add_single(op))
+        success_count = sum(1 for r in results if r.get("success"))
+        if success_count > 0:
+            await db.commit()
+        else:
             await db.rollback()
-            return MCPToolResult(success=False, error=f"添加时间线条目失败: {str(e)}")
+        await _invalidate_novel_cache(novel_id)
+        return MCPToolResult(
+            success=success_count > 0,
+            data={
+                "total": len(entries),
+                "successful": success_count,
+                "results": results
+            },
+            metadata={"tool": self.name, "novel_id": novel_id}
+        )
 
 
 class UpdateTimelineEntryArgs(BaseModel):
@@ -209,26 +202,23 @@ class UpdateTimelineEntryTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            update_fields = args.model_dump(exclude_unset=True)
-            update_fields.pop("entry_id", None)
+        update_fields = args.model_dump(exclude_unset=True)
+        update_fields.pop("entry_id", None)
 
-            if not update_fields:
-                return MCPToolResult(success=False, error="没有提供更新字段")
+        if not update_fields:
+            return MCPToolResult(success=False, error="没有提供更新字段")
 
-            data = TimelineEntryUpdate(**update_fields)
-            service = TimelineService(db, novel_id)
-            entry = await service.update_entry(args.entry_id, data, editor="ai")
-            if not entry:
-                return MCPToolResult(success=False, error=f"条目 {args.entry_id} 不存在")
-            await _invalidate_novel_cache(novel_id)
-            return MCPToolResult(
-                success=True,
-                data=_entry_to_dict(entry),
-                metadata={"tool": self.name, "novel_id": novel_id, "version": entry.version}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"更新时间线条目失败: {str(e)}")
+        data = TimelineEntryUpdate(**update_fields)
+        service = TimelineService(db, novel_id)
+        entry = await service.update_entry(args.entry_id, data, editor="ai")
+        if not entry:
+            return MCPToolResult(success=False, error=f"条目 {args.entry_id} 不存在")
+        await _invalidate_novel_cache(novel_id)
+        return MCPToolResult(
+            success=True,
+            data=_entry_to_dict(entry),
+            metadata={"tool": self.name, "novel_id": novel_id, "version": entry.version}
+        )
 
 
 def _entry_to_dict(entry: TimelineEntry) -> dict[str, Any]:

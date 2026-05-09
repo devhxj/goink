@@ -76,67 +76,63 @@ class RunReviewTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            if args.scope == "foreshadowing":
-                return await self._query_foreshadowing_list(db, novel_id, args.min_importance)
+        if args.scope == "foreshadowing":
+            return await self._query_foreshadowing_list(db, novel_id, args.min_importance)
 
-            if args.scope == "foreshadowing_status":
-                return await self._query_foreshadowing_stats(db, novel_id)
+        if args.scope == "foreshadowing_status":
+            return await self._query_foreshadowing_stats(db, novel_id)
 
-            checker = ConsistencyChecker(db, novel_id)
+        checker = ConsistencyChecker(db, novel_id)
 
-            query = select(Chapter).where(Chapter.novel_id == novel_id, Chapter.status == "completed")
-            if args.chapter_ids:
-                query = query.where(Chapter.id.in_(args.chapter_ids))
-            query = query.order_by(Chapter.chapter_number)
-            result = await db.execute(query)
-            chapters = result.scalars().all()
+        query = select(Chapter).where(Chapter.novel_id == novel_id, Chapter.status == "completed")
+        if args.chapter_ids:
+            query = query.where(Chapter.id.in_(args.chapter_ids))
+        query = query.order_by(Chapter.chapter_number)
+        result = await db.execute(query)
+        chapters = result.scalars().all()
 
-            if args.scope == "character":
-                issues = await checker.check_character_consistency(chapters)
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "review_type": "character",
-                        "issues": [issue.model_dump() for issue in issues],
-                        "total_issues": len(issues),
-                        "checked_chapters": len(chapters),
-                        "summary": f"角色一致性检查完成，共{len(issues)}个问题" if issues else "角色一致性检查通过，未发现问题",
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id}
-                )
+        if args.scope == "character":
+            issues = await checker.check_character_consistency(chapters)
+            return MCPToolResult(
+                success=True,
+                data={
+                    "review_type": "character",
+                    "issues": [issue.model_dump() for issue in issues],
+                    "total_issues": len(issues),
+                    "checked_chapters": len(chapters),
+                    "summary": f"角色一致性检查完成，共{len(issues)}个问题" if issues else "角色一致性检查通过，未发现问题",
+                },
+                metadata={"tool": self.name, "novel_id": novel_id}
+            )
 
-            elif args.scope == "plot":
-                issues = await checker.check_plot_consistency(chapters)
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "review_type": "plot",
-                        "issues": [issue.model_dump() for issue in issues],
-                        "total_issues": len(issues),
-                        "checked_chapters": len(chapters),
-                        "summary": f"情节逻辑检查完成，共{len(issues)}个问题" if issues else "情节逻辑检查通过，未发现问题",
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id}
-                )
+        elif args.scope == "plot":
+            issues = await checker.check_plot_consistency(chapters)
+            return MCPToolResult(
+                success=True,
+                data={
+                    "review_type": "plot",
+                    "issues": [issue.model_dump() for issue in issues],
+                    "total_issues": len(issues),
+                    "checked_chapters": len(chapters),
+                    "summary": f"情节逻辑检查完成，共{len(issues)}个问题" if issues else "情节逻辑检查通过，未发现问题",
+                },
+                metadata={"tool": self.name, "novel_id": novel_id}
+            )
 
-            elif args.scope == "full":
-                check_result = await checker.check_all(
-                    chapter_ids=args.chapter_ids,
-                    check_types=["character", "plot", "timeline", "foreshadowing"]
-                )
-                fs_data = await self._query_foreshadowing_list(db, novel_id, args.min_importance, return_raw=True)
-                check_result["unresolved_plots"] = fs_data.get("unresolved_plots", [])
-                stats_data = await self._query_foreshadowing_stats(db, novel_id, return_raw=True)
-                check_result["foreshadowing_statistics"] = stats_data
-                check_result["review_type"] = "full"
-                return MCPToolResult(success=True, data=check_result, metadata={"tool": self.name, "novel_id": novel_id})
+        elif args.scope == "full":
+            check_result = await checker.check_all(
+                chapter_ids=args.chapter_ids,
+                check_types=["character", "plot", "timeline", "foreshadowing"]
+            )
+            fs_data = await self._query_foreshadowing_list(db, novel_id, args.min_importance, return_raw=True)
+            check_result["unresolved_plots"] = fs_data.get("unresolved_plots", [])
+            stats_data = await self._query_foreshadowing_stats(db, novel_id, return_raw=True)
+            check_result["foreshadowing_statistics"] = stats_data
+            check_result["review_type"] = "full"
+            return MCPToolResult(success=True, data=check_result, metadata={"tool": self.name, "novel_id": novel_id})
 
-            else:
-                return MCPToolResult(success=False, error=f"不支持的scope: {args.scope}")
-
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"审查失败: {str(e)}")
+        else:
+            return MCPToolResult(success=False, error=f"不支持的scope: {args.scope}")
 
     async def _query_foreshadowing_list(self, db, novel_id, min_importance=None, return_raw=False):
         query = select(TimelineEntry).where(

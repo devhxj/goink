@@ -182,4 +182,4 @@ class MCPToolRegistry:
                 await db.rollback()
             except Exception:
                 pass
-            return MCPToolResult(success=False, error=str(e))
+            return MCPToolResult(success=False, error="服务器内部错误，请稍后重试")

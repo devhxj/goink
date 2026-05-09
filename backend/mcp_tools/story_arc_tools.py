@@ -38,16 +38,13 @@ class GetStoryArcsTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            service = StoryArcService(db, novel_id)
-            arcs = await service.list_arcs(arc_type=args.arc_type, status=args.status)
-            return MCPToolResult(
-                success=True,
-                data=[_arc_to_dict(a) for a in arcs],
-                metadata={"tool": self.name, "novel_id": novel_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"获取叙事弧线失败: {str(e)}")
+        service = StoryArcService(db, novel_id)
+        arcs = await service.list_arcs(arc_type=args.arc_type, status=args.status)
+        return MCPToolResult(
+            success=True,
+            data=[_arc_to_dict(a) for a in arcs],
+            metadata={"tool": self.name, "novel_id": novel_id}
+        )
 
 
 class AddStoryArcArgs(BaseModel):
@@ -83,25 +80,22 @@ class AddStoryArcTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from story_arcs.schemas import StoryArcType as SchemaArcType
-            service = StoryArcService(db, novel_id)
-            data = StoryArcCreate(
-                name=args.name,
-                description=args.description,
-                arc_type=SchemaArcType(args.arc_type),
-                start_chapter=args.start_chapter,
-                end_chapter=args.end_chapter,
-                importance=args.importance,
-            )
-            arc = await service.create_arc(data)
-            return MCPToolResult(
-                success=True,
-                data=_arc_to_dict(arc),
-                metadata={"tool": self.name, "novel_id": novel_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"创建叙事弧线失败: {str(e)}")
+        from story_arcs.schemas import StoryArcType as SchemaArcType
+        service = StoryArcService(db, novel_id)
+        data = StoryArcCreate(
+            name=args.name,
+            description=args.description,
+            arc_type=SchemaArcType(args.arc_type),
+            start_chapter=args.start_chapter,
+            end_chapter=args.end_chapter,
+            importance=args.importance,
+        )
+        arc = await service.create_arc(data)
+        return MCPToolResult(
+            success=True,
+            data=_arc_to_dict(arc),
+            metadata={"tool": self.name, "novel_id": novel_id}
+        )
 
 
 class UpdateStoryArcArgs(BaseModel):
@@ -134,25 +128,22 @@ class UpdateStoryArcTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            update_fields = args.model_dump(exclude_unset=True)
-            update_fields.pop("arc_id", None)
+        update_fields = args.model_dump(exclude_unset=True)
+        update_fields.pop("arc_id", None)
 
-            if not update_fields:
-                return MCPToolResult(success=False, error="没有提供更新字段")
+        if not update_fields:
+            return MCPToolResult(success=False, error="没有提供更新字段")
 
-            data = StoryArcUpdate(**update_fields)
-            service = StoryArcService(db, novel_id)
-            arc = await service.update_arc(args.arc_id, data)
-            if not arc:
-                return MCPToolResult(success=False, error=f"弧线 {args.arc_id} 不存在")
-            return MCPToolResult(
-                success=True,
-                data=_arc_to_dict(arc),
-                metadata={"tool": self.name, "novel_id": novel_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"更新叙事弧线失败: {str(e)}")
+        data = StoryArcUpdate(**update_fields)
+        service = StoryArcService(db, novel_id)
+        arc = await service.update_arc(args.arc_id, data)
+        if not arc:
+            return MCPToolResult(success=False, error=f"弧线 {args.arc_id} 不存在")
+        return MCPToolResult(
+            success=True,
+            data=_arc_to_dict(arc),
+            metadata={"tool": self.name, "novel_id": novel_id}
+        )
 
 
 def _arc_to_dict(arc: StoryArc) -> dict[str, Any]:

@@ -81,86 +81,83 @@ class CreateOutlineTool(BaseMCPTool):
         if not websocket or not chat_session:
             return MCPToolResult(success=False, error="缺少 ws 或 session")
 
-        try:
-            from chapters.utils import _format_outline
+        from chapters.utils import _format_outline
 
-            # === 解析大纲 ===
-            if "chapters" in args.outline and isinstance(args.outline["chapters"], list):
-                outlines: list[dict] = args.outline["chapters"]
-            else:
-                outlines = [args.outline]
+        # === 解析大纲 ===
+        if "chapters" in args.outline and isinstance(args.outline["chapters"], list):
+            outlines: list[dict] = args.outline["chapters"]
+        else:
+            outlines = [args.outline]
 
-            if not outlines:
-                return MCPToolResult(success=False, error="大纲为空")
+        if not outlines:
+            return MCPToolResult(success=False, error="大纲为空")
 
-            # 补 chapter_number
-            for i, ol in enumerate(outlines):
-                if not ol.get("chapter_number") and i < len(args.chapter_numbers):
-                    ol["chapter_number"] = args.chapter_numbers[i]
+        # 补 chapter_number
+        for i, ol in enumerate(outlines):
+            if not ol.get("chapter_number") and i < len(args.chapter_numbers):
+                ol["chapter_number"] = args.chapter_numbers[i]
 
-            outline_texts: list[str] = [_format_outline(ol) for ol in outlines]
-            combined_text = "\n\n---\n\n".join(outline_texts)
+        outline_texts: list[str] = [_format_outline(ol) for ol in outlines]
+        combined_text = "\n\n---\n\n".join(outline_texts)
 
-            # === 发送大纲给前端审批 ===
-            await websocket.send_json({
-                "type": "outline_generated",
-                "novel_id": novel_id,
-                "chapter_numbers": args.chapter_numbers,
-                "content": combined_text,
-                "outlines": outlines,
-            })
+        # === 发送大纲给前端审批 ===
+        await websocket.send_json({
+            "type": "outline_generated",
+            "novel_id": novel_id,
+            "chapter_numbers": args.chapter_numbers,
+            "content": combined_text,
+            "outlines": outlines,
+        })
 
-            # === 等待用户审批 ===
-            session_id = chat_session.session_id
-            event, result = _get_approval(session_id)
-            result.clear()
-            await event.wait()
-            approval_raw = dict(result)
-            cleanup_approval(session_id)
-            approved = approval_raw.get("approved", False)
+        # === 等待用户审批 ===
+        session_id = chat_session.session_id
+        event, result = _get_approval(session_id)
+        result.clear()
+        await event.wait()
+        approval_raw = dict(result)
+        cleanup_approval(session_id)
+        approved = approval_raw.get("approved", False)
 
-            if not approved:
-                feedback = approval_raw.get("feedback", "请重新生成")
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "approved": False,
-                        "feedback": feedback,
-                        "message": f"大纲审批未通过：{feedback}",
-                    },
-                )
-
-            # === 审批通过，构建 Layer3 ===
-            from core.database import AsyncSessionLocal
-            from context.context_builder import build_layer3_context
-
-            inject_msgs: list[dict] = []
-            for idx, ol in enumerate(outlines):
-                chapter_number = ol.get("chapter_number", args.chapter_numbers[idx])
-                async with AsyncSessionLocal() as db:
-                    layer3 = (await build_layer3_context(db, novel_id, ol)) or ""
-
-                estimated_words = ol.get("estimated_words", 3000)
-                inject_msgs.append({
-                    "role": "user",
-                    "content": (
-                        f"大纲：\n{outline_texts[idx]}\n\n"
-                        f"内容：\n{layer3}\n\n"
-                        f"请根据以上大纲和内容创作第{chapter_number}章正文。"
-                        f"字数要求：约{estimated_words}字。"
-                    ),
-                    "workflow_event": "write_instruction",
-                })
-
+        if not approved:
+            feedback = approval_raw.get("feedback", "请重新生成")
             return MCPToolResult(
                 success=True,
-                data={"approved": True, "chapter_numbers": args.chapter_numbers},
-                inject=inject_msgs,
+                data={
+                    "approved": False,
+                    "feedback": feedback,
+                    "message": f"大纲审批未通过：{feedback}",
+                },
             )
 
-        except Exception as e:
-            logger.error(f"Create outline failed: {e}", exc_info=True)
-            return MCPToolResult(success=False, error=str(e))
+        # === 审批通过，构建 Layer3 ===
+        from core.database import AsyncSessionLocal
+        from context.context_builder import build_layer3_context
+
+        inject_msgs: list[dict] = []
+        for idx, ol in enumerate(outlines):
+            chapter_number = ol.get("chapter_number", args.chapter_numbers[idx])
+            async with AsyncSessionLocal() as db:
+                layer3 = (await build_layer3_context(db, novel_id, ol)) or ""
+
+            estimated_words = ol.get("estimated_words", 3000)
+            inject_msgs.append({
+                "role": "user",
+                "content": (
+                    f"大纲：\n{outline_texts[idx]}\n\n"
+                    f"内容：\n{layer3}\n\n"
+                    f"请根据以上大纲和内容创作第{chapter_number}章正文。"
+                    f"字数要求：约{estimated_words}字。"
+                ),
+                "workflow_event": "write_instruction",
+            })
+
+        return MCPToolResult(
+            success=True,
+            data={"approved": True, "chapter_numbers": args.chapter_numbers},
+            inject=inject_msgs,
+        )
+
+       
 
 def register_workflow_tools(registry: MCPToolRegistry):
     registry.register(CreateOutlineTool())

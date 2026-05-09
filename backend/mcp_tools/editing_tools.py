@@ -77,57 +77,54 @@ async def _execute_subagent_task(
         "review": TaskType.REVIEW_CHAPTER,
     }
 
+    context = await build_subagent_context(
+        db=db,
+        novel_id=novel_id,
+        spec=spec,
+        chapter_id=chapter_id,
+        instruction=instruction,
+        extra_parameters=task_parameters,
+    )
+
+    task = AgentTask(
+        task_id=f"sub_{uuid.uuid4().hex}",
+        task_type=registry_to_task_type.get(normalized_type, TaskType.GENERATE_CHAPTER),
+        novel_id=novel_id,
+        chapter_id=chapter_id,
+        parameters=task_parameters,
+        context=context,
+    )
+
+    agent_factory = agent_cls
+    token = _subagent_running_var.set(True)
     try:
-        context = await build_subagent_context(
-            db=db,
-            novel_id=novel_id,
-            spec=spec,
-            chapter_id=chapter_id,
-            instruction=instruction,
-            extra_parameters=task_parameters,
-        )
+        agent = agent_factory()  # type: ignore[call-arg]
+        result = await agent.execute(task)
+    finally:
+        _subagent_running_var.reset(token)
 
-        task = AgentTask(
-            task_id=f"sub_{uuid.uuid4().hex}",
-            task_type=registry_to_task_type.get(normalized_type, TaskType.GENERATE_CHAPTER),
-            novel_id=novel_id,
-            chapter_id=chapter_id,
-            parameters=task_parameters,
-            context=context,
-        )
+    report = SubAgentReport(
+        task_type=normalized_type,
+        success=result.success,
+        summary=result.result.get("summary", "任务完成") if result.success else f"任务失败: {result.error}",
+        key_findings=result.result.get("key_findings", []) if result.success else [],
+        suggestions=result.suggestions,
+        data=result.result,
+        error=result.error,
+    )
 
-        agent_factory = agent_cls
-        token = _subagent_running_var.set(True)
-        try:
-            agent = agent_factory()  # type: ignore[call-arg]
-            result = await agent.execute(task)
-        finally:
-            _subagent_running_var.reset(token)
+    report_data = report.to_dict()
+    report_data["capability_profile"] = {
+        "allowed_tools": spec.allowed_tools,
+        "allowed_resources": spec.allowed_resources,
+        "allow_subagent_spawn": spec.allow_subagent_spawn,
+    }
 
-        report = SubAgentReport(
-            task_type=normalized_type,
-            success=result.success,
-            summary=result.result.get("summary", "任务完成") if result.success else f"任务失败: {result.error}",
-            key_findings=result.result.get("key_findings", []) if result.success else [],
-            suggestions=result.suggestions,
-            data=result.result,
-            error=result.error,
-        )
-
-        report_data = report.to_dict()
-        report_data["capability_profile"] = {
-            "allowed_tools": spec.allowed_tools,
-            "allowed_resources": spec.allowed_resources,
-            "allow_subagent_spawn": spec.allow_subagent_spawn,
-        }
-
-        return MCPToolResult(
-            success=report.success,
-            data=report_data,
-            error=report.error,
-        )
-    except Exception as e:
-        return MCPToolResult(success=False, error=f"子Agent执行失败: {str(e)}")
+    return MCPToolResult(
+        success=report.success,
+        data=report_data,
+        error=report.error,
+    )
 
 
 class EditChapterArgs(BaseModel):
@@ -176,86 +173,83 @@ class EditChapterTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            result = await db.execute(select(Chapter).where(Chapter.id == args.chapter_id))
-            chapter = result.scalar_one_or_none()
-            if not chapter:
-                return MCPToolResult(success=False, error=f"章节不存在: {args.chapter_id}")
-            if chapter.novel_id != novel_id:
-                return MCPToolResult(success=False, error="无权编辑此章节")
+        result = await db.execute(select(Chapter).where(Chapter.id == args.chapter_id))
+        chapter = result.scalar_one_or_none()
+        if not chapter:
+            return MCPToolResult(success=False, error=f"章节不存在: {args.chapter_id}")
+        if chapter.novel_id != novel_id:
+            return MCPToolResult(success=False, error="无权编辑此章节")
 
-            manager = get_edit_session_manager(db)
-            edit_session = await manager.get_edit_session(args.chapter_id)
-            reused = edit_session is not None
-            if not edit_session:
-                session_id = extra.get("session_id", "")
-                edit_session = await manager.create_edit_session(args.chapter_id, session_id)
+        manager = get_edit_session_manager(db)
+        edit_session = await manager.get_edit_session(args.chapter_id)
+        reused = edit_session is not None
+        if not edit_session:
+            session_id = extra.get("session_id", "")
+            edit_session = await manager.create_edit_session(args.chapter_id, session_id)
 
-            if args.undo or args.change_type == "undo":
-                return await self._handle_undo(db, manager, edit_session, args.dry_run, args.undo_from_snapshot)
+        if args.undo or args.change_type == "undo":
+            return await self._handle_undo(db, manager, edit_session, args.dry_run, args.undo_from_snapshot)
 
-            if args.change_type == "multi_search_replace":
-                return await self._handle_multi_search_replace(db, manager, edit_session, args.edits, args.match_mode, args.dry_run)
+        if args.change_type == "multi_search_replace":
+            return await self._handle_multi_search_replace(db, manager, edit_session, args.edits, args.match_mode, args.dry_run)
 
-            if args.change_type == "search_replace":
-                return await self._handle_search_replace(db, manager, edit_session, args.search_text, args.new_content, args.match_mode, args.dry_run)
+        if args.change_type == "search_replace":
+            return await self._handle_search_replace(db, manager, edit_session, args.search_text, args.new_content, args.match_mode, args.dry_run)
 
-            if args.change_type == "line_range_replace":
-                if args.start_line is None or args.end_line is None:
-                    return MCPToolResult(success=False, error="line_range_replace 必须提供 start_line 和 end_line")
+        if args.change_type == "line_range_replace":
+            if args.start_line is None or args.end_line is None:
+                return MCPToolResult(success=False, error="line_range_replace 必须提供 start_line 和 end_line")
 
-            await manager.apply_change(
-                edit_session=edit_session,
-                change_type="partial_edit" if args.change_type == "line_range_replace" else args.change_type,
-                new_content=args.new_content or "",
-                start_line=args.start_line,
-                end_line=args.end_line,
-                reason=args.reason,
-            )
+        await manager.apply_change(
+            edit_session=edit_session,
+            change_type="partial_edit" if args.change_type == "line_range_replace" else args.change_type,
+            new_content=args.new_content or "",
+            start_line=args.start_line,
+            end_line=args.end_line,
+            reason=args.reason,
+        )
 
-            diff_data = await manager.get_diff(edit_session.edit_session_id)
-            data: dict[str, Any] = {
-                "edit_session_id": edit_session.edit_session_id,
-                "chapter_id": args.chapter_id,
+        diff_data = await manager.get_diff(edit_session.edit_session_id)
+        data: dict[str, Any] = {
+            "edit_session_id": edit_session.edit_session_id,
+            "chapter_id": args.chapter_id,
+            "change_count": edit_session.change_count,
+            "working_content": edit_session.working_content,
+            "diff": diff_data.get("diff", {}),
+            "reused_existing": reused,
+            "message": f"已应用，共 {edit_session.change_count} 处改动。",
+        }
+
+        inject: list[dict[str, Any]] | None = None
+        if args.change_type == "full_replace" and len(args.new_content or "") > 500:
+            inject = [{
+                "role": "user",
+                "content": (
+                    "已写入大量内容，请：\n"
+                    "1. 调用 run_subagent（task_type=\"review\"）对本章进行审核\n"
+                    "2. 全面检查并维护小说状态：\n"
+                    "   - 新出现的角色 → 创建角色；角色属性变化 → 更新角色\n"
+                    "   - 角色关系变化 → 更新关系\n"
+                    "   - 伏笔埋下/推进/回收 → 更新时间线\n"
+                    "   - 更新故事状态文档\n"
+                    "   - 更新读者认知（已知信息、悬念、误知）\n"
+                    "   - 故事弧线推进或新增 → 更新或创建弧线\n"
+                    "   - 如有创作偏好变化 → 更新 creative profile\n"
+                    "3. 向用户汇报本章成果"
+                ),
+                "workflow_event": "maintenance_reminder",
+            }]
+
+        return MCPToolResult(
+            success=True,
+            data=data,
+            inject=inject,
+            metadata={
+                "tool": self.name,
                 "change_count": edit_session.change_count,
-                "working_content": edit_session.working_content,
-                "diff": diff_data.get("diff", {}),
-                "reused_existing": reused,
-                "message": f"已应用，共 {edit_session.change_count} 处改动。",
-            }
-
-            inject: list[dict[str, Any]] | None = None
-            if args.change_type == "full_replace" and len(args.new_content or "") > 500:
-                inject = [{
-                    "role": "user",
-                    "content": (
-                        "已写入大量内容，请：\n"
-                        "1. 调用 run_subagent（task_type=\"review\"）对本章进行审核\n"
-                        "2. 全面检查并维护小说状态：\n"
-                        "   - 新出现的角色 → 创建角色；角色属性变化 → 更新角色\n"
-                        "   - 角色关系变化 → 更新关系\n"
-                        "   - 伏笔埋下/推进/回收 → 更新时间线\n"
-                        "   - 更新故事状态文档\n"
-                        "   - 更新读者认知（已知信息、悬念、误知）\n"
-                        "   - 故事弧线推进或新增 → 更新或创建弧线\n"
-                        "   - 如有创作偏好变化 → 更新 creative profile\n"
-                        "3. 向用户汇报本章成果"
-                    ),
-                    "workflow_event": "maintenance_reminder",
-                }]
-
-            return MCPToolResult(
-                success=True,
-                data=data,
-                inject=inject,
-                metadata={
-                    "tool": self.name,
-                    "change_count": edit_session.change_count,
-                    "edit_session_id": edit_session.edit_session_id,
-                },
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=str(e))
+                "edit_session_id": edit_session.edit_session_id,
+            },
+        )
 
     async def _handle_undo(self, db, manager, edit_session, dry_run, undo_from_snapshot):
         snapshot_key = undo_from_snapshot
@@ -428,8 +422,6 @@ class RunSubagentTool(BaseMCPTool):
             agent_id=args.agent_id,
             model=args.model,
         )
-
-
 
 
 

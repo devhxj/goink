@@ -18,8 +18,9 @@ from .utils import _invalidate_character_cache
 from sqlalchemy import select                                                                                                                                      
 from sqlalchemy.orm import selectinload                                                                                                                            
 from rag.vector_store import vector_store, VectorStoreError
-
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
+from characters.models import Character
 class GetCharactersArgs(BaseModel):
     mode: Literal["list", "detail", "network"] = Field(default="list", description="查询模式：list=角色列表概览，detail=单角色详细档案，network=关系网络图")
     character_id: int | None = Field(default=None, description="角色ID（detail模式必填，network模式可选）")
@@ -241,33 +242,30 @@ class CreateCharacterTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from characters.models import Character
-            character = Character(
-                novel_id=novel_id,
-                name=args.name,
-                personality=args.personality or {},
-                abilities=args.abilities or [],
-            )
-            db.add(character)
-            await db.commit()
-            await db.refresh(character)
+        from characters.models import Character
+        character = Character(
+            novel_id=novel_id,
+            name=args.name,
+            personality=args.personality or {},
+            abilities=args.abilities or [],
+        )
+        db.add(character)
+        await db.commit()
+        await db.refresh(character)
 
-            await _invalidate_character_cache(novel_id)
+        await _invalidate_character_cache(novel_id)
 
-            return MCPToolResult(
-                success=True,
-                data={
-                    "id": character.id,
-                    "name": character.name,
-                    "novel_id": character.novel_id,
-                    "personality": character.personality,
-                    "abilities": character.abilities,
-                },
-                metadata={"tool": self.name, "novel_id": novel_id, "character_id": character.id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"创建角色失败: {str(e)}")
+        return MCPToolResult(
+            success=True,
+            data={
+                "id": character.id,
+                "name": character.name,
+                "novel_id": character.novel_id,
+                "personality": character.personality,
+                "abilities": character.abilities,
+            },
+            metadata={"tool": self.name, "novel_id": novel_id, "character_id": character.id}
+        )
 
 
 class UpdateCharacterArgs(BaseModel):
@@ -298,42 +296,40 @@ class UpdateCharacterTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            from characters.models import Character
-            result = await db.execute(
-                select(Character).where(Character.id == args.character_id)
-            )
-            character = result.scalar_one_or_none()
-            if not character:
-                return MCPToolResult(success=False, error=f"角色 {args.character_id} 不存在")
-            if character.novel_id != novel_id:
-                return MCPToolResult(success=False, error=f"角色不属于当前小说")
+        from characters.models import Character
+        result = await db.execute(
+            select(Character).where(Character.id == args.character_id)
+        )
+        character = result.scalar_one_or_none()
+        if not character:
+            return MCPToolResult(success=False, error=f"角色 {args.character_id} 不存在")
+        if character.novel_id != novel_id:
+            return MCPToolResult(success=False, error=f"角色不属于当前小说")
 
-            if args.name is not None:
-                character.name = args.name
-            if args.personality is not None:
-                character.personality = args.personality
-            if args.abilities is not None:
-                character.abilities = args.abilities
+        if args.name is not None:
+            character.name = args.name
+        if args.personality is not None:
+            character.personality = args.personality
+        if args.abilities is not None:
+            character.abilities = args.abilities
 
-            await db.commit()
-            await db.refresh(character)
+        await db.commit()
+        await db.refresh(character)
 
-            await _invalidate_character_cache(novel_id, args.character_id)
+        await _invalidate_character_cache(novel_id, args.character_id)
 
-            return MCPToolResult(
-                success=True,
-                data={
-                    "id": character.id,
-                    "name": character.name,
-                    "novel_id": character.novel_id,
-                    "personality": character.personality,
-                    "abilities": character.abilities,
-                },
-                metadata={"tool": self.name, "novel_id": novel_id, "character_id": args.character_id}
-            )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"更新角色失败: {str(e)}")
+        return MCPToolResult(
+            success=True,
+            data={
+                "id": character.id,
+                "name": character.name,
+                "novel_id": character.novel_id,
+                "personality": character.personality,
+                "abilities": character.abilities,
+            },
+            metadata={"tool": self.name, "novel_id": novel_id, "character_id": args.character_id}
+        )
+       
 
 
 
@@ -386,106 +382,104 @@ class UpdateCharacterRelationTool(BaseMCPTool):
         novel_id: int,
         **extra,
     ) -> MCPToolResult:
-        try:
-            service = CharacterService(db, novel_id)
+        service = CharacterService(db, novel_id)
 
-            if args.relation_id and args.evolve:
-                if not args.relationship_type:
-                    return MCPToolResult(success=False, error="演变关系时 relationship_type 为必填")
-                evolve_data = CharacterRelationEvolve(
-                    relationship_type=args.relationship_type,
-                    description=args.description,
-                    intensity=args.intensity,
-                    status=RelationStatus(args.status),
-                    evolution_notes=args.evolution_notes,
-                    established_chapter_id=args.established_chapter_id,
-                )
-                old_rel, new_rel = await service.evolve_relation(args.relation_id, evolve_data)
-                await _invalidate_character_cache(novel_id)
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "old_relation": {
-                            "id": old_rel.id,
-                            "status": old_rel.status,
-                        },
-                        "new_relation": {
-                            "id": new_rel.id,
-                            "source_character_id": new_rel.source_character_id,
-                            "target_character_id": new_rel.target_character_id,
-                            "relationship_type": new_rel.relationship_type,
-                            "intensity": new_rel.intensity,
-                            "status": new_rel.status,
-                            "evolved_from_id": new_rel.evolved_from_id,
-                        },
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "action": "evolve"}
-                )
-
-            if args.relation_id and not args.evolve:
-                update_fields = args.model_dump(exclude_unset=True)
-                update_fields.pop("relation_id", None)
-                update_fields.pop("source_character_id", None)
-                update_fields.pop("target_character_id", None)
-                update_fields.pop("evolve", None)
-                update_fields.pop("evolution_notes", None)
-                if "status" in update_fields:
-                    update_fields["status"] = RelationStatus(update_fields["status"])
-
-                if not update_fields:
-                    return MCPToolResult(success=False, error="更新关系时至少需要一个要修改的字段")
-                update_data = CharacterRelationUpdate(**update_fields)
-                relation = await service.update_relation(args.relation_id, update_data)
-                if not relation:
-                    return MCPToolResult(success=False, error=f"关系 {args.relation_id} 不存在或不属于当前小说")
-                await _invalidate_character_cache(novel_id)
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "id": relation.id,
-                        "source_character_id": relation.source_character_id,
-                        "target_character_id": relation.target_character_id,
-                        "relationship_type": relation.relationship_type,
-                        "intensity": relation.intensity,
-                        "status": relation.status,
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "action": "update"}
-                )
-
-            if args.source_character_id and args.target_character_id:
-                if not args.relationship_type:
-                    return MCPToolResult(success=False, error="创建新关系时 relationship_type 为必填")
-                create_data = CharacterRelationCreate(
-                    source_character_id=args.source_character_id,
-                    target_character_id=args.target_character_id,
-                    relationship_type=args.relationship_type,
-                    description=args.description,
-                    intensity=args.intensity,
-                    status=RelationStatus(args.status),
-                    established_chapter_id=args.established_chapter_id,
-                )
-                relation = await service.add_relation(create_data)
-                await _invalidate_character_cache(novel_id)
-                return MCPToolResult(
-                    success=True,
-                    data={
-                        "id": relation.id,
-                        "source_character_id": relation.source_character_id,
-                        "target_character_id": relation.target_character_id,
-                        "relationship_type": relation.relationship_type,
-                        "intensity": relation.intensity,
-                        "status": relation.status,
-                    },
-                    metadata={"tool": self.name, "novel_id": novel_id, "action": "create"}
-                )
-
-            return MCPToolResult(
-                success=False,
-                error="参数不足：创建新关系需 source_character_id + target_character_id + relationship_type；"
-                      "更新需 relation_id + 至少一个字段；演变需 relation_id + evolve=true + relationship_type"
+        if args.relation_id and args.evolve:
+            if not args.relationship_type:
+                return MCPToolResult(success=False, error="演变关系时 relationship_type 为必填")
+            evolve_data = CharacterRelationEvolve(
+                relationship_type=args.relationship_type,
+                description=args.description,
+                intensity=args.intensity,
+                status=RelationStatus(args.status),
+                evolution_notes=args.evolution_notes,
+                established_chapter_id=args.established_chapter_id,
             )
-        except Exception as e:
-            return MCPToolResult(success=False, error=f"操作人物关系失败: {str(e)}")
+            old_rel, new_rel = await service.evolve_relation(args.relation_id, evolve_data)
+            await _invalidate_character_cache(novel_id)
+            return MCPToolResult(
+                success=True,
+                data={
+                    "old_relation": {
+                        "id": old_rel.id,
+                        "status": old_rel.status,
+                    },
+                    "new_relation": {
+                        "id": new_rel.id,
+                        "source_character_id": new_rel.source_character_id,
+                        "target_character_id": new_rel.target_character_id,
+                        "relationship_type": new_rel.relationship_type,
+                        "intensity": new_rel.intensity,
+                        "status": new_rel.status,
+                        "evolved_from_id": new_rel.evolved_from_id,
+                    },
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "action": "evolve"}
+            )
+
+        if args.relation_id and not args.evolve:
+            update_fields = args.model_dump(exclude_unset=True)
+            update_fields.pop("relation_id", None)
+            update_fields.pop("source_character_id", None)
+            update_fields.pop("target_character_id", None)
+            update_fields.pop("evolve", None)
+            update_fields.pop("evolution_notes", None)
+            if "status" in update_fields:
+                update_fields["status"] = RelationStatus(update_fields["status"])
+
+            if not update_fields:
+                return MCPToolResult(success=False, error="更新关系时至少需要一个要修改的字段")
+            update_data = CharacterRelationUpdate(**update_fields)
+            relation = await service.update_relation(args.relation_id, update_data)
+            if not relation:
+                return MCPToolResult(success=False, error=f"关系 {args.relation_id} 不存在或不属于当前小说")
+            await _invalidate_character_cache(novel_id)
+            return MCPToolResult(
+                success=True,
+                data={
+                    "id": relation.id,
+                    "source_character_id": relation.source_character_id,
+                    "target_character_id": relation.target_character_id,
+                    "relationship_type": relation.relationship_type,
+                    "intensity": relation.intensity,
+                    "status": relation.status,
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "action": "update"}
+            )
+
+        if args.source_character_id and args.target_character_id:
+            if not args.relationship_type:
+                return MCPToolResult(success=False, error="创建新关系时 relationship_type 为必填")
+            create_data = CharacterRelationCreate(
+                source_character_id=args.source_character_id,
+                target_character_id=args.target_character_id,
+                relationship_type=args.relationship_type,
+                description=args.description,
+                intensity=args.intensity,
+                status=RelationStatus(args.status),
+                established_chapter_id=args.established_chapter_id,
+            )
+            relation = await service.add_relation(create_data)
+            await _invalidate_character_cache(novel_id)
+            return MCPToolResult(
+                success=True,
+                data={
+                    "id": relation.id,
+                    "source_character_id": relation.source_character_id,
+                    "target_character_id": relation.target_character_id,
+                    "relationship_type": relation.relationship_type,
+                    "intensity": relation.intensity,
+                    "status": relation.status,
+                },
+                metadata={"tool": self.name, "novel_id": novel_id, "action": "create"}
+            )
+
+        return MCPToolResult(
+            success=False,
+            error="参数不足：创建新关系需 source_character_id + target_character_id + relationship_type；"
+                    "更新需 relation_id + 至少一个字段；演变需 relation_id + evolve=true + relationship_type"
+        )
+       
 
 
 def register_character_tools(registry: MCPToolRegistry):
