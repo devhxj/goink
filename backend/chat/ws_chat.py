@@ -787,6 +787,33 @@ async def _run_chat_with_tools(
                         logger.warning(f"pre_display_handler failed for {tool_name}", exc_info=True)
                         return None, None
 
+                # --- 消息即时持久化回调 ---
+                async def _on_message(msg: dict[str, Any]) -> None:
+                    role = msg.get("role", "")
+                    content = msg.get("content", "")
+                    if role == "assistant":
+                        meta: dict[str, Any] = {}
+                        if msg.get("tool_calls"):
+                            meta["tool_calls"] = msg["tool_calls"]
+                        if msg.get("reasoning_content"):
+                            meta["thinking_content"] = msg["reasoning_content"]
+                        session_manager.add_message(
+                            session, MessageRole.ASSISTANT, content, metadata=meta or None
+                        )
+                    elif role == "tool":
+                        session_manager.add_message(
+                            session, MessageRole.TOOL, content,
+                            metadata={"tool_call_id": msg.get("tool_call_id", "")}
+                        )
+                    elif role == "user":
+                        session_manager.add_message(
+                            session, MessageRole.USER, content
+                        )
+                    elif role == "system":
+                        session_manager.add_message(
+                            session, MessageRole.SYSTEM, content
+                        )
+
                 # --- tool_call_handler ---
                 async def _handle_tool(
                     tool_name: str, tool_id: str, arguments: dict[str, Any]
@@ -842,6 +869,8 @@ async def _run_chat_with_tools(
                             websocket=websocket,
                             chat_session=session,
                             tool_id=tool_id,
+                            on_message=_on_message,
+                            pre_display=_pre_display,
                             **clean_args
                         )
                         inject = tool_result.inject
@@ -932,32 +961,6 @@ async def _run_chat_with_tools(
                     }, websocket)
 
                 # --- 消息即时持久化回调 ---
-                async def _on_message(msg: dict[str, Any]) -> None:
-                    role = msg.get("role", "")
-                    content = msg.get("content", "")
-                    if role == "assistant":
-                        meta: dict[str, Any] = {}
-                        if msg.get("tool_calls"):
-                            meta["tool_calls"] = msg["tool_calls"]
-                        if msg.get("reasoning_content"):
-                            meta["thinking_content"] = msg["reasoning_content"]
-                        session_manager.add_message(
-                            session, MessageRole.ASSISTANT, content, metadata=meta or None
-                        )
-                    elif role == "tool":
-                        session_manager.add_message(
-                            session, MessageRole.TOOL, content,
-                            metadata={"tool_call_id": msg.get("tool_call_id", "")}
-                        )
-                    elif role == "user":
-                        session_manager.add_message(
-                            session, MessageRole.USER, content
-                        )
-                    elif role == "system":
-                        session_manager.add_message(
-                            session, MessageRole.SYSTEM, content
-                        )
-
                 # --- 执行 Agent 循环 ---
                 loop_result = await run_agent_loop(
                     messages=full_messages,

@@ -71,7 +71,8 @@ class BaseMCPTool(ABC):
             )
 
         system_extra: dict[str, Any] = {}
-        for key in ("websocket", "chat_session", "session_id"):
+        for key in ("websocket", "chat_session", "session_id",
+                     "on_message", "pre_display"):
             if key in tool_params:
                 system_extra[key] = tool_params.pop(key)
 
