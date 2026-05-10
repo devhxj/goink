@@ -863,6 +863,7 @@ async def _run_chat_with_tools(
                             on_message=_on_message,
                             pre_display=_pre_display,
                             parent_task_id=task_id,
+                            cancel_event=cancel_event,
                             **clean_args
                         )
                         inject = tool_result.inject

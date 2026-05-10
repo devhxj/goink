@@ -188,8 +188,8 @@ class RunSubagentTool(BaseMCPTool):
                 error=result.error,
             )
 
-        # 执行循环
-        cancel_event = asyncio.Event()
+        # 执行循环 — 复用主 chat 的 cancel_event，确保主任务取消时子 Agent 同步退出
+        cancel_event = extra.get("cancel_event") or asyncio.Event()
         parent_task_id = extra.get("parent_task_id", sub_task_id)
 
         loop_result = await run_agent_loop(
