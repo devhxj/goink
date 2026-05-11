@@ -734,7 +734,6 @@ async def _run_chat_with_tools(
 
             cache_db_ref = db
             registry_for_handler = registry
-            edit_mode_for_handler = edit_mode
 
             # 失败计数
             failed_tool_keys: dict[str, int] = {}
@@ -810,23 +809,6 @@ async def _run_chat_with_tools(
                     tool_name: str, tool_id: str, arguments: dict[str, Any]
                 ) -> ToolCallResult:
                     nonlocal failed_tool_keys
-
-                    # 权限检查
-                    if not EditModeConfig.can_use_tool(edit_mode_for_handler, tool_name):
-                        logger.warning(f"Tool {tool_name} not allowed in mode {edit_mode_for_handler.value}")
-                        async with AsyncSessionLocal() as fail_db:
-                            pres = await _build_tool_call_presentation(
-                                fail_db, novel_id, tool_name, arguments,
-                                {"success": False, "error": f"当前模式({edit_mode_for_handler.value})不允许使用此工具"},
-                                status="failed"
-                            )
-                        return ToolCallResult(
-                            success=False,
-                            result={},
-                            error=f"当前模式({edit_mode_for_handler.value})不允许使用此工具",
-                            display_text=pres.get("display_text"),
-                            activity_kind=pres.get("activity_kind"),
-                        )
 
                     # 参数清洗
                     raw_args = {k: v for k, v in arguments.items() if k not in ('session_id', 'novel_id')}
