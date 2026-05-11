@@ -46,6 +46,12 @@ REVIEW_AGENT_PROMPT = """\
 - 伏笔管理：未回收的关键伏笔
 - 读者认知：信息揭露节奏是否恰当
 
+工作流程：
+1. 先调用 lint_chapter 对目标章节进行机械化文本检查（重复词、过长句、异常段落等）
+2. 调用其他工具获取角色、时间线、弧线等上下文
+3. 将 lint 发现的问题与上下文结合，写入审核报告
+4. 报告中明确区分"机械化检查发现"和"人工分析发现"
+
 报告格式：以"# 审阅报告"开头，包含问题清单、严重程度、改进建议。"""
 
 
@@ -68,7 +74,6 @@ AGENT_CONFIG: dict[str, tuple[str, frozenset[str], int]] = {
             "get_reader_perspective",
             "get_story_state",
             "get_creative_profile",
-            "run_review",
         }),
         20,
     ),
@@ -84,8 +89,8 @@ AGENT_CONFIG: dict[str, tuple[str, frozenset[str], int]] = {
             "get_story_arcs",
             "get_reader_perspective",
             "get_creative_profile",
-            "run_review",
             "get_locations",
+            "lint_chapter",
         }),
         30,
     ),

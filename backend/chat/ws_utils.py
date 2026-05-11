@@ -133,7 +133,6 @@ _TOOL_SYNC_NAMES = {
     "create_location": "创建新地点",
     "update_location": "更新地点设定",
     "delete_location": "删除地点",
-    "run_review": "执行审查",
     "get_novel_info": "查看小说信息",
     "get_characters": "查看角色信息",
     "create_character": "创建新角色",
@@ -149,6 +148,7 @@ _TOOL_SYNC_NAMES = {
     "update_story_arc": "更新故事弧线",
     "get_story_state": "查看故事状态",
     "update_story_state": "更新故事状态",
+    "lint_chapter": "章节文本检查",
 }
 
 
@@ -167,7 +167,6 @@ _TOOL_SYNC_KINDS = {
     "create_location": "create",
     "update_location": "edit",
     "delete_location": "delete",
-    "run_review": "review",
     "get_novel_info": "view",
     "get_characters": "view",
     "create_character": "create",
@@ -183,6 +182,7 @@ _TOOL_SYNC_KINDS = {
     "update_story_arc": "edit",
     "get_story_state": "view",
     "update_story_state": "edit",
+    "lint_chapter": "review",
 }
 
 
