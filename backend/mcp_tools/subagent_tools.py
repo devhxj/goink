@@ -29,13 +29,14 @@ MEMORY_AGENT_PROMPT = """\
 自由调用工具获取所需信息，最终输出结构化探索报告。
 
 工作流程：
-1. 调用 search_story_memory 广搜相关片段，每个结果附带章节摘要
-2. 根据摘要筛选最有价值的章节，用 get_chapter_content 深挖
-3. 必要时交叉查询角色、时间线、弧线等补充上下文
-4. 综合分析所有信息，输出探索报告
+1. 如果任务聚焦某个角色，优先调用 get_character_memory 一次性回收该角色的关键记忆、关系和相关章节
+2. 其余场景调用 search_story_memory 广搜相关片段，每个结果附带章节摘要
+3. 根据摘要筛选最有价值的章节，用 get_chapter_content 深挖
+4. 必要时交叉查询角色、时间线、弧线等补充上下文
+5. 综合分析所有信息，输出探索报告
 
 行为准则：
-- 先搜后读：不要直接逐章翻阅，search_story_memory 的章节摘要用于快速定位
+- 先聚合后细读：角色问题优先用 get_character_memory，普通问题优先用 search_story_memory，再决定是否细读章节
 - 每次工具调用后评估信息是否充足，不足则换角度继续
 - 报告中每条发现注明来源（章节号、角色名、弧线名等）
 - 信息确实不足时诚实说明，不要编造
@@ -70,6 +71,7 @@ AGENT_CONFIG: dict[str, tuple[str, frozenset[str], int]] = {
         MEMORY_AGENT_PROMPT,
         frozenset({
             "search_story_memory",
+            "get_character_memory",
             "get_timeline",
             "get_characters",
             "get_chapter_content",
@@ -93,6 +95,7 @@ AGENT_CONFIG: dict[str, tuple[str, frozenset[str], int]] = {
             "get_chapter_list",
             "get_novel_info",
             "get_story_arcs",
+            "get_story_state",
             "get_reader_perspective",
             "get_creative_profile",
             "get_locations",

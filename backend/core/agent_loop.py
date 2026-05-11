@@ -57,7 +57,7 @@ type OnMessageHandler = Callable[[dict[str, Any]], Awaitable[None]]
 # ---------------------------------------------------------------------------
 READ_ONLY_TOOLS: frozenset[str] = frozenset({
     "search_story_memory", "get_timeline", "get_chapter_content",
-    "get_chapter_list", "get_chapter_detail", "get_characters",
+    "get_chapter_list", "get_chapter_detail", "get_characters", "get_character_memory",
     "get_locations", "get_novel_info", "get_creative_profile",
     "get_story_arcs", "get_story_state", "get_reader_perspective",
     "check_consistency",
