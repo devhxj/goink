@@ -31,7 +31,6 @@ from novels.router import router as novels_router
 from characters.router import router as characters_router
 from locations.router import router as locations_router
 from chapters.router import router as chapters_router
-from memory.router import router as memory_router
 from rag.router import router as rag_router
 from consistency.router import router as consistency_router
 from story_arcs.router import router as story_arcs_router
@@ -180,7 +179,6 @@ app.include_router(novels_router, prefix="/api/v1")
 app.include_router(characters_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(chapters_router, prefix="/api/v1")
-app.include_router(memory_router, prefix="/api/v1")
 app.include_router(rag_router, prefix="/api/v1")
 app.include_router(consistency_router, prefix="/api/v1")
 app.include_router(story_arcs_router, prefix="/api/v1")
