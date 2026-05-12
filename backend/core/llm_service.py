@@ -641,6 +641,7 @@ class LLMService:
             {"type": "tool_call_start", "tool_name": "..."} - 工具调用开始
             {"type": "tool_call_arguments", "arguments": {...}} - 工具参数
             {"type": "tool_call_end"} - 工具调用结束
+            {"type": "usage", "usage": {...}} - 用量信息（流结束后，含 prompt_tokens/completion_tokens/total_tokens）
         """
         api_base, api_key, selected_model = self._get_model_config(model)
         
@@ -673,7 +674,8 @@ class LLMService:
             "messages": api_messages,
             "temperature": temperature or self.config.temperature,
             "max_tokens": max_tokens or self.config.max_tokens,
-            "stream": True
+            "stream": True,
+            "stream_options": {"include_usage": True}
         }
 
         if tools:
@@ -688,7 +690,8 @@ class LLMService:
         
         full_content = ""
         current_tool_calls = []
-        
+        usage_data: dict[str, Any] | None = None
+
         try:
             async with self.client.stream("POST", url, json=payload, headers=headers) as response:
                 if response.is_error:
@@ -713,57 +716,60 @@ class LLMService:
                         
                         try:
                             chunk = json.loads(data)
-                            if "choices" in chunk and len(chunk["choices"]) > 0:
-                                delta = chunk["choices"][0].get("delta", {})
-
-                                reasoning = delta.get("reasoning_content", "")
-                                if reasoning:
-                                    yield {"type": "thinking", "content": reasoning}
-
-                                content = delta.get("content", "")
-                                if content:
-                                    full_content += content
-                                    yield {"type": "content", "content": content}
-                                
-                                tool_calls_delta = delta.get("tool_calls", [])
-                                for tc in tool_calls_delta:
-                                    idx = tc.get("index", 0)
-                                    
-                                    while len(current_tool_calls) <= idx:
-                                        current_tool_calls.append({
-                                            "id": "",
-                                            "name": "",
-                                            "arguments": ""
-                                        })
-                                    
-                                    if tc.get("id"):
-                                        current_tool_calls[idx]["id"] = tc["id"]
-                                        yield {
-                                            "type": "tool_call_start",
-                                            "tool_name": "",
-                                            "tool_id": tc["id"]
-                                        }
-                                    
-                                    if tc.get("function", {}).get("name"):
-                                        current_tool_calls[idx]["name"] = tc["function"]["name"]
-                                        yield {
-                                            "type": "tool_call_start",
-                                            "tool_name": tc["function"]["name"],
-                                            "tool_id": current_tool_calls[idx]["id"]
-                                        }
-                                    
-                                    if tc.get("function", {}).get("arguments"):
-                                        current_tool_calls[idx]["arguments"] += tc["function"]["arguments"]
-                                        yield {
-                                            "type": "tool_call_arguments",
-                                            "tool_name": current_tool_calls[idx]["name"],
-                                            "tool_id": current_tool_calls[idx]["id"],
-                                            "arguments_text": current_tool_calls[idx]["arguments"]
-                                        }
-                                        
                         except json.JSONDecodeError:
                             continue
-            
+
+                    if "choices" in chunk and len(chunk["choices"]) > 0:
+                        delta = chunk["choices"][0].get("delta", {})
+
+                        reasoning = delta.get("reasoning_content", "")
+                        if reasoning:
+                            yield {"type": "thinking", "content": reasoning}
+
+                        content = delta.get("content", "")
+                        if content:
+                            full_content += content
+                            yield {"type": "content", "content": content}
+
+                        tool_calls_delta = delta.get("tool_calls", [])
+                        for tc in tool_calls_delta:
+                            idx = tc.get("index", 0)
+
+                            while len(current_tool_calls) <= idx:
+                                current_tool_calls.append({
+                                    "id": "",
+                                    "name": "",
+                                    "arguments": ""
+                                })
+
+                            if tc.get("id"):
+                                current_tool_calls[idx]["id"] = tc["id"]
+                                yield {
+                                    "type": "tool_call_start",
+                                    "tool_name": "",
+                                    "tool_id": tc["id"]
+                                }
+
+                            if tc.get("function", {}).get("name"):
+                                current_tool_calls[idx]["name"] = tc["function"]["name"]
+                                yield {
+                                    "type": "tool_call_start",
+                                    "tool_name": tc["function"]["name"],
+                                    "tool_id": current_tool_calls[idx]["id"]
+                                }
+
+                            if tc.get("function", {}).get("arguments"):
+                                current_tool_calls[idx]["arguments"] += tc["function"]["arguments"]
+                                yield {
+                                    "type": "tool_call_arguments",
+                                    "tool_name": current_tool_calls[idx]["name"],
+                                    "tool_id": current_tool_calls[idx]["id"],
+                                    "arguments_text": current_tool_calls[idx]["arguments"]
+                                }
+
+                        if "usage" in chunk and chunk["usage"] is not None:
+                            usage_data = chunk["usage"]
+
             for tc in current_tool_calls:
                 if tc["name"] and tc["arguments"]:
                     try:
@@ -780,7 +786,11 @@ class LLMService:
             
             if not current_tool_calls and full_content:
                 pass
-            
+
+            if usage_data:
+                cache_monitor.record_call(selected_model, prefix_hash, usage_data)
+                yield {"type": "usage", "usage": usage_data}
+
         except LLMServiceError:
             raise
         except httpx.HTTPStatusError as e:

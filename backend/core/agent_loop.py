@@ -14,10 +14,13 @@ from datetime import datetime, timezone
 from collections.abc import Callable, Awaitable
 from typing import Any, TYPE_CHECKING
 
+import tiktoken
 from fastapi import WebSocket
 
 from core.websocket import ws_manager
 from core.llm_service import llm_service
+
+_tiktoken_enc = tiktoken.get_encoding("o200k_base")
 
 if TYPE_CHECKING:
     from mcp_tools.base import MCPToolResult
@@ -52,6 +55,10 @@ type OnMessageHandler = Callable[[dict[str, Any]], Awaitable[None]]
 """消息持久化回调：async (message) -> None
 循环每追加一条 assistant/tool/system 消息时调用，实现任意状态可恢复"""
 
+type OnUsageHandler = Callable[[dict[str, Any]], Awaitable[None]]
+"""用量更新回调：async (usage_dict) -> None
+每次 LLM 调用完成后调用，用于更新 session.last_usage"""
+
 
 # ---------------------------------------------------------------------------
 # 只读工具集合 — 用于死循环检测
@@ -80,6 +87,7 @@ async def run_agent_loop(
     display_handler: DisplayHandler | None = None,
     on_args_stream: OnArgsStreamHandler | None = None,
     on_message: OnMessageHandler | None = None,
+    on_usage: OnUsageHandler | None = None,
     model: str | None = None,
     reasoning_effort: str | None = None,
     max_turns: int = 50,
@@ -106,14 +114,42 @@ async def run_agent_loop(
     recent_tool_patterns: list[str] = []
     tool_failed_cnt: dict[str, int] = {}
 
+    _running_tokens: dict[str, int] = {"system": 0, "user": 0, "assistant": 0, "tool": 0}
+
+    def _count_msg_tokens(msg: dict[str, Any]) -> int:
+        """计算一条消息的 tiktoken 数（只算 API 实际计数的字段）"""
+        n = 0
+        content = str(msg.get("content", ""))
+        if content:
+            n += len(_tiktoken_enc.encode(content))
+        tool_calls = msg.get("tool_calls")
+        if tool_calls:
+            n += len(_tiktoken_enc.encode(json.dumps(tool_calls, ensure_ascii=False)))
+        tool_call_id = msg.get("tool_call_id", "")
+        if tool_call_id:
+            n += len(_tiktoken_enc.encode(tool_call_id))
+        reasoning = msg.get("reasoning_content", "")
+        if reasoning:
+            n += len(_tiktoken_enc.encode(reasoning))
+        return n
+
     async def _append_msg(msg: dict[str, Any]) -> None:
-        """追加消息到列表，同时回调持久化"""
+        """追加消息到列表，同时回调持久化、更新运行 token 计数"""
+        role = msg.get("role", "")
+        if role in _running_tokens:
+            _running_tokens[role] += _count_msg_tokens(msg)
         messages.append(msg)
         if on_message:
             try:
                 await on_message(msg)
             except Exception:
                 logger.warning("on_message callback failed", exc_info=True)
+
+    # 初始化计数：已有消息（system prompt、历史等）一次性 tokenize
+    for _m in messages:
+        _role = _m.get("role", "")
+        if _role in _running_tokens:
+            _running_tokens[_role] += _count_msg_tokens(_m)
 
     while loop_count < max_turns:
         tool_outputs: list[dict[str, Any]] = []
@@ -323,6 +359,41 @@ async def run_agent_loop(
                         "display_text": display_text_result,
                         "activity_kind": activity_kind_result,
                     })
+
+                # ======== usage ========
+                elif event_type == "usage":
+                    usage = event.get("usage", {})
+                    prompt_tokens = usage.get("prompt_tokens", 0)
+
+                    # API 的 prompt_tokens 包含工具定义等开销，本地差值归入 system
+                    local_total = sum(_running_tokens.values())
+                    detail = dict(_running_tokens)
+                    if local_total > 0 and prompt_tokens > local_total:
+                        detail["system"] = _running_tokens["system"] + (prompt_tokens - local_total)
+
+                    from chat.session_manager import SessionConfig
+                    config = SessionConfig.for_model(model or "deepseek-v4-flash")
+                    context_window = config.context_window
+
+                    await ws_manager.send_personal_message({
+                        "type": "usage",
+                        "task_id": task_id,
+                        "parent_task_id": parent_task_id,
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                        "context_window": context_window,
+                        "usage_ratio": round(prompt_tokens / context_window * 100, 2) if context_window else 0,
+                        "detail": detail,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }, websocket)
+
+                    if on_usage:
+                        try:
+                            await on_usage(usage)
+                        except Exception:
+                            logger.warning("on_usage callback failed", exc_info=True)
+
         except (asyncio.CancelledError, Exception):
             partial = response_buffer.strip() or full_response.strip()
             if partial or thinking_buffer:
@@ -393,11 +464,7 @@ async def run_agent_loop(
                     )
 
             # -- token 预算检查 --
-            estimated_tokens = sum(
-                len(str(m.get("content", ""))) // 2
-                for m in messages
-                if m.get("content")
-            )
+            estimated_tokens = sum(_running_tokens.values())
             logger.info(
                 f"Loop {loop_count + 1}: {len(messages)} messages, ~{estimated_tokens} tokens"
             )

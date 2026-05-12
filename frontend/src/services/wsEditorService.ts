@@ -352,6 +352,26 @@ export interface OutlineGeneratedMsg {
   outlines: Array<Record<string, unknown>>
 }
 
+export interface SessionUsageDetail {
+  system: number
+  user: number
+  assistant: number
+  tool: number
+}
+
+export interface UsageMsg {
+  type: 'usage'
+  task_id?: string
+  parent_task_id?: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  context_window: number
+  usage_ratio: number
+  detail: SessionUsageDetail
+  timestamp?: string
+}
+
 export type ServerMsg =
   | EditStartedMsg
   | EditAppliedMsg
@@ -375,6 +395,7 @@ export type ServerMsg =
   | EditPendingMsg
   | EditStreamMsg
   | OutlineGeneratedMsg
+  | UsageMsg
 
 export type MsgHandler = (msg: ServerMsg) => void
 

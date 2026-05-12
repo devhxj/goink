@@ -241,6 +241,7 @@ class Session:
     chapter_ids: list[int] = field(default_factory=list)
     subtitle: str = ""
     current_chapter_id: int | None = None
+    last_usage: dict[str, Any] | None = None
     
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -259,7 +260,8 @@ class Session:
             "metadata": self.metadata,
             "model": self.model,
             "edit_mode": self.edit_mode,
-            "current_chapter_id": self.current_chapter_id
+            "current_chapter_id": self.current_chapter_id,
+            "last_usage": self.last_usage
         }
     
     @classmethod
@@ -288,7 +290,8 @@ class Session:
             metadata=data.get("metadata", {}),
             model=data.get("model", "deepseek-v4-flash"),
             edit_mode=data.get("edit_mode", "agent"),
-            current_chapter_id=data.get("current_chapter_id")
+            current_chapter_id=data.get("current_chapter_id"),
+            last_usage=data.get("last_usage")
         )
     
     def get_token_count(self) -> int:

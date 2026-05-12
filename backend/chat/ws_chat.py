@@ -884,6 +884,10 @@ async def _run_chat_with_tools(
                     }, websocket)
 
                 # --- 消息即时持久化回调 ---
+                async def _on_usage(usage: dict[str, Any]) -> None:
+                    session.last_usage = usage
+                    await session_storage.save(session)
+
                 # --- 执行 Agent 循环 ---
                 loop_result = await run_agent_loop(
                     messages=full_messages,
@@ -896,6 +900,7 @@ async def _run_chat_with_tools(
                     display_handler=_display,
                     on_args_stream=_on_args,
                     on_message=_on_message,
+                    on_usage=_on_usage,
                     model=session.model,
                     reasoning_effort=session.metadata.get("reasoning_effort"),
                     max_turns=50,

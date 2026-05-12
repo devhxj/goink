@@ -27,6 +27,7 @@ class ChatSession(Base):
     chapter_context: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     pending_changes: Mapped[list | None] = mapped_column(JSON, default=list)
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    usage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)

@@ -199,6 +199,7 @@ class SessionStorage:
                     db_session.chapter_context = session.chapter_context.to_dict() if session.chapter_context else None
                     db_session.pending_changes = session.pending_changes
                     db_session.extra_metadata = session.metadata
+                    db_session.usage = session.last_usage
                 else:
                     db_session = DBChatSession(
                         session_id=session.session_id,
@@ -210,7 +211,8 @@ class SessionStorage:
                         novel_context=session.novel_context.to_dict() if session.novel_context else None,
                         chapter_context=session.chapter_context.to_dict() if session.chapter_context else None,
                         pending_changes=session.pending_changes,
-                        extra_metadata=session.metadata
+                        extra_metadata=session.metadata,
+                        usage=session.last_usage
                     )
                     db.add(db_session)
                 
@@ -364,7 +366,8 @@ class SessionStorage:
             created_at=db_session.created_at,
             updated_at=db_session.updated_at,
             metadata=db_session.extra_metadata or {},
-            model=db_session.model
+            model=db_session.model,
+            last_usage=db_session.usage
         )
 
 
