@@ -100,34 +100,16 @@ func (s *Store) UpdateSessionUsage(ctx context.Context, sessionID, usageJSON str
 	return nil
 }
 
-// BumpActiveVersion 递增 active_version 并返回新值。
+// BumpActiveVersion 原子递增 active_version 并返回新值。
 func (s *Store) BumpActiveVersion(ctx context.Context, sessionID string) (int, error) {
-	tx := s.DB.WithContext(ctx).Begin()
-
-	var v int
-	if err := tx.
-		Model(&Session{}).
-		Where("session_id = ?", sessionID).
-		Select("active_version").
-		Scan(&v).Error; err != nil {
-		tx.Rollback()
-		return 0, fmt.Errorf("session store: read version: %w", err)
-	}
-
-	newV := v + 1
-	if err := tx.
-		Model(&Session{}).
-		Where("session_id = ?", sessionID).
-		Update("active_version", newV).Error; err != nil {
-		tx.Rollback()
+	var newV int
+	if err := s.DB.WithContext(ctx).
+		Raw("UPDATE sessions SET active_version = active_version + 1 WHERE session_id = ? RETURNING active_version", sessionID).
+		Scan(&newV).Error; err != nil {
 		return 0, fmt.Errorf("session store: bump version: %w", err)
 	}
 
-	if err := tx.Commit().Error; err != nil {
-		return 0, fmt.Errorf("session store: commit bump: %w", err)
-	}
-
-	s.logger.Debug("session store: bumped version", "session_id", sessionID, "from", v, "to", newV)
+	s.logger.Debug("session store: bumped version", "session_id", sessionID, "new_version", newV)
 	return newV, nil
 }
 
