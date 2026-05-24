@@ -135,8 +135,8 @@ func formatRelationEdges(rels []character.CharacterRelation, nameMap map[int64]s
 	}
 	lines := []string{"### 关系边"}
 	for _, rel := range rels {
-		line := fmt.Sprintf("- %s → %s：%s",
-			nameMap[rel.SourceCharacterID], nameMap[rel.TargetCharacterID], rel.RelationDescribe)
+		line := fmt.Sprintf("- %s → %s [relation_id:%d]：%s",
+			nameMap[rel.SourceCharacterID], nameMap[rel.TargetCharacterID], rel.ID, rel.RelationDescribe)
 		if rel.Description != "" {
 			line += fmt.Sprintf("（%s）", rel.Description)
 		}
@@ -227,15 +227,7 @@ func (t *UpdateCharacterTool) Execute(ctx context.Context, args any, tc ToolCont
 		return nil, fmt.Errorf("query character: %w", err)
 	}
 
-	if a.Name != "" {
-		ch.Name = a.Name
-	}
-	if a.Personality != "" {
-		ch.Personality = a.Personality
-	}
-	if a.Abilities != "" {
-		ch.Abilities = a.Abilities
-	}
+	json.Unmarshal(tc.RawArgs, &ch)
 
 	if err := tc.DB.WithContext(ctx).Save(&ch).Error; err != nil {
 		return nil, fmt.Errorf("save character: %w", err)
@@ -305,15 +297,7 @@ func (t *UpdateCharacterRelationshipTool) editRelation(ctx context.Context, a *U
 		return &ToolResult{Success: false, Error: fmt.Sprintf("关系 %d 不属于当前小说", a.RelationID)}, nil
 	}
 
-	if a.RelationDescribe != "" {
-		rel.RelationDescribe = a.RelationDescribe
-	}
-	if a.Description != "" {
-		rel.Description = a.Description
-	}
-	if a.ChapterID > 0 {
-		rel.ChapterID = a.ChapterID
-	}
+	json.Unmarshal(tc.RawArgs, &rel)
 
 	if err := tc.DB.WithContext(ctx).Save(&rel).Error; err != nil {
 		return nil, fmt.Errorf("save relation: %w", err)

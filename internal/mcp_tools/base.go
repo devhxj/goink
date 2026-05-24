@@ -22,7 +22,7 @@ type Tool interface {
 	Category() ToolCategory
 	JSONSchema() json.RawMessage
 	ExposeToLLM() bool
-	NewArgs() any                            // 返回零值 args 指针，供 Registry 反序列化 + 校验用
+	NewArgs() any // 返回零值 args 指针，供 Registry 反序列化 + 校验用
 	Execute(ctx context.Context, args any, tc ToolContext) (*ToolResult, error)
 }
 
@@ -36,6 +36,7 @@ type ToolContext struct {
 	ToolID  string
 	Emit    func(event ToolEvent)
 	Session *SessionContext
+	RawArgs json.RawMessage // 原始 JSON，update 工具用于 PATCH DB 实体
 	//子agent使用
 	PersistMsg   func(ctx context.Context, msg *session.Message) error
 	BuildDisplay func(ctx context.Context, name string, args map[string]any, phase DisplayPhase) *DisplayInfo
@@ -205,6 +206,8 @@ func (r *Registry) Execute(ctx context.Context, name string, rawArgs json.RawMes
 	if err := r.validate.Struct(args); err != nil {
 		return &ToolResult{Success: false, Error: "参数校验失败: " + err.Error()}
 	}
+
+	tc.RawArgs = rawArgs
 
 	t0 := time.Now()
 	var result *ToolResult

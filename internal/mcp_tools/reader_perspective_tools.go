@@ -25,7 +25,7 @@ type GetReaderPerspectiveTool struct{}
 func (t *GetReaderPerspectiveTool) Name() string        { return "get_reader_perspective" }
 func (t *GetReaderPerspectiveTool) Description() string {
 	return "获取当前小说的读者认知状态：已知信息、活跃悬念、读者误知。" +
-		"每条条目末尾的 `[id:X]` 是该条目的唯一标识，更新或回收时填入 entry_id。" +
+		"每条条目末尾的 `[entry_id:X]` 是该条目的唯一标识，更新或回收时填入 entry_id。" +
 		"这不是 TODO 列表——尽量合并同类信息到已有条目，减少重复创建。"
 }
 func (t *GetReaderPerspectiveTool) Category() ToolCategory { return CategoryMemoryRetrieval }
@@ -87,7 +87,7 @@ func formatReaderPerspective(known, suspenses, misconceptions []reader.ReaderPer
 	var sections []string
 
 	ref := func(e reader.ReaderPerspective) string {
-		return fmt.Sprintf(" `[id:%d]`", e.ID)
+		return fmt.Sprintf(" `[entry_id:%d]`", e.ID)
 	}
 
 	// 已知信息
@@ -238,12 +238,7 @@ func (t *UpdateReaderPerspectiveEntryTool) Execute(ctx context.Context, args any
 		return nil, fmt.Errorf("query perspective entry: %w", err)
 	}
 
-	if a.LastMentionedChapter > 0 {
-		entry.LastMentionedChapter = a.LastMentionedChapter
-	}
-	if a.RevealedChapter > 0 {
-		entry.RevealedChapter = a.RevealedChapter
-	}
+	json.Unmarshal(tc.RawArgs, &entry)
 
 	if err := tc.DB.WithContext(ctx).Save(&entry).Error; err != nil {
 		return nil, fmt.Errorf("save perspective entry: %w", err)

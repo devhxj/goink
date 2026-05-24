@@ -92,3 +92,34 @@ type XxxArgs struct {
 ## 7.格式化
 - 返回的消息能格式化成md的就格式化，不要直接返回原始json。方便llm理解
 - 图结构可以返回邻接表，而不是原始的点和边。
+- 格式化内容中需要被其他工具引用的 ID，统一使用 `[args_json_tag:X]` 格式（如 `[entry_id:5]`、`[relation_id:5]`），与 Args 的 json tag 一致，LLM 可直接填入参数。
+- 不需要引用的 ID 不嵌入（如 `get_characters` 的角色 ID —— LLM 已从该工具拿到，无需在格式化中复现）。
+
+## 8. 命名规范
+
+- CRUD 工具统一使用 `create_` / `update_` / `get_` 前缀，禁止 `add_` / `delete_` / `list_`
+- 注册函数：`RegisterXxxTools`
+
+## 9. Update 工具的 PATCH 模式
+
+两种场景：
+
+**场景一（大多数）—— Args 是 DB 模型的子集，json tag 一致：**
+
+直接用 `json.Unmarshal(tc.RawArgs, &entity)`，无需手写 if 逐个赋值。
+
+**场景二（特殊逻辑）—— 事务、多步骤、条件分支等：**
+
+直接用 `args.(*XxxArgs)` 手动操作，不套 unmarshal。
+
+---
+
+`tc.RawArgs` 由 Registry.Execute 在调用工具前注入，存放 LLM 传的原始 JSON。
+
+Unmarshal 是 PATCH 语义：JSON 里传了哪些 key 就改哪些字段，未出现的保持原值。
+
+**约束**：Args 只放允许 LLM 自由修改的字段。Finder 字段（`character_id` / `entry_id` / `relation_id` 等）的 json tag 刻意与 DB 模型 PK（`id`）不同名——不是因为 unmarshal 有风险，而是让 json tag 自说明字段用途，LLM 看到 `entry_id` 就知道填什么。
+
+## 10.代码要求
+- 除了查询工具，其余的工具 不再回传llm传过的字段，比如update，llm传过来了要更改哪些字段，不需要再次回传，只需要说明修改成功即可
+- 
