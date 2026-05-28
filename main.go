@@ -1,0 +1,42 @@
+package main
+
+import (
+	"embed"
+	"log/slog"
+	"os"
+
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+
+	"novel/app"
+	"novel/internal/logger"
+)
+
+//go:embed all:frontend/dist
+var assets embed.FS
+
+func main() {
+	log := logger.Default()
+	wapp := app.New(log)
+
+	err := wails.Run(&options.App{
+		Title:     "Goink",
+		Width:     1400,
+		Height:    900,
+		MinWidth:  900,
+		MinHeight: 600,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		OnStartup:  wapp.OnStartup,
+		OnShutdown: wapp.OnShutdown,
+		Bind: []any{
+			wapp,
+		},
+	})
+	if err != nil {
+		slog.Error("应用退出", "err", err)
+		os.Exit(1)
+	}
+}

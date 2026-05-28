@@ -11,7 +11,7 @@ import (
 // ErrNotInitialized 表示指针文件不存在，应用尚未完成首次初始化。没初始化弹出来初始化界面，如果初始化了但是还是出错就谈配置错误恢复
 var ErrNotInitialized = errors.New("指针文件不存在，应用未初始化")
 
-// AppConfig 是启动指针文件 ~/.novel_agent/config.json 的内容。
+// AppConfig 是启动指针文件 ~/.goink/config.json 的内容。
 // 仅记录用户选择的数据目录，其他运行时配置走 SQLite app_config 表。
 type AppConfig struct {
 	DataDir string `json:"data_dir"` // 用户选择的数据根目录
@@ -35,13 +35,13 @@ func (c *AppConfig) ModelsDir() string {
 	return filepath.Join(c.DataDir, "models")
 }
 
-// configDir 返回指针文件所在的目录 ~/.novel_agent。
+// configDir 返回指针文件所在的目录 ~/.goink。
 func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("获取用户目录失败: %w", err)
 	}
-	return filepath.Join(home, ".novel_agent"), nil
+	return filepath.Join(home, ".goink"), nil
 }
 
 // configPath 返回指针文件的完整路径。
@@ -85,7 +85,7 @@ func Load() (*AppConfig, error) {
 }
 
 // Save 将数据目录路径写入指针文件。
-// 如果 ~/.novel_agent/ 目录不存在则自动创建。
+// 如果 ~/.goink/ 目录不存在则自动创建。
 func Save(dataDir string) error {
 	dir, err := configDir()
 	if err != nil {
