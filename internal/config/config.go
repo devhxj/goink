@@ -7,10 +7,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // ErrNotInitialized 表示指针文件不存在，应用尚未完成首次初始化。没初始化弹出来初始化界面，如果初始化了但是还是出错就谈配置错误恢复
 var ErrNotInitialized = errors.New("指针文件不存在，应用未初始化")
+
+var (
+	globalCfg *AppConfig
+	cfgMu     sync.RWMutex
+)
+
+// Set 设置全局配置单例，InitWithConfig 成功后调用。
+func Set(cfg *AppConfig) {
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	globalCfg = cfg
+}
+
+// Get 返回全局配置单例，未初始化时返回 nil。
+func Get() *AppConfig {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return globalCfg
+}
 
 // AppConfig 是启动指针文件 ~/.goink/config.json 的内容。
 // 仅记录用户选择的数据目录，其他运行时配置走 SQLite app_config 表。

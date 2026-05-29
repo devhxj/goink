@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"novel/internal/config"
 )
 
 // Repo 管理单部小说的 Git 仓库，提供文件读写和版本控制。
@@ -25,26 +27,32 @@ type CommitInfo struct {
 	Time    time.Time
 }
 
-// New 打开已有仓库，不存在则 git init + 首次空 commit。
-// gitBin 为 git 可执行文件路径，为空时从 PATH 查找。
-func New(novelDir, gitBin string) (*Repo, error) {
-	if gitBin == "" {
-		gitBin = "git"
+// New 为指定小说打开已有仓库，不存在则 git init + 首次空 commit。
+func New(novelID int64) (*Repo, error) {
+	cfg := config.Get()
+	if cfg == nil {
+		return nil, fmt.Errorf("git: config not initialized")
 	}
 
-	r := &Repo{dir: novelDir, gitBin: gitBin}
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		return nil, fmt.Errorf("git: git not found in PATH: %w", err)
+	}
 
-	if _, err := os.Stat(filepath.Join(novelDir, ".git")); err != nil {
+	dir := cfg.NovelDirPath(novelID)
+	r := &Repo{dir: dir, gitBin: gitBin}
+
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("git: stat .git: %w", err)
 		}
-		if err := os.MkdirAll(novelDir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("git: create novel dir: %w", err)
 		}
-		if _, stderr, err := r.runInDir("init", novelDir); err != nil {
+		if _, stderr, err := r.runInDir("init", dir); err != nil {
 			return nil, fmt.Errorf("git: init: %s: %w", stderr, err)
 		}
-		gitkeep := filepath.Join(novelDir, "chapters", ".gitkeep")
+		gitkeep := filepath.Join(dir, "chapters", ".gitkeep")
 		if err := os.MkdirAll(filepath.Dir(gitkeep), 0755); err != nil {
 			return nil, fmt.Errorf("git: create chapters dir: %w", err)
 		}
@@ -60,57 +68,6 @@ func New(novelDir, gitBin string) (*Repo, error) {
 	}
 
 	return r, nil
-}
-
-// ── 文件路径 ──────────────────────────────────────────────
-
-func (r *Repo) ChapterPath(num int) string {
-	return fmt.Sprintf("chapters/%03d.md", num)
-}
-
-func (r *Repo) GoinkPath() string {
-	return "goink.md"
-}
-
-// ── 文件读写 ──────────────────────────────────────────────
-// 文件不存在的时候返回错误，调用方可以针对文件不存在返回空内容，底层工具保持通用，不直接返回空
-
-func (r *Repo) ReadChapter(num int) (string, error) {
-	return r.readFile(r.ChapterPath(num))
-}
-
-func (r *Repo) WriteChapter(num int, content string) error {
-	return r.writeFile(r.ChapterPath(num), content)
-}
-
-func (r *Repo) ReadGoink() (string, error) {
-	return r.readFile(r.GoinkPath())
-}
-
-func (r *Repo) WriteGoink(content string) error {
-	return r.writeFile(r.GoinkPath(), content)
-}
-
-func (r *Repo) readFile(relPath string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(r.dir, relPath))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("%w: %s", os.ErrNotExist, relPath)
-		}
-		return "", fmt.Errorf("git: read %s: %w", relPath, err)
-	}
-	return string(data), nil
-}
-
-func (r *Repo) writeFile(relPath, content string) error {
-	fullPath := filepath.Join(r.dir, relPath)
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		return fmt.Errorf("git: mkdir for %s: %w", relPath, err)
-	}
-	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("git: write %s: %w", relPath, err)
-	}
-	return nil
 }
 
 // ── Diff ──────────────────────────────────────────────────

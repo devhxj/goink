@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"novel/internal/config"
+	"novel/internal/git"
 	"novel/internal/novel"
 )
 
@@ -38,8 +39,23 @@ func (a *App) CreateNovel(input CreateNovelInput) (*novel.Novel, error) {
 		Description: input.Description,
 	}
 	if err := a.novel.DB.WithContext(a.ctx).Create(&n).Error; err != nil {
-		return nil, fmt.Errorf("创建小说失败: %w", err)
+		return nil, fmt.Errorf("failed to create novel: %w", err)
 	}
+
+	n.DirPath = a.cfg.NovelDirPath(n.ID)
+	if _, err := git.New(n.ID); err != nil {
+		return nil, fmt.Errorf("failed to init novel repo: %w", err)
+	}
+
+	if err := a.novel.DB.WithContext(a.ctx).Model(&n).Update("dir_path", n.DirPath).Error; err != nil {
+		return nil, fmt.Errorf("failed to update novel path: %w", err)
+	}
+
+	// 为新小说创建 goink.md 空文件
+	if err := git.WriteGoink(n.ID, ""); err != nil {
+		return nil, fmt.Errorf("failed to create goink.md: %w", err)
+	}
+
 	return &n, nil
 }
 

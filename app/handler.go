@@ -94,6 +94,7 @@ func (a *App) Initialize(dataDir string) error {
 // initWithConfig 在配置加载成功后初始化所有运行时模块。
 func (a *App) initWithConfig(cfg *config.AppConfig) {
 	a.cfg = cfg
+	config.Set(cfg)
 
 	// 1. 异步加载 ONNX 模型（不阻塞 GUI，尽早调用）
 	rag.InitEmbedder(cfg.ModelsDir(), a.logger)

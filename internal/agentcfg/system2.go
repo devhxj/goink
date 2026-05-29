@@ -11,7 +11,7 @@ import (
 
 // System2 构建小说上下文快照，每轮对话开头注入。
 // 只包含基本信息 + 故事状态。具体数据（角色、时间线等）由 MCP 工具按需提供。
-func System2(db *gorm.DB, repo *git.Repo, novelID int64) (string, error) {
+func System2(db *gorm.DB, novelID int64) (string, error) {
 	var n novel.Novel
 	if err := db.First(&n, novelID).Error; err != nil {
 		return "", fmt.Errorf("agentcfg: load novel %d: %w", novelID, err)
@@ -27,12 +27,10 @@ func System2(db *gorm.DB, repo *git.Repo, novelID int64) (string, error) {
 		b = append(b, fmt.Sprintf("简介：%s\n", n.Description)...)
 	}
 
-	if repo != nil {
-		state, err := repo.ReadGoink()
-		if err == nil && state != "" {
-			b = append(b, "\n【故事状态文档】\n"...)
-			b = append(b, state...)
-		}
+	state, err := git.ReadGoink(novelID)
+	if err == nil && state != "" {
+		b = append(b, "\n【故事状态文档】\n"...)
+		b = append(b, state...)
 	}
 
 	return string(b), nil

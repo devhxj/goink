@@ -28,6 +28,22 @@ export namespace app {
 	        this.description = source["description"];
 	    }
 	}
+	export class SaveChapterContentInput {
+	    novel_id: number;
+	    chapter_number: number;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveChapterContentInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.novel_id = source["novel_id"];
+	        this.chapter_number = source["chapter_number"];
+	        this.content = source["content"];
+	    }
+	}
 	export class SaveSettingsInput {
 	    api_key: string;
 	    default_model?: string;

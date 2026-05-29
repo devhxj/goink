@@ -13,6 +13,8 @@ export function CreateNovel(arg1:app.CreateNovelInput):Promise<novel.Novel>;
 
 export function GetAppConfig():Promise<Record<string, any>>;
 
+export function GetChapterContent(arg1:number,arg2:number):Promise<string>;
+
 export function GetChapters(arg1:number):Promise<Array<chapter.Chapter>>;
 
 export function GetNovels():Promise<Array<novel.Novel>>;
@@ -24,6 +26,8 @@ export function GetSettings():Promise<config.AppSettings>;
 export function Initialize(arg1:string):Promise<void>;
 
 export function IsInitialized():Promise<boolean>;
+
+export function SaveChapterContent(arg1:app.SaveChapterContentInput):Promise<void>;
 
 export function SaveSettings(arg1:app.SaveSettingsInput):Promise<void>;
 
