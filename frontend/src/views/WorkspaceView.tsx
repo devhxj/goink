@@ -243,7 +243,7 @@ export default function WorkspaceView({ initialNovelId }: Props) {
           onGoToNovels={() => setActivePanel('novels')}
         />
 
-        <ChatPanel />
+        <ChatPanel novelId={activeNovelId} />
       </div>
 
       <StatusBar />
