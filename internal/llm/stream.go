@@ -10,11 +10,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // Client 是 LLM 流式调用的传输层。
 // 持有多 provider，Run 时根据 providerName 选择合适的后端。
 type Client struct {
+	mu        sync.RWMutex
 	providers map[string]Provider // providerName → 完整配置（由 Merge 产出）
 	http      *http.Client
 	logger    *slog.Logger
@@ -31,31 +33,11 @@ func NewClient(providers map[string]Provider, log *slog.Logger) *Client {
 	}
 }
 
-// Builtin 内置 provider 模板。APIKey 留空，运行时由用户配置注入。
-var Builtin = map[string]Provider{
-	"deepseek": {
-		Name:    "DeepSeek",
-		ChatURL: "https://api.deepseek.com/v1/chat/completions",
-		Models: []ModelInfo{
-			{
-				ID:              "deepseek-v4-flash",
-				Name:            "DeepSeek V4 Flash",
-				ContextWindow:   1_000_000,
-				MaxOutputTokens: 384_000,
-				ReasoningLevels: []string{"low", "high"},
-				SupportsVision:  false,
-			},
-			{
-				ID:              "deepseek-v4-pro",
-				Name:            "DeepSeek V4 Pro",
-				ContextWindow:   1_000_000,
-				MaxOutputTokens: 384_000,
-				ReasoningLevels: []string{"low", "high", "max"},
-				SupportsVision:  false,
-			},
-		},
-		BuildRequest: nil, // 默认 OpenAI 兼容格式，无需额外改造
-	},
+// Reload 热更新 providers 配置。不影响正在进行的 ChatStream（值拷贝）。
+func (c *Client) Reload(providers map[string]Provider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.providers = providers
 }
 
 // ChatStream 发起流式对话，返回 SSE 事件 channel。
@@ -74,7 +56,9 @@ func (c *Client) ChatStream(
 ) <-chan StreamEvent {
 	ch := make(chan StreamEvent, 8)
 
+	c.mu.RLock()
 	p, ok := c.providers[providerName]
+	c.mu.RUnlock()
 	if !ok {
 		ch := make(chan StreamEvent, 1)
 		ch <- StreamEvent{Type: EventError, Error: fmt.Errorf("unknown provider: %s", providerName)}
@@ -153,9 +137,9 @@ func (c *Client) buildPayload(
 	opts *CallOptions,
 ) map[string]any {
 	payload := map[string]any{
-		"model":    model,
-		"messages": messages,
-		"stream":   true,
+		"model":          model,
+		"messages":       messages,
+		"stream":         true,
 		"stream_options": map[string]any{"include_usage": true},
 	}
 

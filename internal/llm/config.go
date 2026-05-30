@@ -9,13 +9,40 @@ type UserLLMConfig struct {
 
 // AvailableModel 是前端下拉列表的模型选项。
 type AvailableModel struct {
-	Key             string   // "deepseek/deepseek-v4-pro"
-	ProviderName    string   // "DeepSeek"
-	ModelName       string   // "DeepSeek V4 Pro"
+	Key             string // "deepseek/deepseek-v4-pro"
+	ProviderName    string // "DeepSeek"
+	ModelName       string // "DeepSeek V4 Pro"
 	ContextWindow   int
 	MaxOutputTokens int
 	ReasoningLevels []string
 	SupportsVision  bool
+}
+
+// Builtin 内置 provider 模板。APIKey 留空，运行时由用户配置注入。
+var Builtin = map[string]Provider{
+	"deepseek": {
+		Name:    "DeepSeek",
+		ChatURL: "https://api.deepseek.com/v1/chat/completions",
+		Models: []ModelInfo{
+			{
+				ID:              "deepseek-v4-flash",
+				Name:            "DeepSeek V4 Flash",
+				ContextWindow:   1_000_000,
+				MaxOutputTokens: 384_000,
+				ReasoningLevels: []string{"high", "max"},
+				SupportsVision:  false,
+			},
+			{
+				ID:              "deepseek-v4-pro",
+				Name:            "DeepSeek V4 Pro",
+				ContextWindow:   1_000_000,
+				MaxOutputTokens: 384_000,
+				ReasoningLevels: []string{"high", "max"},
+				SupportsVision:  false,
+			},
+		},
+		BuildRequest: nil, // 默认 OpenAI 兼容格式，无需额外改造
+	},
 }
 
 // Merge 合并内置模板和用户配置，返回组装完成的 Provider map。
