@@ -92,6 +92,11 @@ func (a *App) Chat(ctx context.Context, input ChatInput) (*ChatResult, error) {
 	}
 
 	// 7. 运行 Agent 循环
+	wails.EventsEmit(ctx, "chat:started", map[string]any{
+		"session_id": sess.SessionID,
+		"turn_id":    turnID,
+	})
+
 	result, runErr := a.agent.Run(ctx, agent.RunOptions{
 		TurnID:           turnID,
 		SessionID:        sess.SessionID,

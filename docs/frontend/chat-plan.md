@@ -430,48 +430,54 @@ ChatPanel 从 WorkspaceView 接收 `novelId`：
 frontend/src/
 ├── components/
 │   ├── chat/
-│   │   ├── ChatPanel.tsx          # 主容器（拖拽宽度、事件监听、状态管理）
-│   │   ├── MessageList.tsx         # 消息列表（Turn 分段渲染）
-│   │   ├── MessageBubble.tsx       # 单条消息气泡（user/assistant）
+│   │   ├── ChatPanel.tsx          # 主容器（拖拽、事件监听、状态管理）
+│   │   ├── types.ts               # TS 类型定义（AgentEvent, Turn, TurnSegment 等）
+│   │   ├── MessageBubble.tsx       # 单条消息气泡（react-markdown 渲染）
+│   │   ├── ThinkingBlock.tsx       # 思考过程折叠块
 │   │   ├── ToolCallCard.tsx        # 工具调用行内卡片
 │   │   ├── SubagentCard.tsx        # 子 Agent 嵌套卡片
-│   │   ├── ThinkingBlock.tsx       # 思考过程折叠块
 │   │   ├── SessionHistory.tsx      # 浮动历史面板
 │   │   ├── RecentSessions.tsx      # 最近会话栏（入口 A）
 │   │   ├── ChatInput.tsx           # 输入框 + 发送按钮
 │   │   ├── ChatControls.tsx        # 底部控制栏（模型/推理/审批/UsageRing）
-│   │   ├── ContextRing.tsx         # SVG Token 用量圆环
-│   │   └── ChatPanel.css           # ChatPanel 专属样式（拖拽手柄等）
+│   │   └── ContextRing.tsx         # SVG Token 用量圆环
 │   │
-│   └── workspace/
-│       └── ChatPanel.tsx           # (替换为上述 ChatPanel.tsx 的重导出或直接替换)
+│   ├── editor/
+│   │   └── EditorArea.tsx
+│   │
+│   ├── novel/
+│   │   ├── BookCover.tsx
+│   │   └── SidePanel.tsx
+│   │
+│   └── shell/
+│       ├── ActivityBar.tsx
+│       ├── GitHubLink.tsx
+│       └── StatusBar.tsx
 │
 ├── hooks/
-│   └── useApp.ts                   # 新增 GetModels, GetSessions, GetSessionMessages
+│   └── useApp.ts
 │
-├── lib/
-│   └── wailsjs/                    # 自动生成,需重新生成(含新增 API)
+├── views/
+│   ├── InitView.tsx
+│   └── WorkspaceView.tsx
+│
+└── lib/
+    └── wailsjs/                    # Wails 自动生成（须 commit）
 ```
-
-`components/chat/` 目录下的组件由 `components/workspace/ChatPanel.tsx` 组合和导出，WorkspaceView 直接使用。
 
 ---
 
 ## 九、实施顺序
 
-| 步骤 | 内容 | 预估工作量 |
-|------|------|-----------|
-| **1** | Go 新增 3 个 API（GetModels, GetSessions, GetSessionMessages）+ 重新生成 Wails 绑定 | 小 |
-| **2** | ChatPanel 可拖拽宽度 + 接收 novelId prop | 小 |
-| **3** | ChatInput + 发送消息（调用 Chat）+ 基础消息气泡（无 MD） | 中 |
-| **4** | 流式事件监听 + Thinking + Content + ToolCall 渲染 | 大 |
-| **5** | react-markdown 集成 | 小 |
-| **6** | ContextRing + 底部控制栏（模型/推理/审批） | 中 |
-| **7** | Session 历史（两个入口 + 浮动面板） | 中 |
-| **8** | 历史消息加载 + 重建嵌套结构 | 中 |
-| **9** | 子 Agent 嵌套渲染 | 中 |
-| **10** | 审批交互卡片 | 小 |
-| **11** | 自动滚动 + 细节打磨 | 小 |
+| 步骤 | 内容 | 说明 |
+|------|------|------|
+| **1** | Go 新增 3 个 API + 重新生成 Wails 绑定 | ✅ 已完成 |
+| **2** | ChatPanel 可拖拽宽度 + 接收 novelId prop | ✅ 已完成 |
+| **3** | Chat API 连通 + 流式事件 + turn/segment 渲染（含 react-markdown） | 当前进行中 |
+| **4** | 底部控制栏（模型选择、推理程度、审批模式、ContextRing） | |
+| **5** | Session 历史（最近会话栏 + 浮动面板 + 历史消息加载） | |
+| **6** | 子 Agent 嵌套渲染 + 审批交互 | |
+| **7** | 细节打磨（自动滚底已做，事件清理已做） | |
 
 ---
 
