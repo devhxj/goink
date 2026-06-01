@@ -89,7 +89,7 @@ export default function SessionHistory({ open, novelId, onClose, onSelectSession
   return (
     <div className="absolute inset-0 pointer-events-none">
       <div className="absolute inset-0 z-30 pointer-events-auto" onClick={onClose} />
-      <div className={`absolute right-3 left-3 z-40 flex flex-col bg-card border rounded-xl shadow-lg pointer-events-auto transition-all duration-200 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+      <div className={`absolute right-3 left-3 z-40 flex flex-col bg-card border rounded-xl shadow-lg pointer-events-auto transition-all duration-200 ease-out overflow-hidden ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
         style={{ height: '40%', top: '4px' }}>
       <div className="flex items-center justify-between px-4 py-2 border-b shrink-0">
         <div className="flex items-center gap-3">

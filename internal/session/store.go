@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -129,7 +130,7 @@ func (s *Store) BumpActiveVersion(ctx context.Context, sessionID string) (int, e
 func (s *Store) NextTurn(ctx context.Context, sessionID string) (int, error) {
 	var turnID int
 	if err := s.DB.WithContext(ctx).
-		Raw("UPDATE sessions SET last_turn_id = last_turn_id + 1 WHERE session_id = ? RETURNING last_turn_id", sessionID).
+		Raw("UPDATE sessions SET last_turn_id = last_turn_id + 1, updated_at = ? WHERE session_id = ? RETURNING last_turn_id", time.Now(), sessionID).
 		Scan(&turnID).Error; err != nil {
 		return 0, fmt.Errorf("session store: next turn: %w", err)
 	}
