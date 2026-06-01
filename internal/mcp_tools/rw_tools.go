@@ -3,11 +3,13 @@ package mcp_tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
+	"novel/internal/chapter"
 	"novel/internal/git"
 )
 
@@ -15,7 +17,7 @@ import (
 
 // EditArgs 是 edit 工具的参数。
 type EditArgs struct {
-	Path       string `json:"path" jsonschema:"required,description=要编辑的文件路径。章节文件格式为 chapters/001.md（三位数字），故事状态为 goink.md" validate:"required"`
+	Path       string `json:"path" jsonschema:"required,description=要编辑的文件路径。章节文件格式为 chapters/001.md（三位数字），大纲为 outlines/001.md，故事状态为 goink.md" validate:"required"`
 	ChangeType string `json:"change_type" jsonschema:"required,enum=full_replace,enum=search_replace,enum=line_range_replace,description=编辑方式。full_replace：全文替换；search_replace：查找并替换指定文本；line_range_replace：替换指定行范围" validate:"required,oneof=full_replace search_replace line_range_replace"`
 	SearchText string `json:"search_text" jsonschema:"description=要查找的原文片段（search_replace 时必填）。请从文件中精确复制" validate:"omitempty"`
 	NewContent string `json:"new_content" jsonschema:"description=新内容。full_replace 时为完整全文；search_replace 时为替换后的文本；line_range_replace 时为插入的新行" validate:"omitempty"`
@@ -23,6 +25,7 @@ type EditArgs struct {
 	StartLine  int    `json:"start_line" jsonschema:"description=起始行号 1-based 含此行（line_range_replace 时必填）" validate:"omitempty,min=1"`
 	EndLine    int    `json:"end_line" jsonschema:"description=结束行号 1-based 含此行（line_range_replace 时必填）" validate:"omitempty,min=1"`
 	Reason     string `json:"reason" jsonschema:"description=修改原因，供人类审阅" validate:"omitempty"`
+	Title      string `json:"title" jsonschema:"description=章节标题（创建大纲或新章节时必填）" validate:"omitempty"`
 }
 
 // EditTool 编辑文件（章节或故事状态），支持全文替换、查找替换、行范围替换。
@@ -42,16 +45,24 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 
 	// 1. 校验路径格式
 	if !validPath(a.Path) {
-		return &ToolResult{Success: false, Error: "无效文件路径，支持 chapters/001.md ~ chapters/999999.md 和 goink.md"}, nil
+		return &ToolResult{Success: false, Error: "无效文件路径，支持 chapters/001.md ~ chapters/999999.md、outlines/001.md ~ outlines/999999.md 和 goink.md"}, nil
 	}
 
 	// 2. 读取当前文件
+	var fileExists bool
 	current, err := git.ReadFile(tc.NovelID, a.Path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &ToolResult{Success: false, Error: "文件不存在: " + a.Path}, nil
+		if errors.Is(err, os.ErrNotExist) {
+			if a.ChangeType == "full_replace" {
+				current = ""
+			} else {
+				return &ToolResult{Success: false, Error: "文件不存在: " + a.Path}, nil
+			}
+		} else {
+			return nil, fmt.Errorf("read file %s: %w", a.Path, err)
 		}
-		return nil, fmt.Errorf("read file %s: %w", a.Path, err)
+	} else {
+		fileExists = true
 	}
 
 	// 3. 根据 change_type 生成新内容
@@ -67,23 +78,12 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 		}, nil
 	}
 
-	// 4. 生成 git diff
-	repo, err := git.New(tc.NovelID)
-	if err != nil {
-		return nil, fmt.Errorf("open git repo: %w", err)
-	}
-	diff, err := repo.DiffContent(a.Path, proposed)
-	if err != nil {
-		return nil, fmt.Errorf("compute diff: %w", err)
-	}
-
-	// 5. 审批（阻塞等待用户确认）
+	// 4. 审批（阻塞等待用户确认）
 	if tc.Approver != nil {
 		approval, err := tc.Approver.RequestApproval(ctx, tc.ToolID, map[string]any{
 			"original":    current,
 			"modified":    proposed,
 			"path":        a.Path,
-			"diff":        diff,
 			"change_type": a.ChangeType,
 			"reason":      a.Reason,
 		})
@@ -91,11 +91,42 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 			return nil, fmt.Errorf("approval: %w", err)
 		}
 		if !approval.Approved {
-			msg := "用户拒绝了修改"
+			info := "你的修改被用户拒绝"
 			if approval.Feedback != "" {
-				msg += ": " + approval.Feedback
+				info += "。用户反馈：" + approval.Feedback
 			}
-			return &ToolResult{Success: false, Error: msg, BreakLoop: true}, nil
+			return &ToolResult{
+				Success: false,
+				Error:   "审批未通过",
+				Data: map[string]any{
+					"path":        a.Path,
+					"change_type": a.ChangeType,
+					"approved":    false,
+				},
+				Inject: []InjectMessage{{Role: "user", Content: info}},
+			}, nil
+		}
+	}
+
+	// 5. 自动创建 DB 记录（文件不存在且为章节/大纲路径时）
+	if !fileExists && (isChapterPath(a.Path) || isOutlinePath(a.Path)) {
+		chapNum := parseChapterNum(a.Path)
+		if chapNum == 0 {
+			chapNum = parseOutlineNum(a.Path)
+		}
+		if chapNum > 0 {
+			title := a.Title
+			if title == "" {
+				title = fmt.Sprintf("第%d章", chapNum)
+			}
+			ch := chapter.Chapter{
+				NovelID:       tc.NovelID,
+				ChapterNumber: chapNum,
+				Title:         title,
+			}
+			if err := tc.DB.WithContext(ctx).Where("novel_id = ? AND chapter_number = ?", tc.NovelID, chapNum).FirstOrCreate(&ch).Error; err != nil {
+				return nil, fmt.Errorf("auto-create chapter record: %w", err)
+			}
 		}
 	}
 
@@ -114,18 +145,12 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 		}}
 	}
 
-	display := a.Path
-	if isChapterPath(a.Path) {
-		display = fmt.Sprintf("第%d章", parseChapterNum(a.Path))
-	}
-
 	return &ToolResult{
 		Success: true,
 		Data: map[string]any{
 			"path":        a.Path,
-			"display":     display,
-			"diff":        diff,
 			"change_type": a.ChangeType,
+			"approved":    true,
 		},
 		Inject: injects,
 	}, nil
@@ -207,7 +232,7 @@ func lineRangeReplace(content string, startLine, endLine int, newContent string)
 
 // ── 路径校验 ──────────────────────────────────────────────
 
-var pathRe = regexp.MustCompile(`^(chapters/\d{1,6}\.md|goink\.md)$`)
+var pathRe = regexp.MustCompile(`^(chapters/\d{1,6}\.md|goink\.md|outlines/\d{1,6}\.md)$`)
 
 func validPath(p string) bool {
 	return pathRe.MatchString(p)
@@ -223,9 +248,19 @@ func parseChapterNum(p string) int {
 	return n
 }
 
+func isOutlinePath(p string) bool {
+	return strings.HasPrefix(p, "outlines/")
+}
+
+func parseOutlineNum(p string) int {
+	var n int
+	fmt.Sscanf(p, "outlines/%d.md", &n)
+	return n
+}
+
 // ── 工具描述 ──────────────────────────────────────────────
 
-const editDescription = `编辑小说文件（章节正文或故事状态 goink.md）。支持三种编辑模式：
+const editDescription = `编辑小说文件（章节正文或大纲或故事状态 goink.md）。支持三种编辑模式：
 
 1. **full_replace** — 全文替换整个文件。new_content 为完整的替换后内容。
 2. **search_replace** — 查找并替换指定文本。search_text 为要查找的原文片段（请从文件中精确复制），new_content 为替换后的文本。replace_all=false（默认）仅替换第一个匹配项，replace_all=true 替换所有匹配。
@@ -233,16 +268,17 @@ const editDescription = `编辑小说文件（章节正文或故事状态 goink.
 
 路径格式：
 - chapters/001.md ~ chapters/999999.md（三位数字补齐的章节文件）
+- outlines/001.md ~ outlines/999999.md（章节大纲文件）
 - goink.md（故事状态文档）
 只接受上述相对路径。
-所有修改会先生成 git diff 提交用户审批，审批通过后才写入文件。被拒绝则本轮对话终止。`
+所有修改会先生成 git diff 提交用户审批，审批通过后才写入文件。被拒绝时返回用户反馈，可根据反馈修正后重试。`
 
 // ── read ──────────────────────────────────────────────────
 
 // ReadArgs 是 read 工具的参数。
 type ReadArgs struct {
-	Path         string `json:"path" jsonschema:"required,description=要读取的文件路径。章节文件格式为 chapters/001.md（三位数字），故事状态为 goink.md" validate:"required"`
-	IncludeLines *bool   `json:"include_lines" jsonschema:"default=true,description=是否包含行号前缀（如 123|）。默认 true，用于精确引用和行范围编辑。传 false 获取纯文本"`
+	Path         string `json:"path" jsonschema:"required,description=要读取的文件路径。章节文件格式为 chapters/001.md（三位数字），大纲为 outlines/001.md，故事状态为 goink.md" validate:"required"`
+	IncludeLines *bool  `json:"include_lines" jsonschema:"default=true,description=是否包含行号前缀（如 123|）。默认 true，用于精确引用和行范围编辑。传 false 获取纯文本"`
 	StartLine    int    `json:"start_line" jsonschema:"default=1,description=起始行号 1-based 含此行" validate:"omitempty,min=1"`
 	EndLine      int    `json:"end_line" jsonschema:"default=2000,description=结束行号 1-based 含此行，超出自动截到文末；设为 0 读取全部" validate:"omitempty,min=0"`
 }
@@ -264,12 +300,12 @@ func (t *ReadTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 	a := args.(*ReadArgs)
 
 	if !validPath(a.Path) {
-		return &ToolResult{Success: false, Error: "无效文件路径，支持 chapters/001.md ~ chapters/999999.md 和 goink.md"}, nil
+		return &ToolResult{Success: false, Error: "无效文件路径，支持 chapters/001.md ~ chapters/999999.md、outlines/001.md ~ outlines/999999.md 和 goink.md"}, nil
 	}
 
 	content, err := git.ReadFile(tc.NovelID, a.Path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return &ToolResult{Success: false, Error: "文件不存在: " + a.Path}, nil
 		}
 		return nil, fmt.Errorf("read file %s: %w", a.Path, err)
@@ -312,6 +348,8 @@ func (t *ReadTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 	display := a.Path
 	if isChapterPath(a.Path) {
 		display = fmt.Sprintf("第%d章", parseChapterNum(a.Path))
+	} else if isOutlinePath(a.Path) {
+		display = fmt.Sprintf("第%d章大纲", parseOutlineNum(a.Path))
 	}
 
 	data := map[string]any{
@@ -331,10 +369,11 @@ func (t *ReadTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 
 // ── 工具描述 ──────────────────────────────────────────────
 
-const readDescription = `读取小说文件（章节正文或故事状态 goink.md）。
+const readDescription = `读取小说文件（章节正文或大纲或故事状态 goink.md）。
 
 路径格式（与 edit 工具一致）：
 - chapters/001.md ~ chapters/999999.md（三位数字补齐的章节文件）
+- outlines/001.md ~ outlines/999999.md（章节大纲文件）
 - goink.md（故事状态文档）
 只接受上述相对路径。
 特性：

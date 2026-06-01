@@ -186,9 +186,9 @@ export default function WorkspaceView({ initialNovelId }: Props) {
     return () => { EventsOff('approval:requested') }
   }, [openDiffTab])
 
-  async function handleApprove(toolId: string) {
+  async function handleApprove(toolId: string, feedback: string) {
     const diffTab = tabs.find(t => t.type === 'diff' && t.toolId === toolId)
-    await app.ApproveTool(toolId, true, '')
+    await app.ApproveTool(toolId, true, feedback)
     // 刷新同路径的编辑 tab 内容
     if (diffTab) {
       const editTab = tabs.find(t => t.type === 'edit' && t.path === diffTab.path)
@@ -202,9 +202,9 @@ export default function WorkspaceView({ initialNovelId }: Props) {
     }
   }
 
-  async function handleReject(toolId: string) {
+  async function handleReject(toolId: string, feedback: string) {
     const diffTab = tabs.find(t => t.type === 'diff' && t.toolId === toolId)
-    await app.ApproveTool(toolId, false, '')
+    await app.ApproveTool(toolId, false, feedback)
     if (diffTab) closeTab(diffTab.id)
   }
 
@@ -312,14 +312,12 @@ export default function WorkspaceView({ initialNovelId }: Props) {
           onEditorChange={handleEditorChange}
           onEditorMount={handleEditorMount}
           onSetViewMode={handleSetViewMode}
-          onApprove={handleApprove}
-          onReject={handleReject}
           hasNovels={novels.length > 0}
           noChapters={chapters.length === 0}
           onGoToNovels={() => setActivePanel('novels')}
         />
 
-        <ChatPanel novelId={activeNovelId} />
+        <ChatPanel novelId={activeNovelId} onApprove={handleApprove} onReject={handleReject} />
       </div>
 
       <StatusBar />

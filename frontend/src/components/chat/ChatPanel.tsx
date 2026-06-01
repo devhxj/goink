@@ -17,6 +17,8 @@ import SessionHistory from './SessionHistory'
 
 interface Props {
   novelId: number
+  onApprove: (toolId: string, feedback: string) => Promise<void>
+  onReject: (toolId: string, feedback: string) => Promise<void>
 }
 
 const MIN_WIDTH = 280
@@ -35,7 +37,7 @@ interface ChatStartedEvent {
   turn_id: number
 }
 
-export default function ChatPanel({ novelId }: Props) {
+export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
   const app = useApp()
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [isDragging, setIsDragging] = useState(false)
@@ -55,11 +57,18 @@ export default function ChatPanel({ novelId }: Props) {
   const [sessionsTotal, setSessionsTotal] = useState(0)
   const [showHistoryPanel, setShowHistoryPanel] = useState(false)
   const [approvalToolIds, setApprovalToolIds] = useState<Set<string>>(new Set())
+  const [activeApproval, setActiveApproval] = useState<{ toolId: string; path: string; changeType: string } | null>(null)
 
-  // 监听审批请求，更新工具卡片状态
+  // 监听审批请求，更新工具卡片状态和输入区审批栏
   useEffect(() => {
     EventsOn('approval:requested', (data: any) => {
-      setApprovalToolIds(prev => new Set(prev).add(data?.tool_id ?? ''))
+      const toolId = data?.tool_id ?? ''
+      setApprovalToolIds(prev => new Set(prev).add(toolId))
+      setActiveApproval({
+        toolId,
+        path: data?.payload?.path ?? '',
+        changeType: data?.payload?.change_type ?? '',
+      })
     })
     return () => { EventsOff('approval:requested') }
   }, [])
@@ -272,6 +281,7 @@ export default function ChatPanel({ novelId }: Props) {
               next.delete(event.tool_id!)
               return next
             })
+            setActiveApproval(prev => prev?.toolId === event.tool_id ? null : prev)
           }
 
           if (idx >= 0) {
@@ -471,6 +481,20 @@ export default function ChatPanel({ novelId }: Props) {
   const showRecent = !hasActiveSession && !hasTurns && !isLoading
 
 
+  const handleApprovalApprove = useCallback(async (feedback: string) => {
+    if (!activeApproval) return
+    const toolId = activeApproval.toolId
+    setActiveApproval(null)
+    await onApprove(toolId, feedback)
+  }, [activeApproval, onApprove])
+
+  const handleApprovalReject = useCallback(async (feedback: string) => {
+    if (!activeApproval) return
+    const toolId = activeApproval.toolId
+    setActiveApproval(null)
+    await onReject(toolId, feedback)
+  }, [activeApproval, onReject])
+
   const inputPlaceholder = !hasNovel
     ? '请先选择作品'
     : !selectedKey
@@ -608,6 +632,9 @@ export default function ChatPanel({ novelId }: Props) {
         placeholder={inputPlaceholder}
         onSend={handleSend}
         onStop={() => app.CancelChat(sessionId)}
+        approval={activeApproval}
+        onApprove={handleApprovalApprove}
+        onReject={handleApprovalReject}
       />
 
       <div className="border-t mx-4" />

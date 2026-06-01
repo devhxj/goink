@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"strings"
 
 	"novel/internal/mcp_tools"
 )
@@ -150,6 +151,19 @@ func (a *Agent) buildDisplay(name string, args map[string]any, phase mcp_tools.D
 				baseText = "编辑 故事状态"
 			case "read":
 				baseText = "查看 故事状态"
+			}
+		}
+
+		// rw 工具的 outlines/ 路径特殊处理
+		if path, ok := args["path"].(string); ok && strings.HasPrefix(path, "outlines/") {
+			var n int
+			fmt.Sscanf(path, "outlines/%d.md", &n)
+			label := fmt.Sprintf("第%d章大纲", n)
+			switch name {
+			case "edit":
+				baseText = "编辑 " + label
+			case "read":
+				baseText = "查看 " + label
 			}
 		}
 	}

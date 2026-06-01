@@ -288,18 +288,6 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 			}
 		}
 
-		// 检查是否有工具请求终止循环（如 edit 被用户拒绝）
-		loopBroken := false
-		for _, to := range toolOutputs {
-			if to.result != nil && to.result.BreakLoop {
-				loopBroken = true
-				break
-			}
-		}
-		if loopBroken {
-			break
-		}
-
 		// 4. 死循环检测
 		patterns := append(recentPatterns, toolPattern(toolOutputs))
 		if len(patterns) > 6 {

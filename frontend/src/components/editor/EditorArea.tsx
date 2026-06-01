@@ -1,7 +1,8 @@
 import Editor, { type OnMount, DiffEditor } from '@monaco-editor/react'
-import { FileText, Loader2, Check, X } from 'lucide-react'
+import { FileText, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TabBar from './TabBar'
+import Markdown from '@/components/Markdown'
 import type { EditorTab } from '@/hooks/useEditorTabs'
 
 interface Props {
@@ -14,8 +15,6 @@ interface Props {
   onEditorChange: (tabId: string, value: string | undefined) => void
   onEditorMount: OnMount
   onSetViewMode: (tabId: string, mode: 'content' | 'outline') => void
-  onApprove: (toolId: string) => void
-  onReject: (toolId: string) => void
   hasNovels: boolean
   noChapters: boolean
   onGoToNovels: () => void
@@ -24,7 +23,7 @@ interface Props {
 export default function EditorArea({
   tabs, activeTab, activeTabId, isLoadingContent,
   onSelectTab, onCloseTab, onEditorChange, onEditorMount,
-  onSetViewMode, onApprove, onReject,
+  onSetViewMode,
   hasNovels, noChapters, onGoToNovels,
 }: Props) {
   const tabBtnClass = (active: boolean) =>
@@ -68,6 +67,8 @@ export default function EditorArea({
 
   // Diff tab
   if (activeTab.type === 'diff') {
+    const isOutline = activeTab.path?.startsWith('outlines/')
+
     return (
       <main className="flex-1 bg-background flex flex-col min-w-0 border-r">
         <TabBar
@@ -76,51 +77,41 @@ export default function EditorArea({
           onSelect={onSelectTab}
           onClose={onCloseTab}
         />
-        <div className="flex items-center justify-between px-4 py-2 border-b shrink-0">
+        <div className="flex items-center px-4 py-2 border-b shrink-0">
           <span className="text-sm font-medium truncate">{activeTab.title}</span>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => onApprove(activeTab.toolId!)}
-              className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-emerald-500 text-white hover:bg-emerald-600 transition-colors cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              批准
-            </button>
-            <button
-              onClick={() => onReject(activeTab.toolId!)}
-              className="flex items-center gap-1 px-3 py-1 text-xs rounded bg-red-500 text-white hover:bg-red-600 transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-              拒绝
-            </button>
-          </div>
         </div>
-        <div className="flex-1">
-          <DiffEditor
-            height="100%"
-            language="markdown"
-            theme="light"
-            original={activeTab.original}
-            modified={activeTab.modified}
-            onMount={editor => {
-              editor.getOriginalEditor().updateOptions({ wordWrap: 'on' })
-              const changes = editor.getLineChanges()
-              if (changes?.length) {
-                editor.revealLine(changes[0].modifiedStartLineNumber)
-              }
-            }}
-            options={{
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 15,
-              lineHeight: 26,
-              fontFamily: "'Noto Serif SC', 'Source Han Serif SC', serif",
-              wordWrap: 'on',
-              automaticLayout: true,
-              readOnly: true,
-              renderSideBySide: true,
-            }}
-          />
+        <div className="flex-1 overflow-auto">
+          {isOutline ? (
+            <div className="p-6">
+              <Markdown content={activeTab.modified ?? ''} />
+            </div>
+          ) : (
+            <DiffEditor
+              height="100%"
+              language="markdown"
+              theme="light"
+              original={activeTab.original}
+              modified={activeTab.modified}
+              onMount={editor => {
+                editor.getOriginalEditor().updateOptions({ wordWrap: 'on' })
+                const changes = editor.getLineChanges()
+                if (changes?.length) {
+                  editor.revealLine(changes[0].modifiedStartLineNumber)
+                }
+              }}
+              options={{
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontSize: 15,
+                lineHeight: 26,
+                fontFamily: "'Noto Serif SC', 'Source Han Serif SC', serif",
+                wordWrap: 'on',
+                automaticLayout: true,
+                readOnly: true,
+                renderSideBySide: true,
+              }}
+            />
+          )}
         </div>
       </main>
     )
