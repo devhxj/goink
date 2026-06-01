@@ -44,6 +44,7 @@ var toolDisplayNames = map[string]string{
 	"create_preference":               "创建创作偏好",
 	"update_preference":               "更新创作偏好",
 	"lint_chapter":                    "章节文本检查",
+	"edit":                           "编辑文件内容",
 }
 
 // toolActivityKinds 工具名 → 前端展示类别。
@@ -84,12 +85,14 @@ var toolActivityKinds = map[string]string{
 	"create_preference":   "create",
 	"update_preference":   "edit",
 	"lint_chapter":        "review",
+	"edit":               "write",
 }
 
 // chapterTools 需要查章节标题的工具集。
 var chapterTools = map[string]bool{
 	"get_chapter_content": true,
 	"edit_chapter":        true,
+	"edit":               true,
 }
 
 // buildDisplay 根据 tool_name + args + phase 生成前端展示文本。
@@ -129,6 +132,16 @@ func (a *Agent) buildDisplay(name string, args map[string]any, phase mcp_tools.D
 				baseText = "查看 " + label
 			case "edit_chapter":
 				baseText = "编辑 " + label
+			case "edit":
+				baseText = "编辑 " + label
+			}
+		}
+
+
+		// edit 工具的 goink.md 路径特殊处理
+		if name == "edit" {
+			if path, ok := args["path"].(string); ok && path == "goink.md" {
+				baseText = "编辑 故事状态"
 			}
 		}
 	}
@@ -158,6 +171,13 @@ func chapterNumber(args map[string]any) (int, bool) {
 			case int:
 				return n, true
 			}
+		}
+	}
+	// edit 工具使用 path 参数，如 "chapters/001.md"
+	if path, ok := args["path"].(string); ok {
+		var n int
+		if _, err := fmt.Sscanf(path, "chapters/%d.md", &n); err == nil && n > 0 {
+			return n, true
 		}
 	}
 	return 0, false

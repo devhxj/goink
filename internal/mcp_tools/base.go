@@ -47,7 +47,8 @@ type ToolResult struct {
 	Error    string          `json:"error,omitempty"`
 	ErrKind  string          `json:"err_kind,omitempty"` // "" = 业务错误，"system" = 系统错误
 	Metadata map[string]any  `json:"metadata,omitempty"`
-	Inject   []InjectMessage `json:"inject,omitempty"`
+	Inject    []InjectMessage `json:"inject,omitempty"`
+	BreakLoop bool            `json:"break_loop,omitempty"` // 为 true 时 agent loop 立即终止本轮
 }
 
 // InjectMessage 由工具返回，agent loop 会后追加到对话流。固定 to_api=true, to_frontend=false。

@@ -270,7 +270,7 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 		// 1. assistant + tool_calls
 		a.appendMsg("assistant", responseBuffer, thinkingBuffer,
 			map[string]any{
-				"tool_calls":       buildToolCalls(toolOutputs),
+				"tool_calls": buildToolCalls(toolOutputs),
 			}, &opts, runningTokens)
 
 		// 2. tool 结果
@@ -286,6 +286,18 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 				content := "<system-reminder>\n" + inj.Content + "\n</system-reminder>"
 				a.appendMsg(inj.Role, content, "", nil, &opts, runningTokens)
 			}
+		}
+
+		// 检查是否有工具请求终止循环（如 edit 被用户拒绝）
+		loopBroken := false
+		for _, to := range toolOutputs {
+			if to.result != nil && to.result.BreakLoop {
+				loopBroken = true
+				break
+			}
+		}
+		if loopBroken {
+			break
 		}
 
 		// 4. 死循环检测
@@ -316,17 +328,17 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 // opts 必须传指针，因为 opts.Messages 需要被追加（Go 切片传值会丢失 append）。
 func (a *Agent) appendMsg(role, content, thinkingContent string, extra map[string]any, opts *RunOptions, runningTokens map[string]int) {
 	msg := &session.Message{
-		SessionID:      opts.SessionID,
-		TurnID:         opts.TurnID,
-		AgentType:      opts.AgentType,
-		ParentTurnID:   opts.ParentTurnID,
-		Role:           role,
-		Content:        content,
+		SessionID:       opts.SessionID,
+		TurnID:          opts.TurnID,
+		AgentType:       opts.AgentType,
+		ParentTurnID:    opts.ParentTurnID,
+		Role:            role,
+		Content:         content,
 		ThinkingContent: thinkingContent,
-		ExtraMetadata:  extraJSON(extra),
-		Version:        opts.ActiveVersion,
-		ToAPI:          opts.AgentType == "main",
-		ToFrontend:     role == "assistant",
+		ExtraMetadata:   extraJSON(extra),
+		Version:         opts.ActiveVersion,
+		ToAPI:           opts.AgentType == "main",
+		ToFrontend:      role == "assistant",
 	}
 	a.db.Create(msg)
 
