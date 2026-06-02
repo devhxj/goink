@@ -69,8 +69,9 @@ func (a *App) GetPlatform() map[string]any {
 func defaultDataDir() string {
 	if runtime.GOOS == "windows" {
 		for _, drive := range []string{"D:", "E:", "C:"} {
-			if _, err := os.Stat(drive + "\\"); err == nil {
-				return filepath.Join(drive, "Goink")
+			root := drive + string(filepath.Separator)
+			if _, err := os.Stat(root); err == nil {
+				return filepath.Join(root, "Goink")
 			}
 		}
 	}

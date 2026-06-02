@@ -104,6 +104,11 @@ func Load() (*AppConfig, error) {
 		return nil, fmt.Errorf("配置文件中 data_dir 为空")
 	}
 
+	// 兼容旧版本可能保存的相对路径，转为绝对路径
+	if abs, err := filepath.Abs(cfg.DataDir); err == nil {
+		cfg.DataDir = abs
+	}
+
 	// 确保数据目录存在（用户配置的路径，理应有权创建）
 	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
 		return nil, fmt.Errorf("创建数据目录 %s 失败: %w", cfg.DataDir, err)
@@ -124,10 +129,15 @@ func expandTilde(path string) string {
 	return path
 }
 
-// Save 将数据目录路径写入指针文件。自动展开开头 ~ 符号。
+// Save 将数据目录路径写入指针文件。自动展开 ~ 并转为绝对路径。
 // 如果 ~/.goink/ 目录不存在则自动创建。
 func Save(dataDir string) error {
 	dataDir = expandTilde(dataDir)
+	var err error
+	dataDir, err = filepath.Abs(dataDir)
+	if err != nil {
+		return fmt.Errorf("解析数据目录绝对路径失败: %w", err)
+	}
 
 	dir, err := configDir()
 	if err != nil {
