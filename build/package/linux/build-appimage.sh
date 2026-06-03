@@ -45,9 +45,9 @@ if [ ! -f /tmp/appimagetool ]; then
     chmod +x /tmp/appimagetool
 fi
 
-# 生成 AppImage
+# 生成 AppImage（--appimage-extract-and-run 避免 FUSE 依赖）
 ARCH=$(uname -m)
 mkdir -p build/dist
-/tmp/appimagetool "$APPDIR" "build/dist/goink-${VERSION}-linux-${ARCH}.AppImage"
+/tmp/appimagetool --appimage-extract-and-run "$APPDIR" "build/dist/goink-${VERSION}-linux-${ARCH}.AppImage"
 
 echo "AppImage → build/dist/goink-${VERSION}-linux-${ARCH}.AppImage"

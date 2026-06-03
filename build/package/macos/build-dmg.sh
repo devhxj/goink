@@ -3,18 +3,14 @@ set -euo pipefail
 
 VERSION="${1:-dev}"
 APP_NAME="goink"
-APP_BUNDLE="build/${APP_NAME}.app"
+# Wails on macOS outputs a .app bundle at build/bin/goink.app
+APP_BUNDLE="build/bin/${APP_NAME}.app"
 RUNTIME_DIR="build/runtime"
 
-rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS"
+echo "使用 Wails 生成的 .app: $APP_BUNDLE"
+
+# 将运行时注入已有 .app bundle
 mkdir -p "$APP_BUNDLE/Contents/Resources/runtime/git"
-mkdir -p "$APP_BUNDLE/Contents/Frameworks"
-
-# 二进制
-cp "build/bin/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
-
-# 运行时
 cp "$RUNTIME_DIR/git/git" "$APP_BUNDLE/Contents/Resources/runtime/git/"
 cp "$RUNTIME_DIR"/libonnxruntime* "$APP_BUNDLE/Contents/Frameworks/"
 
