@@ -58,7 +58,7 @@ case "${OS}" in
         download_onnx "linux-x64" "onnxruntime-linux-x64-${ONNX_VERSION}.tgz"
         ;;
     Darwin)
-        download_onnx "osx-universal" "onnxruntime-osx-universal-${ONNX_VERSION}.tgz"
+        download_onnx "osx-universal2" "onnxruntime-osx-universal2-${ONNX_VERSION}.tgz"
         ;;
     *)
         echo "不支持的操作系统: $OS"

@@ -6,7 +6,7 @@ RUNTIME_DIR="${RUNTIME_DIR:-build/runtime}"
 GIT_VERSION="2.47.1"
 
 download_mingit() {
-    local url="https://github.com/git-for-windows/git/releases/download/v${GIT_VERSION}.windows.2/MinGit-${GIT_VERSION}-64-bit.zip"
+    local url="https://github.com/git-for-windows/git/releases/download/v${GIT_VERSION}.windows.2/MinGit-${GIT_VERSION}.2-64-bit.zip"
 
     mkdir -p "$RUNTIME_DIR/git"
     rm -rf "$RUNTIME_DIR/git"/*
