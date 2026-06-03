@@ -11,6 +11,7 @@ import MessageBubble from './MessageBubble'
 import ThinkingBlock from './ThinkingBlock'
 import ToolCallCard from './ToolCallCard'
 import SubagentCard from './SubagentCard'
+import CompressionBlock from './CompressionBlock'
 import type { UsageInfo } from './ContextRing'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 import RecentSessions from './RecentSessions'
@@ -52,6 +53,8 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
   const [reasoningEffort, setReasoningEffort] = useState('')
   const [approvalMode, setApprovalMode] = useState<'manual' | 'auto'>('manual')
   const [lastUsage, setLastUsage] = useState<UsageInfo | null>(null)
+  const [isCompressing, setIsCompressing] = useState(false)
+  const compressingRef = useRef(false)
   const [showSettings, setShowSettings] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(undefined)
   const [sessions, setSessions] = useState<app.SessionMeta[]>([])
@@ -204,6 +207,28 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
             ? { ...turn, status: 'failed' as const, errorMessage: event.error || '对话出错，请重试' }
             : turn
         ))
+        return
+      }
+      case AgentEventType.Compression: {
+        const phase = (event.compression_phase || 'started') as 'compressing' | 'done'
+        setTurns(prev => prev.map(turn => {
+          if (turn.turnId !== turnId) return turn
+          // 查找已有 compression segment，找不到则追加
+          const compIdx = turn.segments.findIndex(s => s.type === 'compression')
+          if (compIdx >= 0) {
+            const segs = [...turn.segments]
+            segs[compIdx] = { ...segs[compIdx], compressionPhase: phase }
+            return { ...turn, segments: segs }
+          }
+          return {
+            ...turn,
+            segments: [...turn.segments, {
+              ...emptySegment(`comp_${++counterRef.current}`),
+              type: 'compression' as const,
+              compressionPhase: phase,
+            }],
+          }
+        }))
         return
       }
     }
@@ -512,6 +537,55 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
     app.SetApprovalMode(next)
   }, [approvalMode, app])
 
+  const handleCompress = useCallback(async () => {
+    if (!sessionId || !selectedKey || compressingRef.current) return
+    const [providerName, modelID] = selectedKey.split('/')
+    if (!providerName || !modelID) return
+
+    compressingRef.current = true
+    setIsCompressing(true)
+    // 创建压缩中 turn（用于动画展示）
+    const compTurnId = `comp_${++counterRef.current}`
+    const compressingTurn: Turn = {
+      id: compTurnId,
+      turnId: 0,
+      userMessage: '',
+      segments: [{
+        ...emptySegment(compTurnId),
+        type: 'compression' as const,
+        compressionPhase: 'compressing' as const,
+      }],
+      status: 'done' as const,
+      compressionOnly: true,
+    }
+    setTurns(prev => [...prev, compressingTurn])
+
+    try {
+      const result = await app.CompressContext({
+        session_id: sessionId,
+        provider_name: providerName,
+        model_id: modelID,
+      })
+      // 更新：回填真实 turnId + 完成状态
+      setTurns(prev => prev.map(t => {
+        if (t.id === compTurnId) {
+          return {
+            ...t,
+            turnId: result.turn_id,
+            segments: t.segments.map(s => s.type === 'compression' ? { ...s, compressionPhase: 'done' as const } : s),
+          }
+        }
+        return t
+      }))
+    } catch (err: any) {
+      // 压缩失败，移除 compressing turn
+      setTurns(prev => prev.filter(t => t.id !== compTurnId))
+    } finally {
+      setIsCompressing(false)
+      compressingRef.current = false
+    }
+  }, [sessionId, selectedKey, app])
+
   const handleSend = useCallback(async (content: string) => {
     if (!selectedKey) return
     const [p, m] = selectedKey.split('/')
@@ -723,6 +797,15 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
                         )
                       }
 
+                      if (seg.type === 'compression') {
+                        return (
+                          <CompressionBlock
+                            key={seg.id}
+                            phase={seg.compressionPhase || 'compressing'}
+                          />
+                        )
+                      }
+
                       return (
                         <div key={seg.id}>
                           {seg.thinkingContent && (
@@ -787,6 +870,9 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
         onToggleApproval={handleToggleApproval}
         onConfigModel={handleConfigModel}
         usage={lastUsage}
+        onCompress={handleCompress}
+        isTurnRunning={isLoading}
+        isCompressing={isCompressing}
       />
 
       {isDragging && (

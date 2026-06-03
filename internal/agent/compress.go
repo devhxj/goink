@@ -1,0 +1,307 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"maps"
+	"strconv"
+	"strings"
+	"time"
+
+	wails "github.com/wailsapp/wails/v2/pkg/runtime"
+	"gorm.io/gorm"
+
+	"novel/internal/agentcfg"
+	"novel/internal/session"
+)
+
+const compressionPrompt = `<system-reminder>
+你是上下文压缩助手。请基于完整对话历史生成结构化摘要，用于后续对话的上下文恢复。
+
+## 已完成的事项
+（每个一句话，最多 15 条，从最近的开始保留。不再重复执行的事项）
+
+## 进行中（断点）
+（最详细的部分：当前正在做什么、做到哪一步、下一步计划做什么。这是最重要的部分，请务必详尽）
+
+## 用户偏好和要求
+（从用户消息中提炼的核心写作风格、约束条件、反复强调的事项）
+
+## 关键决策和设定变更
+（已确认的情节走向、角色设定、世界观规则、命名等决定）
+
+## 待办事项
+（已计划但尚未开始的任务清单）
+</system-reminder>`
+
+const compressionReminder = "<system-reminder>\n上下文已压缩，请根据下面的摘要继续工作。\n</system-reminder>"
+
+const maxUserRetain = 15
+const minConversationTurns = 4
+
+// Compress 执行上下文压缩：调 LLM 生成摘要，重建 System2，保留近期关键消息。
+// opts 不会被修改，成功后才赋值新的 Messages / ActiveVersion / runningTokens。
+func (a *Agent) Compress(ctx context.Context, opts *RunOptions, runningTokens map[string]int) error {
+	a.logger.Info("开始上下文压缩",
+		"session_id", opts.SessionID,
+		"turn_id", opts.TurnID,
+		"estimated_tokens", sumRunningTokens(runningTokens),
+		"msg_count", len(opts.Messages),
+	)
+
+	// 1. 推送开始事件
+	a.emitCompression(ctx, opts.TurnID, "compressing", "")
+
+	// 2. 在副本上操作：追加压缩提示词
+	msgs := make([]map[string]any, len(opts.Messages)+1)
+	copy(msgs, opts.Messages)
+	msgs[len(opts.Messages)] = map[string]any{"role": "user", "content": compressionPrompt}
+
+	// 3. LLM 非流式生成摘要
+	summary, err := a.llm.GenerateText(ctx, opts.ProviderName, msgs, opts.Model.ID)
+	if err != nil {
+		a.logger.Warn("压缩摘要生成失败，保持原上下文", "err", err)
+		return fmt.Errorf("compress: LLM summary failed: %w", err)
+	}
+
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		a.logger.Warn("压缩摘要为空，保持原上下文")
+		return fmt.Errorf("compress: empty summary")
+	}
+
+	a.logger.Debug("压缩摘要生成成功", "summary_len", len(summary))
+
+	// 4. 从副本中移除提示词（恢复到原始长度），然后筛选保留消息
+	msgs = msgs[:len(opts.Messages)]
+	retained := retainMessages(msgs)
+
+	// 5. 重建 System2（获取最新小说状态快照）
+	sys1 := agentcfg.System1(agentcfg.MainAgent)
+	sys2, err := agentcfg.System2(a.db, opts.NovelID)
+	if err != nil {
+		a.logger.Warn("压缩时 System2 构建失败", "novel_id", opts.NovelID, "err", err)
+		sys2 = ""
+	}
+
+	// 6. 在事务中完成版本递增 + 全部 DB 写入
+	newVersion, err := a.persistCompression(ctx, opts, sys1, sys2, summary, retained)
+	if err != nil {
+		return fmt.Errorf("compress: persist failed: %w", err)
+	}
+
+	// 7. 从 DB 加载新版本消息，与 Chat() 走同一条路径
+	apiMsgs, err := a.session.GetMessagesForAPI(ctx, opts.SessionID, newVersion)
+	if err != nil {
+		return fmt.Errorf("compress: load messages after persist: %w", err)
+	}
+	opts.ActiveVersion = newVersion
+	opts.Messages = make([]map[string]any, len(apiMsgs))
+	for i, m := range apiMsgs {
+		opts.Messages[i] = m.ToAPIFormat()
+	}
+
+	newTokens := a.InitRunningTokens(opts.Messages)
+	clear(runningTokens)
+	maps.Copy(runningTokens, newTokens)
+
+	a.emitCompression(ctx, opts.TurnID, "done", summary)
+
+	a.logger.Info("上下文压缩完成",
+		"session_id", opts.SessionID,
+		"new_version", newVersion,
+		"retained", len(retained),
+		"new_msg_count", len(opts.Messages),
+	)
+	return nil
+}
+
+// persistCompression 在事务中递增 active_version 并写入所有压缩消息。
+func (a *Agent) persistCompression(ctx context.Context, opts *RunOptions, sys1, sys2, summary string, retained []map[string]any) (int, error) {
+	var newVersion int
+
+	err := a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var sess session.Session
+		if err := tx.First(&sess, "session_id = ?", opts.SessionID).Error; err != nil {
+			return fmt.Errorf("查询 session 失败: %w", err)
+		}
+		sess.ActiveVersion++
+		if err := tx.Save(&sess).Error; err != nil {
+			return fmt.Errorf("递增 active_version 失败: %w", err)
+		}
+		newVersion = sess.ActiveVersion
+
+		msg := func(role, content string, toAPI, toFE bool, eventType string) error {
+			return tx.Create(&session.Message{
+				SessionID:  opts.SessionID,
+				TurnID:     opts.TurnID,
+				Role:       role,
+				Content:    content,
+				Version:    newVersion,
+				ToAPI:      toAPI,
+				ToFrontend: toFE,
+				EventType:  eventType,
+				AgentType:  "main",
+			}).Error
+		}
+
+		// System1
+		if err := msg("system", sys1, true, false, ""); err != nil {
+			return fmt.Errorf("写入 System1 失败: %w", err)
+		}
+		// System2
+		if sys2 != "" {
+			if err := msg("system", sys2, true, false, ""); err != nil {
+				return fmt.Errorf("写入 System2 失败: %w", err)
+			}
+		}
+		// 提醒语
+		if err := msg("user", compressionReminder, true, false, ""); err != nil {
+			return fmt.Errorf("写入提醒语失败: %w", err)
+		}
+		// 摘要
+		if err := msg("user", "<system-reminder>\n"+summary+"\n</system-reminder>", true, false, ""); err != nil {
+			return fmt.Errorf("写入摘要失败: %w", err)
+		}
+		// 保留消息副本
+		for _, m := range retained {
+			rm := apiMsgToMessage(m, opts.SessionID, opts.TurnID, newVersion)
+			if err := tx.Create(rm).Error; err != nil {
+				return fmt.Errorf("写入保留消息失败: %w", err)
+			}
+		}
+		// 边界标记
+		if err := msg("system", "", false, true, "compression"); err != nil {
+			return fmt.Errorf("写入边界标记失败: %w", err)
+		}
+
+		return nil
+	})
+
+	return newVersion, err
+}
+
+// apiMsgToMessage 将 API 格式的 map 反向转换为 session.Message，提取 ExtraMetadata。
+func apiMsgToMessage(m map[string]any, sessionID string, turnID, version int) *session.Message {
+	role, _ := m["role"].(string)
+	content, _ := m["content"].(string)
+
+	msg := &session.Message{
+		SessionID:  sessionID,
+		TurnID:     turnID,
+		Role:       role,
+		Content:    content,
+		Version:    version,
+		ToAPI:      true,
+		ToFrontend: false,
+		AgentType:  "main",
+	}
+
+	if tc, ok := m["reasoning_content"].(string); ok {
+		msg.ThinkingContent = tc
+	}
+
+	meta := make(map[string]any)
+	switch role {
+	case "assistant":
+		if tc, ok := m["tool_calls"]; ok && tc != nil {
+			meta["tool_calls"] = tc
+		}
+	case "tool":
+		if id, ok := m["tool_call_id"]; ok && id != nil {
+			meta["tool_call_id"] = id
+		}
+		if name, ok := m["name"]; ok && name != nil {
+			meta["tool_name"] = name
+		}
+	}
+	if len(meta) > 0 {
+		b, _ := json.Marshal(meta)
+		msg.ExtraMetadata = string(b)
+	}
+
+	return msg
+}
+
+// emitCompression 推送压缩事件到前端。
+func (a *Agent) emitCompression(ctx context.Context, turnID int, phase, summary string) {
+	wails.EventsEmit(ctx, "agent:"+strconv.Itoa(turnID), AgentEvent{
+		TurnID:           turnID,
+		Type:             EventCompression,
+		CompressionPhase: phase,
+		Summary:          summary,
+		Timestamp:        time.Now(),
+	})
+}
+
+// retainMessages 筛选应保留的历史消息。
+// 跳过前 2 条 system 消息（System1/System2），后续应用保留规则。
+func retainMessages(messages []map[string]any) []map[string]any {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// 跳过前 2 条 system 消息（System1/System2）
+	sysEnd := 0
+	for i, m := range messages {
+		if i >= 2 {
+			break
+		}
+		role, _ := m["role"].(string)
+		if role == "system" {
+			sysEnd = i + 1
+		} else {
+			break
+		}
+	}
+
+	history := messages[sysEnd:]
+	if len(history) == 0 {
+		return nil
+	}
+
+	// 找到所有 user 消息的位置
+	userIdx := make([]int, 0)
+	for i, m := range history {
+		role, _ := m["role"].(string)
+		if role == "user" {
+			userIdx = append(userIdx, i)
+		}
+	}
+
+	if len(userIdx) == 0 {
+		return nil
+	}
+
+	// 保留最近 maxUserRetain 条 user 消息
+	keepFrom := 0
+	if len(userIdx) > maxUserRetain {
+		keepFrom = userIdx[len(userIdx)-maxUserRetain]
+	}
+
+	// 确保至少保留 minConversationTurns 轮对话
+	if len(userIdx) >= minConversationTurns {
+		minKeep := userIdx[len(userIdx)-minConversationTurns]
+		if minKeep < keepFrom {
+			keepFrom = minKeep
+		}
+	}
+
+	retained := make([]map[string]any, 0, len(history)-keepFrom)
+	for _, m := range history[keepFrom:] {
+		dup := make(map[string]any, len(m))
+		maps.Copy(dup, m)
+		retained = append(retained, dup)
+	}
+
+	return retained
+}
+
+// IsRunning 检查指定 session 是否有正在进行的 turn。
+func (a *Agent) IsRunning(sessionID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, ok := a.cancels[sessionID]
+	return ok
+}

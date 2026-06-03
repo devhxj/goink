@@ -61,7 +61,14 @@ func (a *App) Chat(input ChatInput) (*ChatResult, error) {
 		return nil, fmt.Errorf("获取 turn ID 失败: %w", err)
 	}
 
-	// 5. 持久化用户消息
+	// 5. 新 session 写入 System1 + System2
+	if isNew {
+		if err := a.writeSystemMessages(ctx, sess.SessionID, input.NovelID, turnID); err != nil {
+			return nil, fmt.Errorf("写入系统消息失败: %w", err)
+		}
+	}
+
+	// 6. 持久化用户消息
 	userMsg := &session.Message{
 		SessionID:  sess.SessionID,
 		TurnID:     turnID,
@@ -76,48 +83,32 @@ func (a *App) Chat(input ChatInput) (*ChatResult, error) {
 		return nil, fmt.Errorf("持久化用户消息失败: %w", err)
 	}
 
-	// 6. 构建消息列表：system1 + system2 + 历史 + 用户消息
-	messages := []map[string]any{
-		{"role": "system", "content": agentcfg.System1(agentcfg.MainAgent)},
-	}
-
-	sys2, err := agentcfg.System2(a.db, input.NovelID)
+	// 7. 构建消息列表：全部来自 DB（含 System1/System2/历史/用户消息）
+	messages, err := a.loadAPIMessages(ctx, sess.SessionID, sess.ActiveVersion)
 	if err != nil {
-		a.logger.Warn("System2 构建失败", "novel_id", input.NovelID, "err", err)
-	}
-	if sys2 != "" {
-		messages = append(messages, map[string]any{"role": "system", "content": sys2})
+		return nil, fmt.Errorf("加载 API 消息失败: %w", err)
 	}
 
-	historyMsgs, err := a.session.GetMessagesForAPI(ctx, sess.SessionID, sess.ActiveVersion)
-	if err != nil {
-		a.logger.Warn("获取历史消息失败", "session_id", sess.SessionID, "err", err)
-	}
-	for _, m := range historyMsgs {
-		messages = append(messages, m.ToAPIFormat())
-	}
-
-	// 7. 运行 Agent 循环
+	// 8. 运行 Agent 循环
 	wails.EventsEmit(ctx, "chat:started", map[string]any{
 		"session_id": sess.SessionID,
 		"turn_id":    turnID,
 	})
 
 	result, runErr := a.agent.Run(ctx, agent.RunOptions{
-		TurnID:           turnID,
-		SessionID:        sess.SessionID,
-		NovelID:          input.NovelID,
-		Messages:         messages,
-		AllowedTools:     agentcfg.Allowlist(agentcfg.MainAgent),
-		ActiveVersion:    sess.ActiveVersion,
-		Model:            model,
-		ProviderName:     input.ProviderName,
-		AgentType:        "main",
-		MaxTurns:         50,
-		MaxContextTokens: 800000,
+		TurnID:        turnID,
+		SessionID:     sess.SessionID,
+		NovelID:       input.NovelID,
+		Messages:      messages,
+		AllowedTools:  agentcfg.Allowlist(agentcfg.MainAgent),
+		ActiveVersion: sess.ActiveVersion,
+		Model:         model,
+		ProviderName:  input.ProviderName,
+		AgentType:     "main",
+		MaxTurns:      50,
 	})
 
-	// 8. 最终回复已由 agent.Run() 内部 appendMsg 持久化，此处不重复存储
+	// 9. 最终回复已由 agent.Run() 内部 appendMsg 持久化，此处不重复存储
 	if runErr != nil {
 		a.logger.Error("对话失败", "err", runErr)
 		return &ChatResult{
@@ -159,6 +150,61 @@ func (a *App) loadOrCreateSession(ctx context.Context, input ChatInput) (*sessio
 
 	wails.EventsEmit(ctx, "chat:session_created", sess)
 	return sess, true, nil
+}
+
+// writeSystemMessages 为新 session 写入 System1 和 System2 到 messages 表。
+func (a *App) writeSystemMessages(ctx context.Context, sessionID string, novelID int64, turnID int) error {
+	db := a.session.DB.WithContext(ctx)
+
+	sys1 := &session.Message{
+		SessionID:  sessionID,
+		TurnID:     turnID,
+		Role:       "system",
+		Content:    agentcfg.System1(agentcfg.MainAgent),
+		Version:    1,
+		ToAPI:      true,
+		ToFrontend: false,
+		AgentType:  "main",
+	}
+	if err := db.Create(sys1).Error; err != nil {
+		return fmt.Errorf("写入 System1 失败: %w", err)
+	}
+
+	sys2Content, err := agentcfg.System2(a.db, novelID)
+	if err != nil {
+		a.logger.Warn("System2 构建失败，写入空消息", "novel_id", novelID, "err", err)
+		sys2Content = ""
+	}
+	if sys2Content != "" {
+		sys2 := &session.Message{
+			SessionID:  sessionID,
+			TurnID:     turnID,
+			Role:       "system",
+			Content:    sys2Content,
+			Version:    1,
+			ToAPI:      true,
+			ToFrontend: false,
+			AgentType:  "main",
+		}
+		if err := db.Create(sys2).Error; err != nil {
+			return fmt.Errorf("写入 System2 失败: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// loadAPIMessages 加载指定 version 的所有 to_api 消息，转为 map 格式。
+func (a *App) loadAPIMessages(ctx context.Context, sessionID string, version int) ([]map[string]any, error) {
+	msgs, err := a.session.GetMessagesForAPI(ctx, sessionID, version)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		result = append(result, m.ToAPIFormat())
+	}
+	return result, nil
 }
 
 // generateTitle 用 LLM 为非流式调用生成对话标题（≤10 字）。
@@ -212,4 +258,74 @@ func (a *App) SetApprovalMode(mode string) {
 // CancelChat 前端调用，取消一个正在进行的对话。
 func (a *App) CancelChat(sessionID string) {
 	a.agent.Cancel(sessionID)
+}
+
+// CompressInput 是手动压缩请求的入参。
+type CompressInput struct {
+	SessionID    string `json:"session_id"`
+	ProviderName string `json:"provider_name"`
+	ModelID      string `json:"model_id"`
+}
+
+// CompressResult 是手动压缩请求的返回值。
+type CompressResult struct {
+	TurnID int `json:"turn_id"`
+}
+
+// CompressContext 手动触发上下文压缩。仅在无进行中 turn 时允许。
+func (a *App) CompressContext(input CompressInput) (*CompressResult, error) {
+	if a.agent.IsRunning(input.SessionID) {
+		return nil, fmt.Errorf("对话进行中，无法手动压缩上下文，请等待当前对话完成")
+	}
+
+	// 1. 加载 Session
+	var sess session.Session
+	if err := a.session.DB.Where("session_id = ?", input.SessionID).First(&sess).Error; err != nil {
+		return nil, fmt.Errorf("session 不存在: %w", err)
+	}
+
+	// 2. 查找模型
+	model, ok := a.llmClient.ProviderModel(input.ProviderName, input.ModelID)
+	if !ok {
+		return nil, fmt.Errorf("模型未找到: %s/%s", input.ProviderName, input.ModelID)
+	}
+
+	// 3. 获取下一个 turn ID（手动压缩独立成一个 turn）
+	turnID, err := a.session.NextTurn(context.Background(), sess.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("获取 turn ID 失败: %w", err)
+	}
+
+	// 4. 构建消息列表：全部来自 DB
+	messages, err := a.loadAPIMessages(context.Background(), sess.SessionID, sess.ActiveVersion)
+	if err != nil {
+		return nil, fmt.Errorf("加载 API 消息失败: %w", err)
+	}
+
+	// 5. 创建上下文（含 cancel，支持打断）
+	ctx, cancel := context.WithCancel(a.ctx)
+	defer cancel()
+	a.agent.RegisterCancel(sess.SessionID, cancel)
+	defer a.agent.UnregisterCancel(sess.SessionID)
+
+	// 6. 初始化 runningTokens
+	runningTokens := a.agent.InitRunningTokens(messages)
+
+	// 7. 执行压缩
+	opts := agent.RunOptions{
+		TurnID:        turnID,
+		SessionID:     sess.SessionID,
+		NovelID:       sess.NovelID,
+		Messages:      messages,
+		ActiveVersion: sess.ActiveVersion,
+		Model:         model,
+		ProviderName:  input.ProviderName,
+		AgentType:     "main",
+		MaxTurns:      50,
+	}
+
+	if err := a.agent.Compress(ctx, &opts, runningTokens); err != nil {
+		return nil, err
+	}
+	return &CompressResult{TurnID: turnID}, nil
 }

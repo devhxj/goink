@@ -38,6 +38,34 @@ export namespace app {
 	        this.final_text = source["final_text"];
 	    }
 	}
+	export class CompressInput {
+	    session_id: string;
+	    provider_name: string;
+	    model_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CompressInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session_id = source["session_id"];
+	        this.provider_name = source["provider_name"];
+	        this.model_id = source["model_id"];
+	    }
+	}
+	export class CompressResult {
+	    turn_id: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CompressResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.turn_id = source["turn_id"];
+	    }
+	}
 	export class CreateChapterInput {
 	    novel_id: number;
 	    title: string;

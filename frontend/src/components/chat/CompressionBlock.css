@@ -1,0 +1,79 @@
+.compression-block {
+  margin: 0.6rem 0;
+}
+
+.compression-compressing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, oklch(0.7 0.15 90) 40%, transparent);
+  background: color-mix(in oklab, oklch(0.85 0.1 95) 18%, transparent);
+}
+
+.compression-shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.45 0.12 85) 0%,
+    oklch(0.75 0.18 95) 18%,
+    oklch(0.88 0.14 100) 36%,
+    oklch(0.75 0.18 95) 54%,
+    oklch(0.45 0.12 85) 72%,
+    oklch(0.75 0.18 95) 90%,
+    oklch(0.45 0.12 85) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: compression-shimmer 3.5s linear infinite;
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.dark .compression-shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.5 0.12 85) 0%,
+    oklch(0.8 0.16 95) 18%,
+    oklch(0.92 0.12 100) 36%,
+    oklch(0.8 0.16 95) 54%,
+    oklch(0.5 0.12 85) 72%,
+    oklch(0.8 0.16 95) 90%,
+    oklch(0.5 0.12 85) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@keyframes compression-shimmer {
+  0%   { background-position: 250% 0; }
+  100% { background-position: -250% 0; }
+}
+
+.compression-done {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+}
+
+.compression-line {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklab, oklch(0.65 0.12 88) 50%, transparent);
+}
+
+.compression-label {
+  font-size: 0.75rem;
+  color: oklch(0.55 0.08 85);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.dark .compression-label {
+  color: oklch(0.7 0.1 88);
+}

@@ -1,5 +1,5 @@
 // ContextRing — SVG 圆环显示 token 用量，照搬 Python ContextRing.tsx
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 
 export interface UsageInfo {
   prompt_tokens: number
@@ -36,10 +36,26 @@ const DETAIL_LABELS: Record<string, string> = {
 
 interface Props {
   usage: UsageInfo | null
+  onCompress?: () => void
+  isTurnRunning?: boolean
+  isCompressing?: boolean
 }
 
-export default function ContextRing({ usage }: Props) {
+export default function ContextRing({ usage, onCompress, isTurnRunning, isCompressing }: Props) {
   const [showPopover, setShowPopover] = useState(false)
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleEnter = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
+    }
+    setShowPopover(true)
+  }, [])
+
+  const handleLeave = useCallback(() => {
+    hideTimerRef.current = setTimeout(() => setShowPopover(false), 150)
+  }, [])
 
   const hasUsage = usage && usage.context_window && usage.total_tokens
   const ratio = hasUsage ? Math.min(usage.usage_ratio, 100) : 0
@@ -51,8 +67,8 @@ export default function ContextRing({ usage }: Props) {
   return (
     <span
       className="relative inline-flex items-center justify-center cursor-pointer shrink-0"
-      onMouseEnter={() => setShowPopover(true)}
-      onMouseLeave={() => setShowPopover(false)}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
     >
       <svg width={44} height={44} viewBox="0 0 44 44">
         <circle cx={22} cy={22} r={r} fill="none" stroke="rgb(0 0 0 / 0.12)" strokeWidth={3} />
@@ -103,6 +119,18 @@ export default function ContextRing({ usage }: Props) {
                 )
               })}
             </div>
+          )}
+          {onCompress && (
+            <button
+              className="w-full mt-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
+                disabled:opacity-40 disabled:cursor-not-allowed
+                hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700
+                dark:hover:bg-amber-950 dark:hover:border-amber-700 dark:hover:text-amber-300"
+              disabled={isTurnRunning || isCompressing}
+              onClick={(e) => { e.stopPropagation(); onCompress() }}
+            >
+              {isCompressing ? '压缩中...' : '压缩上下文'}
+            </button>
           )}
         </div>
       )}

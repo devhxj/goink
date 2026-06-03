@@ -14,6 +14,10 @@ export function Chat(arg1) {
   return window['go']['app']['App']['Chat'](arg1);
 }
 
+export function CompressContext(arg1) {
+  return window['go']['app']['App']['CompressContext'](arg1);
+}
+
 export function CreateChapter(arg1) {
   return window['go']['app']['App']['CreateChapter'](arg1);
 }

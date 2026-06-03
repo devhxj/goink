@@ -46,8 +46,7 @@ type RunOptions struct {
 	AgentType        string
 	SubTaskID        string // 子 Agent 事件路由 ID
 	EventSeq         *int   // 共享事件序号，nil 时自建（主Agent）；子Agent传入父的指针
-	MaxTurns         int
-	MaxContextTokens int
+	MaxTurns int
 }
 
 // New 创建 Agent 实例。
@@ -132,9 +131,6 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 	if opts.MaxTurns <= 0 {
 		opts.MaxTurns = 50
 	}
-	if opts.MaxContextTokens <= 0 {
-		opts.MaxContextTokens = 800000
-	}
 	if opts.Model == nil {
 		return AgentLoopResult{}, errors.New("agent: Model is required in RunOptions")
 	}
@@ -146,7 +142,7 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 	isThinking := false
 	recentPatterns := make([]string, 0, 6)
 	failCnt := make(map[string]int)
-	runningTokens := a.initRunningTokens(opts.Messages)
+	runningTokens := a.InitRunningTokens(opts.Messages)
 	tools := a.registry.OpenAI(opts.AllowedTools)
 	agentEventName := "agent:" + strconv.Itoa(opts.TurnID)
 	eventSeq := opts.EventSeq
@@ -169,11 +165,16 @@ func (a *Agent) Run(ctx context.Context, opts RunOptions) (AgentLoopResult, erro
 		toolOutputs := make([]toolOutput, 0)
 		pendingInjects := make(map[string][]mcp_tools.InjectMessage)
 
-		// token 预算检查：每轮开始时，超限触发压缩（暂占位）
-		if sumRunningTokens(runningTokens) > opts.MaxContextTokens {
-			a.logger.Warn("token budget exceeded, compression placeholder",
-				"estimated", sumRunningTokens(runningTokens), "max", opts.MaxContextTokens)
-			// TODO: compress(opts)
+		// token 预算检查：每轮开始时，超限触发压缩
+		if opts.Model.ContextWindow > 0 && float64(sumRunningTokens(runningTokens))/float64(opts.Model.ContextWindow) >= 0.8 {
+			a.logger.Warn("token budget exceeded, triggering compression",
+				"estimated", sumRunningTokens(runningTokens),
+				"context_window", opts.Model.ContextWindow,
+				"ratio", fmt.Sprintf("%.1f%%", float64(sumRunningTokens(runningTokens))/float64(opts.Model.ContextWindow)*100),
+			)
+			if err := a.Compress(ctx, &opts, runningTokens); err != nil {
+				a.logger.Warn("compression failed, continuing with original context", "err", err)
+			}
 		}
 
 		stream := a.llm.ChatStream(ctx, opts.ProviderName, opts.Messages, tools, opts.Model.ID, nil)

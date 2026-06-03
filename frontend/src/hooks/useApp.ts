@@ -2,6 +2,7 @@ import {
   ApproveTool,
   CancelChat,
   Chat,
+  CompressContext,
   CreateChapter,
   CreateNovel,
   GetContent,
@@ -29,6 +30,7 @@ export function useApp() {
   return {
     CancelChat,
     Chat,
+    CompressContext,
     CreateChapter,
     CreateNovel,
     GetContent,

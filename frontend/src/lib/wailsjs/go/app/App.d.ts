@@ -14,6 +14,8 @@ export function CancelChat(arg1:string):Promise<void>;
 
 export function Chat(arg1:app.ChatInput):Promise<app.ChatResult>;
 
+export function CompressContext(arg1:app.CompressInput):Promise<app.CompressResult>;
+
 export function CreateChapter(arg1:app.CreateChapterInput):Promise<chapter.Chapter>;
 
 export function CreateNovel(arg1:app.CreateNovelInput):Promise<novel.Novel>;

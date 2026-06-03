@@ -8,6 +8,7 @@ export enum AgentEventType {
   ToolCall = 3,
   Usage = 4,
   Error = 5,
+  Compression = 6,
 }
 
 // AgentEvent 与 Go 端 AgentEvent 的 JSON 序列化一一对应
@@ -27,13 +28,15 @@ export interface AgentEvent {
   activity_kind?: string
   metadata?: Record<string, unknown>
   usage?: Record<string, unknown>
+  compression_phase?: string // "started" | "done"
+  summary?: string
   timestamp: string
 }
 
-// TurnSegment 是 turn 内的一个片段：文本块、工具调用或子 Agent
+// TurnSegment 是 turn 内的一个片段：文本块、工具调用、子 Agent 或压缩标记
 export interface TurnSegment {
   id: string
-  type: 'text' | 'tool' | 'subagent'
+  type: 'text' | 'tool' | 'subagent' | 'compression'
   content: string
   thinkingContent: string
   thinkingDone: boolean
@@ -51,6 +54,8 @@ export interface TurnSegment {
   taskId?: string
   segments?: TurnSegment[]
   finalText?: string
+  // compression
+  compressionPhase?: 'compressing' | 'done'
 }
 
 export function emptySegment(id: string): TurnSegment {
@@ -78,6 +83,7 @@ export interface Turn {
   segments: TurnSegment[]
   status: 'streaming' | 'done' | 'failed'
   errorMessage?: string
+  compressionOnly?: boolean // 纯压缩 turn（手动压缩），无用户消息
 }
 
 export function rebuildTurns(messages: session.Message[]): Turn[] {
@@ -87,6 +93,23 @@ export function rebuildTurns(messages: session.Message[]): Turn[] {
   const subagentCache = new Map<string, TurnSegment>()
 
   for (const msg of messages) {
+    // 压缩边界标记：独立成一个纯压缩 turn
+    if (msg.event_type === 'compression') {
+      turns.push({
+        id: `comp_${msg.turn_id}`,
+        turnId: msg.turn_id,
+        userMessage: '',
+        segments: [{
+          ...emptySegment(`comp_${msg.turn_id}`),
+          type: 'compression',
+          compressionPhase: 'done',
+        }],
+        status: 'done',
+        compressionOnly: true,
+      })
+      continue
+    }
+
     if (msg.role === 'user') {
       current = {
         id: `hist_${msg.turn_id}`,

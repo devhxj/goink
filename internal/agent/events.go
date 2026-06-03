@@ -12,6 +12,7 @@ const (
 	EventToolCall                           // 工具调用状态变化
 	EventUsage                              // 每次 LLM 调用的 token 用量
 	EventError                              // 不可恢复错误
+	EventCompression                        // 上下文压缩状态变化
 )
 
 // AgentEvent 是 loop 推送给前端的单次事件，对标 Python WebSocket push dict。
@@ -31,8 +32,10 @@ type AgentEvent struct {
 	DisplayText  string         `json:"display_text,omitempty"`  // buildDisplay 产出的展示文本
 	ActivityKind string         `json:"activity_kind,omitempty"` // 展示类别
 	Metadata     map[string]any `json:"metadata,omitempty"`      // buildDisplay 产出的附加信息（如 sub_agent_type）
-	Usage        map[string]any `json:"usage,omitempty"`         // token 用量详情（含 usage_ratio / detail）
-	Timestamp    time.Time      `json:"timestamp"`               // 事件生成时间
+	Usage            map[string]any `json:"usage,omitempty"`              // token 用量详情（含 usage_ratio / detail）
+	CompressionPhase string         `json:"compression_phase,omitempty"` // "started" | "done"
+	Summary          string         `json:"summary,omitempty"`           // 压缩摘要文本
+	Timestamp        time.Time      `json:"timestamp"`                   // 事件生成时间
 }
 
 // AgentLoopResult 是 Run() 的返回值。

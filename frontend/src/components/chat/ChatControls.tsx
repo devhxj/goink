@@ -13,6 +13,9 @@ interface Props {
   onToggleApproval: () => void
   onConfigModel: () => void
   usage: UsageInfo | null
+  onCompress?: () => void
+  isTurnRunning?: boolean
+  isCompressing?: boolean
 }
 
 export default function ChatControls({
@@ -25,6 +28,9 @@ export default function ChatControls({
   onToggleApproval,
   onConfigModel,
   usage,
+  onCompress,
+  isTurnRunning,
+  isCompressing,
 }: Props) {
   const selected = models.find(m => m.Key === selectedKey)
   const supportsReasoning = selected?.ReasoningLevels && selected.ReasoningLevels.length > 0
@@ -68,7 +74,7 @@ export default function ChatControls({
 
       <div className="flex-1" />
 
-      <ContextRing usage={usage} />
+      <ContextRing usage={usage} onCompress={onCompress} isTurnRunning={isTurnRunning} isCompressing={isCompressing} />
     </div>
   )
 }
