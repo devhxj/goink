@@ -13,15 +13,15 @@ download_bge_model() {
     echo "下载 BGE 嵌入模型 (bge-small-zh-v1.5, int8)..."
 
     # vocab.txt
-    if ! curl -fsSL --retry 3 --connect-timeout 30 -o "$MODEL_DIR/vocab.txt" "$BGE_REPO/vocab.txt"; then
+    if ! curl -fsSL --retry 2 --retry-delay 10 --connect-timeout 30 -o "$MODEL_DIR/vocab.txt" "$BGE_REPO/vocab.txt"; then
         echo "HF 直连失败，尝试镜像..."
-        curl -fsSL --retry 3 --connect-timeout 30 -o "$MODEL_DIR/vocab.txt" "$BGE_MIRROR/vocab.txt"
+        curl -fsSL --retry 2 --retry-delay 5 --connect-timeout 30 -o "$MODEL_DIR/vocab.txt" "$BGE_MIRROR/vocab.txt"
     fi
 
     # model.onnx (int8 quantized)
-    if ! curl -fsSL --retry 3 --connect-timeout 30 -o "$MODEL_DIR/model.onnx" "$BGE_REPO/onnx/model_int8.onnx"; then
+    if ! curl -fsSL --retry 2 --retry-delay 10 --connect-timeout 30 -o "$MODEL_DIR/model.onnx" "$BGE_REPO/onnx/model_int8.onnx"; then
         echo "HF 直连失败，尝试镜像..."
-        curl -fsSL --retry 3 --connect-timeout 30 -o "$MODEL_DIR/model.onnx" "$BGE_MIRROR/onnx/model_int8.onnx"
+        curl -fsSL --retry 2 --retry-delay 5 --connect-timeout 30 -o "$MODEL_DIR/model.onnx" "$BGE_MIRROR/onnx/model_int8.onnx"
     fi
 
     # 校验
