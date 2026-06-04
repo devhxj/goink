@@ -28,8 +28,8 @@ Section "Install"
     SetOutPath $INSTDIR
 
     ; 主程序（每次覆盖）
-    File "build\bin\goink.exe"
-    File /r "build\runtime\*.*"
+    File "${SOURCE_DIR}\build\bin\goink.exe"
+    File /r "${SOURCE_DIR}\build\runtime\*.*"
 
     ; 创建空数据目录（仅不存在时）
     CreateDirectory "$INSTDIR\models"
