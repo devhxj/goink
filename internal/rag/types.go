@@ -12,33 +12,32 @@ type Embedder interface {
 
 // Chunk 是待索引的文本块，携带来源元数据。
 type Chunk struct {
-	ID         string
-	Content    string
-	ChapterID  int64
-	ChunkType  string // "summary" / "chapter_brief" / "content"
-	ChunkIndex int
-	Metadata   map[string]any
+	ID            string
+	Content       string
+	ChapterNumber int
+	ChunkType     string // "summary" / "chapter_brief" / "content"
+	ChunkIndex    int
+	Metadata      map[string]any
 }
 
 // SearchResult 是单条检索结果。
 type SearchResult struct {
-	ChunkID    string
-	Content    string
-	SourceType string
-	SourceID   int64
-	Distance   float64
-	Relevance  float64
+	ChunkID       string
+	Content       string
+	SourceType    string
+	ChapterNumber int
+	Distance      float64
+	Relevance     float64
 }
 
 // SearchFilter 限定检索范围。
 type SearchFilter struct {
-	ChapterIDs []int64
-	ChunkTypes []string
+	ChapterNumbers []int
+	ChunkTypes     []string
 }
 
 // ChapterChunkParams 是 BuildChapterChunks 的输入参数。
 type ChapterChunkParams struct {
-	ChapterID     int64
 	ChapterNumber int
 	ChapterTitle  string
 	Content       string

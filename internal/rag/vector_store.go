@@ -38,11 +38,11 @@ func (s *VectorStore) ensureTable(ctx context.Context, novelID int64) error {
 	}
 
 	sql := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS %s USING vec0(
-		embedding float[768],
+		embedding float[512] distance_metric=cosine,
 		chunk_id text,
 		content text,
 		chunk_type text,
-		chapter_id integer,
+		chapter_number integer,
 		chunk_index integer
 	)`, s.tableName(novelID))
 
@@ -88,8 +88,8 @@ func (s *VectorStore) IndexChunks(ctx context.Context, novelID int64, chunks []C
 		}
 
 		_, err = tx.ExecContext(ctx,
-			fmt.Sprintf(`INSERT INTO %s (embedding, chunk_id, content, chunk_type, chapter_id, chunk_index) VALUES (?, ?, ?, ?, ?, ?)`, tableName),
-			v, chunk.ID, chunk.Content, chunk.ChunkType, chunk.ChapterID, chunk.ChunkIndex,
+			fmt.Sprintf(`INSERT INTO %s (embedding, chunk_id, content, chunk_type, chapter_number, chunk_index) VALUES (?, ?, ?, ?, ?, ?)`, tableName),
+			v, chunk.ID, chunk.Content, chunk.ChunkType, chunk.ChapterNumber, chunk.ChunkIndex,
 		)
 		if err != nil {
 			return fmt.Errorf("rag: insert chunk %s: %w", chunk.ID, err)
@@ -125,14 +125,14 @@ func (s *VectorStore) Search(ctx context.Context, novelID int64, query string, t
 	args := []any{q}
 
 	if filter != nil {
-		if len(filter.ChapterIDs) > 0 {
-			placeholders := make([]string, len(filter.ChapterIDs))
-			for i, id := range filter.ChapterIDs {
+		if len(filter.ChapterNumbers) > 0 {
+			placeholders := make([]string, len(filter.ChapterNumbers))
+			for i, id := range filter.ChapterNumbers {
 				placeholders[i] = "?"
 				args = append(args, id)
 			}
 			whereClauses = append(whereClauses,
-				fmt.Sprintf("chapter_id IN (%s)", strings.Join(placeholders, ",")))
+				fmt.Sprintf("chapter_number IN (%s)", strings.Join(placeholders, ",")))
 		}
 		if len(filter.ChunkTypes) > 0 {
 			placeholders := make([]string, len(filter.ChunkTypes))
@@ -151,7 +151,7 @@ func (s *VectorStore) Search(ctx context.Context, novelID int64, query string, t
 	}
 
 	querySQL := fmt.Sprintf(
-		`SELECT chunk_id, content, chunk_type, chapter_id, distance FROM %s WHERE embedding MATCH ?%s ORDER BY distance LIMIT ?`,
+		`SELECT chunk_id, content, chunk_type, chapter_number, distance FROM %s WHERE embedding MATCH ?%s ORDER BY distance LIMIT ?`,
 		tableName, whereSQL,
 	)
 	args = append(args, topK)
@@ -165,9 +165,9 @@ func (s *VectorStore) Search(ctx context.Context, novelID int64, query string, t
 	var results []SearchResult
 	for rows.Next() {
 		var chunkID, content, chunkType string
-		var chapterID int64
+		var chapterNumber int
 		var distance float64
-		if err := rows.Scan(&chunkID, &content, &chunkType, &chapterID, &distance); err != nil {
+		if err := rows.Scan(&chunkID, &content, &chunkType, &chapterNumber, &distance); err != nil {
 			return nil, fmt.Errorf("rag: scan result: %w", err)
 		}
 		relevance := 1.0 - distance
@@ -178,7 +178,7 @@ func (s *VectorStore) Search(ctx context.Context, novelID int64, query string, t
 			ChunkID:    chunkID,
 			Content:    content,
 			SourceType: chunkType,
-			SourceID:   chapterID,
+			ChapterNumber:   chapterNumber,
 			Distance:   distance,
 			Relevance:  relevance,
 		})
@@ -193,17 +193,28 @@ func (s *VectorStore) Search(ctx context.Context, novelID int64, query string, t
 }
 
 // DeleteChapterChunks 删除指定章节的所有向量块。
-func (s *VectorStore) DeleteChapterChunks(ctx context.Context, novelID, chapterID int64) error {
+func (s *VectorStore) DeleteChapterChunks(ctx context.Context, novelID int64, chapterNumber int) error {
 	tableName := s.tableName(novelID)
 	_, err := s.db.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM %s WHERE chapter_id = ?`, tableName),
-		chapterID,
+		fmt.Sprintf(`DELETE FROM %s WHERE chapter_number = ?`, tableName),
+		chapterNumber,
 	)
 	if err != nil {
-		return fmt.Errorf("rag: delete chapter %d chunks: %w", chapterID, err)
+		return fmt.Errorf("rag: delete chapter %d chunks: %w", chapterNumber, err)
 	}
-	s.log.Info("已删除章节向量", "novel_id", novelID, "chapter_id", chapterID)
+	s.log.Info("已删除章节向量", "novel_id", novelID, "chapter_number", chapterNumber)
 	return nil
+}
+
+// CountChunks 返回指定小说的向量块总数。表不存在时自动创建后返回 0。
+func (s *VectorStore) CountChunks(ctx context.Context, novelID int64) (int, error) {
+	if err := s.ensureTable(ctx, novelID); err != nil {
+		return 0, err
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT COUNT(*) FROM %s", s.tableName(novelID))).Scan(&count)
+	return count, err
 }
 
 // DeleteNovel 删除整部小说的向量表。

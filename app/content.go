@@ -2,8 +2,11 @@ package app
 
 import (
 	"os"
+	"regexp"
+	"strconv"
 
 	"novel/internal/git"
+	"novel/internal/rag"
 )
 
 // SaveContentInput 是保存文件内容的入参。
@@ -25,7 +28,17 @@ func (a *App) GetContent(novelID int64, path string) (string, error) {
 	return content, nil
 }
 
+var chPathRe = regexp.MustCompile(`^chapters/(\d{1,6})\.md$`)
+
 // SaveContent 保存小说仓库中指定路径的文件内容。
 func (a *App) SaveContent(input SaveContentInput) error {
-	return git.WriteFile(input.NovelID, input.Path, input.Content)
+	if err := git.WriteFile(input.NovelID, input.Path, input.Content); err != nil {
+		return err
+	}
+
+	if m := chPathRe.FindStringSubmatch(input.Path); m != nil {
+		chapNum, _ := strconv.Atoi(m[1])
+		rag.SubmitRefresh(input.NovelID, chapNum, input.Content)
+	}
+	return nil
 }

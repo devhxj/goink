@@ -2,8 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"runtime"
 
 	"novel/internal/config"
@@ -17,7 +15,7 @@ func (a *App) GetAppConfig() map[string]any {
 	}
 	return map[string]any{
 		"initialized": true,
-		"data_dir":    a.cfg.DataDir,
+		"data_dir":    config.DataDirPath(),
 	}
 }
 
@@ -30,17 +28,17 @@ func (a *App) UpdateDataDir(newPath string) error {
 		return fmt.Errorf("数据目录路径不能为空")
 	}
 
+	// 先保存新配置，失败时旧 DB 仍可用
+	if err := config.Save(newPath); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+
 	// 关闭旧数据库
 	if a.db != nil {
 		if err := storage.Close(a.db); err != nil {
 			return fmt.Errorf("关闭旧数据库失败: %w", err)
 		}
 		a.db = nil
-	}
-
-	// 保存新配置
-	if err := config.Save(newPath); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
 	}
 
 	// 重新加载并初始化
@@ -50,31 +48,14 @@ func (a *App) UpdateDataDir(newPath string) error {
 	}
 
 	a.initWithConfig(cfg)
-	a.logger.Info("数据目录已更改", "data_dir", cfg.DataDir)
+	a.logger.Info("数据目录已更改", "data_dir", config.DataDirPath())
 	return nil
 }
 
 // GetPlatform 返回平台信息，供前端决定默认路径等行为。
 func (a *App) GetPlatform() map[string]any {
-	info := map[string]any{
+	return map[string]any{
 		"os":          runtime.GOOS,
-		"defaultPath": defaultDataDir(),
+		"defaultPath": config.DataDirPath(),
 	}
-	return info
-}
-
-// defaultDataDir 根据平台返回默认数据目录。
-// Windows: 检测 D/E 盘是否存在，否则回退到用户目录。
-// 其他平台: ~/.goink。
-func defaultDataDir() string {
-	if runtime.GOOS == "windows" {
-		for _, drive := range []string{"D:", "E:", "C:"} {
-			root := drive + string(filepath.Separator)
-			if _, err := os.Stat(root); err == nil {
-				return filepath.Join(root, "Goink")
-			}
-		}
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".goink")
 }

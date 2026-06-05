@@ -16,11 +16,11 @@ import (
 
 // SearchStoryMemoryArgs 是 search_story_memory 的参数。
 type SearchStoryMemoryArgs struct {
-	Query        string   `json:"query" jsonschema:"required,description=语义搜索查询。用自然语言描述你想找的内容" validate:"required"`
-	TopK         int      `json:"top_k" jsonschema:"description=返回结果数量,default=5,minimum=1,maximum=20" validate:"omitempty,min=1,max=20"`
-	MinRelevance float64  `json:"min_relevance" jsonschema:"description=相关度阈值 0-1,default=0.5" validate:"omitempty,min=0,max=1"`
-	ChapterIDs   []int64  `json:"chapter_ids" jsonschema:"description=限定章节 ID 范围，空表示不限制"`
-	ChunkTypes   []string `json:"chunk_types" jsonschema:"description=限定块类型：summary(章节摘要) / chapter_brief(章节概要) / content(正文内容)，空表示全部"`
+	Query          string   `json:"query" jsonschema:"required,description=语义搜索查询。用自然语言描述你想找的内容" validate:"required"`
+	TopK           int      `json:"top_k" jsonschema:"description=返回结果数量,default=5,minimum=1,maximum=20" validate:"omitempty,min=1,max=20"`
+	MinRelevance   float64  `json:"min_relevance" jsonschema:"description=相关度阈值 0-1,default=0.5" validate:"omitempty,min=0,max=1"`
+	ChapterNumbers []int    `json:"chapter_numbers" jsonschema:"description=限定章节号范围，空表示不限制"`
+	ChunkTypes     []string `json:"chunk_types" jsonschema:"description=限定块类型：summary(章节摘要) / chapter_brief(章节概要) / content(正文内容)，空表示全部"`
 }
 
 // SearchStoryMemoryTool 语义检索小说记忆。
@@ -30,9 +30,11 @@ func (t *SearchStoryMemoryTool) Name() string           { return "search_story_m
 func (t *SearchStoryMemoryTool) Description() string    { return searchStoryMemoryDescription }
 func (t *SearchStoryMemoryTool) Category() ToolCategory { return CategoryMemoryRetrieval }
 
-func (t *SearchStoryMemoryTool) JSONSchema() json.RawMessage { return SchemaOf(SearchStoryMemoryArgs{}) }
-func (t *SearchStoryMemoryTool) ExposeToLLM() bool           { return true }
-func (t *SearchStoryMemoryTool) NewArgs() any                { return &SearchStoryMemoryArgs{} }
+func (t *SearchStoryMemoryTool) JSONSchema() json.RawMessage {
+	return SchemaOf(SearchStoryMemoryArgs{})
+}
+func (t *SearchStoryMemoryTool) ExposeToLLM() bool { return true }
+func (t *SearchStoryMemoryTool) NewArgs() any      { return &SearchStoryMemoryArgs{} }
 
 func (t *SearchStoryMemoryTool) Execute(ctx context.Context, args any, tc ToolContext) (*ToolResult, error) {
 	a := args.(*SearchStoryMemoryArgs)
@@ -46,17 +48,17 @@ func (t *SearchStoryMemoryTool) Execute(ctx context.Context, args any, tc ToolCo
 
 	vs := rag.GetVectorStore()
 	if vs == nil {
-		return nil, fmt.Errorf("向量存储未初始化")
+		return &ToolResult{Success: false, Error: "向量检索不可用，ONNX 模型未安装，请先下载模型"}, nil
 	}
 
 	// 1. 过量获取，提高召回
 	fetchK := min(a.TopK*2, 40)
 
 	var filter *rag.SearchFilter
-	if len(a.ChapterIDs) > 0 || len(a.ChunkTypes) > 0 {
+	if len(a.ChapterNumbers) > 0 || len(a.ChunkTypes) > 0 {
 		filter = &rag.SearchFilter{
-			ChapterIDs: a.ChapterIDs,
-			ChunkTypes: a.ChunkTypes,
+			ChapterNumbers: a.ChapterNumbers,
+			ChunkTypes:     a.ChunkTypes,
 		}
 	}
 
@@ -88,24 +90,26 @@ func (t *SearchStoryMemoryTool) Execute(ctx context.Context, args any, tc ToolCo
 	reranked := rag.MMRRerank(a.Query, filtered, a.TopK, 0.7)
 
 	// 4. 查询章节元数据
-	chapterIDs := make([]int64, 0, len(reranked))
-	seen := make(map[int64]bool, len(reranked))
+	chapterNums := make([]int, 0, len(reranked))
+	seen := make(map[int]bool, len(reranked))
 	for _, r := range reranked {
-		if r.SourceID > 0 && !seen[r.SourceID] {
-			chapterIDs = append(chapterIDs, r.SourceID)
-			seen[r.SourceID] = true
+		if r.ChapterNumber > 0 && !seen[r.ChapterNumber] {
+			chapterNums = append(chapterNums, r.ChapterNumber)
+			seen[r.ChapterNumber] = true
 		}
 	}
 
 	var chapters []chapter.Chapter
-	if len(chapterIDs) > 0 {
-		if err := tc.DB.WithContext(ctx).Where("id IN ?", chapterIDs).Find(&chapters).Error; err != nil {
+	if len(chapterNums) > 0 {
+		if err := tc.DB.WithContext(ctx).
+				Where("novel_id = ? AND chapter_number IN ?", tc.NovelID, chapterNums).
+				Find(&chapters).Error; err != nil {
 			return nil, fmt.Errorf("查询章节元数据失败: %w", err)
 		}
 	}
-	chapMap := make(map[int64]chapter.Chapter, len(chapters))
+	chapMap := make(map[int]chapter.Chapter, len(chapters))
 	for _, ch := range chapters {
-		chapMap[ch.ID] = ch
+		chapMap[ch.ChapterNumber] = ch
 	}
 
 	// 5. 格式化 Markdown 输出
@@ -120,7 +124,7 @@ func (t *SearchStoryMemoryTool) Execute(ctx context.Context, args any, tc ToolCo
 			maxRelevance = r.Relevance
 		}
 
-		ch, ok := chapMap[r.SourceID]
+		ch, ok := chapMap[r.ChapterNumber]
 		sourceLabel := chunkTypeLabel(r.SourceType)
 		fmt.Fprintf(&sb, "\n\n### %d. ", i+1)
 		if ok && ch.ChapterNumber > 0 {

@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   ApproveTool,
   CancelChat,
@@ -27,7 +28,7 @@ import {
 import type { app, novel, chapter, config, llm, session } from '@/lib/wailsjs/go/models'
 
 export function useApp() {
-  return {
+  return useMemo(() => ({
     CancelChat,
     Chat,
     CompressContext,
@@ -52,7 +53,7 @@ export function useApp() {
     GetLLMConfig,
     SaveLLMConfig,
     UpdateDataDir,
-  }
+  }), [])
 }
 
 export type { app, novel, chapter, config, llm, session }

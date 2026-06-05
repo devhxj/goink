@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"novel/internal/config"
+	"novel/internal/platform"
 )
 
 // Repo 管理单部小说的 Git 仓库，提供文件读写和版本控制。
@@ -34,12 +35,12 @@ func New(novelID int64) (*Repo, error) {
 		return nil, fmt.Errorf("git: config not initialized")
 	}
 
-	gitBin, err := exec.LookPath("git")
+	gitBin, err := platform.ResolveGit()
 	if err != nil {
-		return nil, fmt.Errorf("git: git not found in PATH: %w", err)
+		return nil, fmt.Errorf("git: 找不到 git 可执行文件: %w", err)
 	}
 
-	dir := cfg.NovelDirPath(novelID)
+	dir := config.NovelDirPath(novelID)
 	r := &Repo{dir: dir, gitBin: gitBin}
 
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
@@ -156,7 +157,9 @@ func (r *Repo) Revert(hashes []string) error {
 	for i := len(hashes) - 1; i >= 0; i-- {
 		_, stderr, err := r.runInDir("revert", "--no-commit", hashes[i])
 		if err != nil {
-			r.runInDir("revert", "--abort")
+			if _, _, abortErr := r.runInDir("revert", "--abort"); abortErr != nil {
+				return fmt.Errorf("git: revert %s: %s: %w; abort 也失败: %v", hashes[i], stderr, err, abortErr)
+			}
 			return fmt.Errorf("git: revert %s: %s: %w", hashes[i], stderr, err)
 		}
 	}

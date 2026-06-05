@@ -94,7 +94,6 @@ func TestSplitText_Overlap(t *testing.T) {
 func TestBuildChapterChunks(t *testing.T) {
 	tok := testTokenizer(t)
 	params := ChapterChunkParams{
-		ChapterID:     1,
 		ChapterNumber: 1,
 		ChapterTitle:  "初入江湖",
 		Content:       "张三背着行囊踏进了江湖。\n\n这是他人生的新篇章。故事从这里开始。",
@@ -145,7 +144,6 @@ func TestBuildChapterChunks(t *testing.T) {
 func TestBuildChapterChunks_NoSummary(t *testing.T) {
 	tok := testTokenizer(t)
 	params := ChapterChunkParams{
-		ChapterID:     2,
 		ChapterNumber: 2,
 		ChapterTitle:  "",
 		Content:       "正文内容正文内容。",
@@ -175,7 +173,6 @@ func TestBuildChapterChunks_NoSummary(t *testing.T) {
 func TestBuildChapterChunks_EmptyContent(t *testing.T) {
 	tok := testTokenizer(t)
 	params := ChapterChunkParams{
-		ChapterID:     3,
 		ChapterNumber: 3,
 		ChapterTitle:  "空章",
 		Content:       "",

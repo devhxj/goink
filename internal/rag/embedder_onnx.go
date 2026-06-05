@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"path/filepath"
 	"sync"
 
@@ -17,6 +18,9 @@ const (
 	maxBatchSize = 64  // 单次 ONNX Run 最大样本数，防 OOM
 )
 
+// BGE 模型查询时需要加指令前缀，文档不加。
+const queryInstruction = "为这个句子生成表示以用于检索相关文章："
+
 var (
 	instance  *OnnxEmbedder
 	tokenizer *Tokenizer
@@ -25,7 +29,7 @@ var (
 	initErr   error
 )
 
-// OnnxEmbedder 使用 ONNX Runtime 加载 text2vec-base-chinese 模型生成 embedding。
+// OnnxEmbedder 使用 ONNX Runtime 加载 bge-small-zh-v1.5 (int8) 模型生成 embedding。
 // 全局仅一个实例，通过 InitEmbedder 异步初始化。
 type OnnxEmbedder struct {
 	session   *ort.DynamicAdvancedSession
@@ -76,7 +80,7 @@ func GetTokenizer() *Tokenizer {
 	return tokenizer
 }
 
-func (e *OnnxEmbedder) Dim() int { return 768 }
+func (e *OnnxEmbedder) Dim() int { return 512 }
 
 // newOnnxEmbedder 同步初始化 ONNX Runtime 并加载模型。仅由 InitEmbedder 调用。
 func newOnnxEmbedder(modelsDir string, t *Tokenizer, log *slog.Logger) (*OnnxEmbedder, error) {
@@ -112,7 +116,6 @@ func newOnnxEmbedder(modelsDir string, t *Tokenizer, log *slog.Logger) (*OnnxEmb
 // ── 模型适配层 ────────────────────────────────────────────
 
 // prepare 对原始 token 先截断再加 [CLS]/[SEP]，保证总长度 ≤ bertMaxLen。
-// 换模型时替换此实现即可。
 func (e *OnnxEmbedder) prepare(text string) []int {
 	raw := e.tokenizer.Tokenize(text)
 	limit := bertMaxLen - 2
@@ -130,7 +133,8 @@ func (e *OnnxEmbedder) prepare(text string) []int {
 // ── Embedding ────────────────────────────────────────────
 
 func (e *OnnxEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	ids := e.prepare(text)
+	// 查询加 BGE 指令前缀
+	ids := e.prepare(queryInstruction + text)
 
 	select {
 	case <-ctx.Done():
@@ -165,7 +169,7 @@ func (e *OnnxEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	}
 	defer typeIDsTensor.Destroy()
 
-	outputTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(1, seqLen, 768))
+	outputTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(1, seqLen, 512))
 	if err != nil {
 		return nil, fmt.Errorf("rag: create output tensor: %w", err)
 	}
@@ -183,7 +187,7 @@ func (e *OnnxEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	}
 
 	hidden := outputTensor.GetData()
-	return meanPool(hidden, int(seqLen), 768, attentionMask), nil
+	return clsPool(hidden, 512), nil
 }
 
 func (e *OnnxEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
@@ -229,7 +233,7 @@ func (e *OnnxEmbedder) embedBatch(ctx context.Context, texts []string) ([][]floa
 	if maxLen == 0 {
 		results := make([][]float32, len(texts))
 		for i := range results {
-			results[i] = make([]float32, 768)
+			results[i] = make([]float32, 512)
 		}
 		return results, nil
 	}
@@ -269,7 +273,7 @@ func (e *OnnxEmbedder) embedBatch(ctx context.Context, texts []string) ([][]floa
 	}
 	defer typeIDsTensor.Destroy()
 
-	outputTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(batchSize, seqLen, 768))
+	outputTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(batchSize, seqLen, 512))
 	if err != nil {
 		return nil, fmt.Errorf("rag: create batch output tensor: %w", err)
 	}
@@ -286,14 +290,13 @@ func (e *OnnxEmbedder) embedBatch(ctx context.Context, texts []string) ([][]floa
 		return nil, fmt.Errorf("rag: batch onnx run: %w", err)
 	}
 
-	// 4. Mean pool each sample with its own attention mask.
+	// 4. CLS pool each sample.
 	hidden := outputTensor.GetData()
 	results := make([][]float32, batchSize)
-	sampleSize := int(seqLen) * 768
+	sampleSize := int(seqLen) * 512
 	for i := int64(0); i < batchSize; i++ {
 		start := int(i) * sampleSize
-		mask := attentionMask[i*seqLen : (i+1)*seqLen]
-		results[i] = meanPool(hidden[start:start+sampleSize], int(seqLen), 768, mask)
+		results[i] = clsPool(hidden[start:start+sampleSize], 512)
 	}
 
 	return results, nil
@@ -311,24 +314,20 @@ func (e *OnnxEmbedder) Close() error {
 
 // ── Pooling ──────────────────────────────────────────────
 
-// meanPool 对 hidden states 做 attention-masked mean pooling，输出 [dim]float32。
-func meanPool(hidden []float32, seqLen, dim int, mask []int64) []float32 {
-	pooled := make([]float32, dim)
-	var totalWeight float32
-	for i := 0; i < seqLen; i++ {
-		w := float32(mask[i])
-		if w == 0 {
-			continue
-		}
-		for j := 0; j < dim; j++ {
-			pooled[j] += hidden[i*dim+j] * w
-		}
-		totalWeight += w
+// clsPool 取 [CLS] token 的 embedding 并做 L2 归一化。
+// BGE 模型使用 CLS 池化 + L2 归一化，优于均值池化。
+func clsPool(hidden []float32, dim int) []float32 {
+	vec := make([]float32, dim)
+	copy(vec, hidden[:dim])
+	var norm float64
+	for _, v := range vec {
+		norm += float64(v) * float64(v)
 	}
-	if totalWeight > 0 {
-		for j := 0; j < dim; j++ {
-			pooled[j] /= totalWeight
+	norm = math.Sqrt(norm)
+	if norm > 0 {
+		for i := range vec {
+			vec[i] /= float32(norm)
 		}
 	}
-	return pooled
+	return vec
 }

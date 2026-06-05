@@ -1,22 +1,5 @@
 import { useState, useCallback } from 'react'
-
-export type EditorTab = {
-  id: string
-  type: 'edit' | 'diff'
-  path: string
-  title: string
-  // edit tab
-  content?: string
-  isDirty?: boolean
-  viewMode?: 'content' | 'outline'
-  // diff tab
-  diff?: string
-  original?: string
-  modified?: string
-  changeType?: string
-  reason?: string
-  toolId?: string
-}
+import type { EditorTab } from '@/components/content/types'
 
 let idSeq = 0
 function nextId(prefix: string) { return `${prefix}_${++idSeq}` }
@@ -39,13 +22,15 @@ export function useEditorTabs() {
 
   const closeTab = useCallback((id: string) => {
     setTabs(prev => {
+      if (prev.length <= 1) {
+        setActiveTabId(null)
+        return []
+      }
       const idx = prev.findIndex(t => t.id === id)
       const next = prev.filter(t => t.id !== id)
-      if (activeTabId === id && next.length > 0) {
+      if (activeTabId === id) {
         const newIdx = Math.min(idx, next.length - 1)
         setActiveTabId(next[newIdx].id)
-      } else if (next.length === 0) {
-        setActiveTabId(null)
       }
       return next
     })
@@ -65,13 +50,11 @@ export function useEditorTabs() {
     return id
   }, [])
 
-  const findDiffByToolId = useCallback((toolId: string) => {
-    return tabs.find(t => t.type === 'diff' && t.toolId === toolId) ?? null
-  }, [tabs])
-
   return {
     tabs, activeTab, activeTabId,
     openTab, closeTab, setActiveTabId,
-    updateTab, openDiffTab, findDiffByToolId,
+    updateTab, openDiffTab,
   }
 }
+
+export type { EditorTab }
