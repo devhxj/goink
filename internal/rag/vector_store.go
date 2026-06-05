@@ -38,7 +38,7 @@ func (s *VectorStore) ensureTable(ctx context.Context, novelID int64) error {
 	}
 
 	sql := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS %s USING vec0(
-		embedding float[512],
+		embedding float[512] distance_metric=cosine,
 		chunk_id text,
 		content text,
 		chunk_type text,
