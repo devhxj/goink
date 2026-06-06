@@ -35,16 +35,14 @@ var reviewAgentTools = []string{
 	"get_chapter_list", "get_characters", "get_character_relations",
 	"get_locations", "get_timeline", "get_story_arcs",
 	"get_reader_perspective", "get_preferences",
-	"update_timeline_entry", "update_chapter_plan",
-	"update_story_arc", "update_arc_node",
-	"update_reader_perspective_entry",
+	"search_story_memory", "read",
 }
 
 var memoryAgentTools = []string{
 	"get_chapter_list", "get_characters", "get_character_relations",
 	"get_locations", "get_timeline", "get_story_arcs",
 	"get_reader_perspective", "get_preferences",
-	"search_story_memory",
+	"search_story_memory", "read",
 }
 
 var (
