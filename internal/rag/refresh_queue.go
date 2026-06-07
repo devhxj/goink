@@ -93,7 +93,7 @@ func (q *RefreshQueue) Submit(task RefreshTask) {
 	select {
 	case q.ch <- task:
 	default:
-		q.logger.Warn("向量刷新队列已满，丢弃任务", "chapter_id", task.ChapterNumber)
+		q.logger.Warn("向量刷新队列已满，丢弃任务", "chapter_number", task.ChapterNumber)
 	}
 }
 
