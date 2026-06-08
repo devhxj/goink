@@ -29,11 +29,15 @@ export default function WorkspaceView({ initialNovelId }: Props) {
   const [tabTarget, setTabTarget] = useState<{ path: string; title: string } | null>(null)
   const [activeContent, setActiveContent] = useState('')
   const [isMaximised, setIsMaximised] = useState(false)
+  const [platformOS, setPlatformOS] = useState('')
   const loadedRef = useRef(false)
 
   // ── 窗口状态 ────────────────────────────────────────────
 
   useEffect(() => {
+    app.GetPlatform().then((info) => {
+      if (info.os) setPlatformOS(info.os as string)
+    })
     WindowIsMaximised().then(setIsMaximised)
   }, [])
 
@@ -113,7 +117,8 @@ export default function WorkspaceView({ initialNovelId }: Props) {
 
   // ── 窗口按钮样式 ────────────────────────────────────────
 
-  const winBtn = 'flex items-center justify-center w-6 h-full cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors'
+  const winBtn = 'w-12 h-full flex items-center justify-center cursor-pointer text-foreground/80 hover:text-foreground hover:bg-black/25 hover:shadow-md transition-all'
+  const closeBtn = 'w-12 h-full flex items-center justify-center cursor-pointer text-foreground/80 hover:text-white hover:bg-red-500 transition-colors'
 
   return (
     <div className="h-screen flex flex-col">
@@ -124,40 +129,39 @@ export default function WorkspaceView({ initialNovelId }: Props) {
         <span className="text-sm font-medium pl-3 flex-1">
           {activeNovel?.title ?? 'Goink'}
         </span>
-        <div className="flex items-center gap-1 pr-1" style={{ '--wails-draggable': 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center h-full" style={{ '--wails-draggable': 'no-drag' } as React.CSSProperties}>
           <GitHubLink />
           <button
             onClick={() => setShowSettings(true)}
-            className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer w-8 h-8 flex items-center justify-center"
+            className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer w-8 h-8 flex items-center justify-center mr-1"
             title="设置"
           >
             <Settings className="w-5 h-5" />
           </button>
-          <div className="w-px h-4 bg-border/30 mx-0.5" />
-          <button onClick={WindowMinimise} className={winBtn} title="最小化">
-            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 5h7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
-          </button>
-          <button
-            onClick={() => { WindowToggleMaximise(); setIsMaximised(!isMaximised) }}
-            className={winBtn}
-            title={isMaximised ? '还原' : '最大化'}
-          >
-            {isMaximised ? (
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <rect x="3" y="1.5" width="6" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth=".85" />
-                <rect x="1" y="2.5" width="6" height="6" rx="1" fill="var(--color-sidebar)" stroke="currentColor" strokeWidth=".85" />
-              </svg>
-            ) : (
-              <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" strokeWidth=".9" rx=".5" fill="none" /></svg>
-            )}
-          </button>
-          <button
-            onClick={Quit}
-            className={`${winBtn} hover:!bg-red-500 hover:!text-white`}
-            title="关闭"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth=".9" strokeLinecap="round"/></svg>
-          </button>
+          {platformOS !== 'darwin' && (
+            <>
+              <button onClick={WindowMinimise} className={winBtn} title="最小化">
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+              </button>
+              <button
+                onClick={() => { WindowToggleMaximise(); setIsMaximised(!isMaximised) }}
+                className={winBtn}
+                title={isMaximised ? '还原' : '最大化'}
+              >
+                {isMaximised ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12">
+                    <rect x="4" y="1.5" width="6.5" height="6.5" rx="1" fill="none" stroke="currentColor" strokeWidth=".9" />
+                    <rect x="1.5" y="2.5" width="6.5" height="6.5" rx="1" fill="var(--color-sidebar)" stroke="currentColor" strokeWidth=".9" />
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" stroke="currentColor" strokeWidth=".9" rx=".5" fill="none" /></svg>
+                )}
+              </button>
+              <button onClick={Quit} className={closeBtn} title="关闭">
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
+              </button>
+            </>
+          )}
         </div>
       </header>
 
