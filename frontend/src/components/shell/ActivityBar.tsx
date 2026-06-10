@@ -11,8 +11,8 @@ interface Activity {
 const activities: Activity[] = [
   { id: 'novels', icon: Library, label: '书架' },
   { id: 'chapters', icon: List, label: '章节' },
-  { id: 'characters', icon: Users, label: '角色', disabled: true },
-  { id: 'locations', icon: MapPin, label: '地点', disabled: true },
+  { id: 'characters', icon: Users, label: '角色' },
+  { id: 'locations', icon: MapPin, label: '地点' },
 ]
 
 interface Props {

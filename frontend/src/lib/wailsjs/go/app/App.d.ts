@@ -3,7 +3,9 @@
 import {app} from '../models';
 import {chapter} from '../models';
 import {novel} from '../models';
+import {character} from '../models';
 import {llm} from '../models';
+import {location} from '../models';
 import {session} from '../models';
 import {storage} from '../models';
 import {config} from '../models';
@@ -24,9 +26,17 @@ export function GetAppConfig():Promise<Record<string, any>>;
 
 export function GetChapters(arg1:number):Promise<Array<chapter.Chapter>>;
 
+export function GetCharacterRelations(arg1:number):Promise<Array<character.CharacterRelation>>;
+
+export function GetCharacters(arg1:number):Promise<Array<character.Character>>;
+
 export function GetContent(arg1:number,arg2:string):Promise<string>;
 
 export function GetLLMConfig():Promise<llm.LLMConfigView>;
+
+export function GetLocationRelations(arg1:number):Promise<Array<location.LocationRelation>>;
+
+export function GetLocations(arg1:number):Promise<Array<location.Location>>;
 
 export function GetModels():Promise<Array<llm.AvailableModel>>;
 

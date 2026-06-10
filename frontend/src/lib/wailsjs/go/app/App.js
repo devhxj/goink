@@ -34,12 +34,28 @@ export function GetChapters(arg1) {
   return window['go']['app']['App']['GetChapters'](arg1);
 }
 
+export function GetCharacterRelations(arg1) {
+  return window['go']['app']['App']['GetCharacterRelations'](arg1);
+}
+
+export function GetCharacters(arg1) {
+  return window['go']['app']['App']['GetCharacters'](arg1);
+}
+
 export function GetContent(arg1, arg2) {
   return window['go']['app']['App']['GetContent'](arg1, arg2);
 }
 
 export function GetLLMConfig() {
   return window['go']['app']['App']['GetLLMConfig']();
+}
+
+export function GetLocationRelations(arg1) {
+  return window['go']['app']['App']['GetLocationRelations'](arg1);
+}
+
+export function GetLocations(arg1) {
+  return window['go']['app']['App']['GetLocations'](arg1);
 }
 
 export function GetModels() {
