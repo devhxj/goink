@@ -5,6 +5,12 @@ import ActivityBar from '@/components/shell/ActivityBar'
 import StatusBar from '@/components/shell/StatusBar'
 import SidePanel from '@/components/sidebar/SidePanel'
 import ContentPanel, { type ContentPanelHandle } from '@/components/content/ContentPanel'
+import CharacterGraph from '@/components/character/CharacterGraph'
+import LocationGraph from '@/components/location/LocationGraph'
+import ArcListView from '@/components/storyarc/ArcListView'
+import TimelineView from '@/components/timeline/TimelineView'
+import ReaderView from '@/components/reader/ReaderView'
+import PreferenceView from '@/components/preference/PreferenceView'
 import ChatPanel from '@/components/chat/ChatPanel'
 import GitHubLink from '@/components/shell/GitHubLink'
 import SettingsDialog from '@/components/settings/SettingsDialog'
@@ -185,7 +191,23 @@ export default function WorkspaceView({ initialNovelId }: Props) {
           onCreateNovel={handleCreateNovel}
         />
 
-        <ContentPanel ref={contentRef} novelId={activeNovelId} onContentChange={setActiveContent} />
+        {activePanel !== 'characters' && activePanel !== 'locations' && activePanel !== 'storyarcs' && activePanel !== 'timeline' && activePanel !== 'reader' && activePanel !== 'preferences' && (
+          <ContentPanel ref={contentRef} novelId={activeNovelId} onContentChange={setActiveContent} />
+        )}
+
+        {activePanel === 'characters' ? (
+          <CharacterGraph novelId={activeNovelId} />
+        ) : activePanel === 'locations' ? (
+          <LocationGraph novelId={activeNovelId} />
+        ) : activePanel === 'storyarcs' ? (
+          <ArcListView novelId={activeNovelId} />
+        ) : activePanel === 'timeline' ? (
+          <TimelineView novelId={activeNovelId} />
+        ) : activePanel === 'reader' ? (
+          <ReaderView novelId={activeNovelId} />
+        ) : activePanel === 'preferences' ? (
+          <PreferenceView novelId={activeNovelId} />
+        ) : null}
 
         <ChatPanel novelId={activeNovelId} onApprove={handleApprove} onReject={handleReject} />
       </div>

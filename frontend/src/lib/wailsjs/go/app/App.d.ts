@@ -3,7 +3,12 @@
 import {app} from '../models';
 import {chapter} from '../models';
 import {novel} from '../models';
+import {storyarc} from '../models';
+import {timeline} from '../models';
+import {character} from '../models';
 import {llm} from '../models';
+import {location} from '../models';
+import {reader} from '../models';
 import {session} from '../models';
 import {storage} from '../models';
 import {config} from '../models';
@@ -20,19 +25,41 @@ export function CreateChapter(arg1:app.CreateChapterInput):Promise<chapter.Chapt
 
 export function CreateNovel(arg1:app.CreateNovelInput):Promise<novel.Novel>;
 
+export function CreatePreference(arg1:number,arg2:app.CreatePreferenceInput):Promise<novel.PreferenceItem>;
+
+export function DeletePreference(arg1:number):Promise<void>;
+
 export function GetAppConfig():Promise<Record<string, any>>;
 
+export function GetArcNodes(arg1:number,arg2:number,arg3:number):Promise<Array<storyarc.ArcNode>>;
+
+export function GetChapterPlans(arg1:number):Promise<Array<timeline.ChapterPlan>>;
+
 export function GetChapters(arg1:number):Promise<Array<chapter.Chapter>>;
+
+export function GetCharacterRelations(arg1:number):Promise<Array<character.CharacterRelation>>;
+
+export function GetCharacters(arg1:number):Promise<Array<character.Character>>;
 
 export function GetContent(arg1:number,arg2:string):Promise<string>;
 
 export function GetLLMConfig():Promise<llm.LLMConfigView>;
+
+export function GetLocationRelations(arg1:number):Promise<Array<location.LocationRelation>>;
+
+export function GetLocations(arg1:number):Promise<Array<location.Location>>;
+
+export function GetMaxChapterNumber(arg1:number):Promise<number>;
 
 export function GetModels():Promise<Array<llm.AvailableModel>>;
 
 export function GetNovels():Promise<Array<novel.Novel>>;
 
 export function GetPlatform():Promise<Record<string, any>>;
+
+export function GetPreferences(arg1:number):Promise<app.PreferenceResult>;
+
+export function GetReaderPerspectives(arg1:number):Promise<Array<reader.ReaderPerspective>>;
 
 export function GetSession(arg1:string):Promise<app.SessionDetail>;
 
@@ -41,6 +68,10 @@ export function GetSessionMessages(arg1:string):Promise<Array<session.Message>>;
 export function GetSessions(arg1:app.GetSessionsInput):Promise<storage.PageResult_novel_app_SessionMeta_>;
 
 export function GetSettings():Promise<config.AppSettings>;
+
+export function GetStoryArcs(arg1:number):Promise<Array<storyarc.StoryArc>>;
+
+export function GetTimelineEntries(arg1:number,arg2:number,arg3:number):Promise<Array<timeline.TimelineEntry>>;
 
 export function Initialize(arg1:string):Promise<void>;
 
@@ -57,3 +88,5 @@ export function SetActiveNovel(arg1:app.SetActiveNovelInput):Promise<void>;
 export function SetApprovalMode(arg1:string):Promise<void>;
 
 export function UpdateDataDir(arg1:string):Promise<void>;
+
+export function UpdatePreference(arg1:number,arg2:app.UpdatePreferenceInput):Promise<novel.PreferenceItem>;

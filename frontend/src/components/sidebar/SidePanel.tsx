@@ -1,6 +1,8 @@
 import type { novel, chapter } from '@/hooks/useApp'
 import NovelList from './NovelList'
 import ChapterList from './ChapterList'
+import CharacterList from '@/components/character/CharacterList'
+import LocationList from '@/components/location/LocationList'
 
 interface Props {
   activePanel: string
@@ -48,6 +50,26 @@ export default function SidePanel({
           onSelectChapter={onSelectChapter}
           onSelectGoink={onSelectGoink}
         />
+      ) : activePanel === 'characters' ? (
+        <CharacterList novelId={novelId} />
+      ) : activePanel === 'locations' ? (
+        <LocationList novelId={novelId} />
+      ) : activePanel === 'storyarcs' ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground">故事弧线</p>
+        </div>
+      ) : activePanel === 'timeline' ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground">时间线</p>
+        </div>
+      ) : activePanel === 'reader' ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground">读者视角</p>
+        </div>
+      ) : activePanel === 'preferences' ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground">创作偏好</p>
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-muted-foreground">即将推出</p>

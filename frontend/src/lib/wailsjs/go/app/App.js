@@ -26,12 +26,36 @@ export function CreateNovel(arg1) {
   return window['go']['app']['App']['CreateNovel'](arg1);
 }
 
+export function CreatePreference(arg1, arg2) {
+  return window['go']['app']['App']['CreatePreference'](arg1, arg2);
+}
+
+export function DeletePreference(arg1) {
+  return window['go']['app']['App']['DeletePreference'](arg1);
+}
+
 export function GetAppConfig() {
   return window['go']['app']['App']['GetAppConfig']();
 }
 
+export function GetArcNodes(arg1, arg2, arg3) {
+  return window['go']['app']['App']['GetArcNodes'](arg1, arg2, arg3);
+}
+
+export function GetChapterPlans(arg1) {
+  return window['go']['app']['App']['GetChapterPlans'](arg1);
+}
+
 export function GetChapters(arg1) {
   return window['go']['app']['App']['GetChapters'](arg1);
+}
+
+export function GetCharacterRelations(arg1) {
+  return window['go']['app']['App']['GetCharacterRelations'](arg1);
+}
+
+export function GetCharacters(arg1) {
+  return window['go']['app']['App']['GetCharacters'](arg1);
 }
 
 export function GetContent(arg1, arg2) {
@@ -40,6 +64,18 @@ export function GetContent(arg1, arg2) {
 
 export function GetLLMConfig() {
   return window['go']['app']['App']['GetLLMConfig']();
+}
+
+export function GetLocationRelations(arg1) {
+  return window['go']['app']['App']['GetLocationRelations'](arg1);
+}
+
+export function GetLocations(arg1) {
+  return window['go']['app']['App']['GetLocations'](arg1);
+}
+
+export function GetMaxChapterNumber(arg1) {
+  return window['go']['app']['App']['GetMaxChapterNumber'](arg1);
 }
 
 export function GetModels() {
@@ -52,6 +88,14 @@ export function GetNovels() {
 
 export function GetPlatform() {
   return window['go']['app']['App']['GetPlatform']();
+}
+
+export function GetPreferences(arg1) {
+  return window['go']['app']['App']['GetPreferences'](arg1);
+}
+
+export function GetReaderPerspectives(arg1) {
+  return window['go']['app']['App']['GetReaderPerspectives'](arg1);
 }
 
 export function GetSession(arg1) {
@@ -68,6 +112,14 @@ export function GetSessions(arg1) {
 
 export function GetSettings() {
   return window['go']['app']['App']['GetSettings']();
+}
+
+export function GetStoryArcs(arg1) {
+  return window['go']['app']['App']['GetStoryArcs'](arg1);
+}
+
+export function GetTimelineEntries(arg1, arg2, arg3) {
+  return window['go']['app']['App']['GetTimelineEntries'](arg1, arg2, arg3);
 }
 
 export function Initialize(arg1) {
@@ -100,4 +152,8 @@ export function SetApprovalMode(arg1) {
 
 export function UpdateDataDir(arg1) {
   return window['go']['app']['App']['UpdateDataDir'](arg1);
+}
+
+export function UpdatePreference(arg1, arg2) {
+  return window['go']['app']['App']['UpdatePreference'](arg1, arg2);
 }

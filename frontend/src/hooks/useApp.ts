@@ -12,6 +12,10 @@ import {
   SetApprovalMode,
   GetAppConfig,
   GetChapters,
+  GetCharacters,
+  GetCharacterRelations,
+  GetLocations,
+  GetLocationRelations,
   GetNovels,
   GetPlatform,
   GetSettings,
@@ -25,8 +29,18 @@ import {
   GetSessionMessages,
   SaveLLMConfig,
   UpdateDataDir,
+  GetMaxChapterNumber,
+  GetStoryArcs,
+  GetArcNodes,
+  GetChapterPlans,
+  GetTimelineEntries,
+  GetReaderPerspectives,
+  GetPreferences,
+  CreatePreference,
+  UpdatePreference,
+  DeletePreference,
 } from '@/lib/wailsjs/go/app/App'
-import type { app, novel, chapter, config, llm, session } from '@/lib/wailsjs/go/models'
+import type { app, novel, chapter, config, llm, session, character, location, storyarc, timeline, reader } from '@/lib/wailsjs/go/models'
 
 export function useApp() {
   return useMemo(() => ({
@@ -39,6 +53,10 @@ export function useApp() {
     SaveContent,
     GetAppConfig,
     GetChapters,
+    GetCharacters,
+    GetCharacterRelations,
+    GetLocations,
+    GetLocationRelations,
     GetNovels,
     GetPlatform,
     GetSettings,
@@ -55,7 +73,17 @@ export function useApp() {
     GetLLMConfig,
     SaveLLMConfig,
     UpdateDataDir,
+    GetMaxChapterNumber,
+    GetStoryArcs,
+    GetArcNodes,
+    GetChapterPlans,
+    GetTimelineEntries,
+    GetReaderPerspectives,
+    GetPreferences,
+    CreatePreference,
+    UpdatePreference,
+    DeletePreference,
   }), [])
 }
 
-export type { app, novel, chapter, config, llm, session }
+export type { app, novel, chapter, config, llm, session, character, location, storyarc, timeline, reader }

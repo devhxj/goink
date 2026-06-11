@@ -45,7 +45,7 @@ func (s *Store) ListByNovel(ctx context.Context, novelID int64, opts ListByNovel
 
 	var items []ReaderPerspective
 	offset := (pp.Page - 1) * pp.Size
-	if err := q.Order("type, planted_chapter DESC").Offset(offset).Limit(pp.Size).Find(&items).Error; err != nil {
+	if err := q.Order("type, planted_chapter ASC").Offset(offset).Limit(pp.Size).Find(&items).Error; err != nil {
 		return nil, fmt.Errorf("reader store: list: %w", err)
 	}
 
@@ -59,7 +59,7 @@ func (s *Store) ListActive(ctx context.Context, novelID int64) ([]ReaderPerspect
 	var items []ReaderPerspective
 	if err := s.DB.WithContext(ctx).
 		Where("novel_id = ? AND revealed_chapter = 0", novelID).
-		Order("type, planted_chapter DESC").
+		Order("type, planted_chapter ASC").
 		Find(&items).Error; err != nil {
 		return nil, fmt.Errorf("reader store: list active: %w", err)
 	}
