@@ -8,6 +8,7 @@ import {timeline} from '../models';
 import {character} from '../models';
 import {llm} from '../models';
 import {location} from '../models';
+import {reader} from '../models';
 import {session} from '../models';
 import {storage} from '../models';
 import {config} from '../models';
@@ -51,6 +52,8 @@ export function GetModels():Promise<Array<llm.AvailableModel>>;
 export function GetNovels():Promise<Array<novel.Novel>>;
 
 export function GetPlatform():Promise<Record<string, any>>;
+
+export function GetReaderPerspectives(arg1:number):Promise<Array<reader.ReaderPerspective>>;
 
 export function GetSession(arg1:string):Promise<app.SessionDetail>;
 

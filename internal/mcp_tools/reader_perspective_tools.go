@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"novel/internal/reader"
-	"novel/internal/storage"
 )
 
 // ── get_reader_perspective ──────────────────────────────
@@ -19,14 +18,14 @@ import (
 type GetReaderPerspectiveArgs struct{}
 
 // GetReaderPerspectiveTool 返回读者当前认知状态的三段式摘要。
-// known 兜底截断 100 条——完整认知上下文只需最近的关键事实。
+// known 兜底截断 60 条——完整认知上下文只需最近的关键事实。
 type GetReaderPerspectiveTool struct{}
 
-func (t *GetReaderPerspectiveTool) Name() string        { return "get_reader_perspective" }
+func (t *GetReaderPerspectiveTool) Name() string { return "get_reader_perspective" }
 func (t *GetReaderPerspectiveTool) Description() string {
 	return "获取当前小说的读者认知状态：已知信息、活跃悬念、读者误知。" +
 		"每条条目末尾的 `[entry_id:X]` 是该条目的唯一标识，更新或回收时填入 entry_id。" +
-		"这不是 TODO 列表——尽量合并同类信息到已有条目，减少重复创建。"
+		"尽量合并同类信息到已有条目，减少重复创建。只记录读者一定会在意，后续创作需要考虑的条目。"
 }
 func (t *GetReaderPerspectiveTool) Category() ToolCategory { return CategoryMemoryRetrieval }
 
@@ -35,17 +34,18 @@ func (t *GetReaderPerspectiveTool) JSONSchema() json.RawMessage {
 }
 
 func (t *GetReaderPerspectiveTool) ExposeToLLM() bool { return true }
-func (t *GetReaderPerspectiveTool) NewArgs() any     { return &GetReaderPerspectiveArgs{} }
+func (t *GetReaderPerspectiveTool) NewArgs() any      { return &GetReaderPerspectiveArgs{} }
 
 func (t *GetReaderPerspectiveTool) Execute(ctx context.Context, args any, tc ToolContext) (*ToolResult, error) {
 	rs := reader.NewStore(tc.DB, slog.Default())
 
-	// known：全量可能很大，兜底截断 100 条，按 planted_chapter DESC 取最近的
-	knownResult, err := rs.ListByNovel(ctx, tc.NovelID, reader.ListByNovelOptions{
-		PageParams: storage.PageParams{Page: 1, Size: 100},
-		Type:       reader.TypeKnown,
-	})
-	if err != nil {
+	// known：取最近 60 条，直接查 DB 保证 DESC 顺序
+	var knownItems []reader.ReaderPerspective
+	if err := tc.DB.WithContext(ctx).
+		Where("novel_id = ? AND type = ?", tc.NovelID, reader.TypeKnown).
+		Order("planted_chapter DESC").
+		Limit(60).
+		Find(&knownItems).Error; err != nil {
 		return nil, fmt.Errorf("query known perspectives: %w", err)
 	}
 
@@ -66,14 +66,14 @@ func (t *GetReaderPerspectiveTool) Execute(ctx context.Context, args any, tc Too
 		}
 	}
 
-	formatted := formatReaderPerspective(knownResult.Items, suspenses, misconceptions)
+	formatted := formatReaderPerspective(knownItems, suspenses, misconceptions)
 
 	return &ToolResult{
 		Success: true,
 		Data: map[string]any{
 			"content": formatted,
 			"counts": map[string]int{
-				"known":         len(knownResult.Items),
+				"known":         len(knownItems),
 				"suspense":      len(suspenses),
 				"misconception": len(misconceptions),
 			},
@@ -103,12 +103,7 @@ func formatReaderPerspective(known, suspenses, misconceptions []reader.ReaderPer
 	if len(suspenses) > 0 {
 		lines := []string{"### 活跃悬念"}
 		for _, e := range suspenses {
-			refText := fmt.Sprintf("（第%d章种下", e.PlantedChapter)
-			if e.LastMentionedChapter > 0 {
-				refText += fmt.Sprintf("，最近提及：第%d章", e.LastMentionedChapter)
-			}
-			refText += "）"
-			lines = append(lines, fmt.Sprintf("- %s%s%s", e.Content, refText, ref(e)))
+			lines = append(lines, fmt.Sprintf("- %s（第%d章种下）%s", e.Content, e.PlantedChapter, ref(e)))
 		}
 		sections = append(sections, strings.Join(lines, "\n"))
 	}
@@ -136,11 +131,10 @@ func formatReaderPerspective(known, suspenses, misconceptions []reader.ReaderPer
 
 // CreateReaderPerspectiveEntryItem 是 create_reader_perspective_entry 的单条参数。
 type CreateReaderPerspectiveEntryItem struct {
-	Type                 string `json:"type" jsonschema:"required,description=条目类型,enum=known,enum=suspense,enum=misconception" validate:"required,oneof=known suspense misconception"`
-	Content              string `json:"content" jsonschema:"required,description=内容描述"          validate:"required"`
-	PlantedChapter       int    `json:"planted_chapter" jsonschema:"required,description=种下的章节号"    validate:"required,min=1"`
-	RelatedTruth         string `json:"related_truth" jsonschema:"description=仅 misconception：真实情况是什么"`
-	PlannedRevealChapter int    `json:"planned_reveal_chapter" jsonschema:"description=仅 suspense/misconception：计划在哪章揭露或回收"`
+	Type           string `json:"type" jsonschema:"required,description=条目类型,enum=known,enum=suspense,enum=misconception" validate:"required,oneof=known suspense misconception"`
+	Content        string `json:"content" jsonschema:"required,description=内容描述"          validate:"required"`
+	PlantedChapter int    `json:"planted_chapter" jsonschema:"required,description=种下的章节号"    validate:"required,min=1"`
+	RelatedTruth   string `json:"related_truth" jsonschema:"description=仅 misconception：真实情况是什么"`
 }
 
 // CreateReaderPerspectiveEntryArgs 是 create_reader_perspective_entry 的参数。
@@ -166,7 +160,7 @@ func (t *CreateReaderPerspectiveEntryTool) JSONSchema() json.RawMessage {
 }
 
 func (t *CreateReaderPerspectiveEntryTool) ExposeToLLM() bool { return true }
-func (t *CreateReaderPerspectiveEntryTool) NewArgs() any     { return &CreateReaderPerspectiveEntryArgs{} }
+func (t *CreateReaderPerspectiveEntryTool) NewArgs() any      { return &CreateReaderPerspectiveEntryArgs{} }
 
 func (t *CreateReaderPerspectiveEntryTool) Execute(ctx context.Context, args any, tc ToolContext) (*ToolResult, error) {
 	a := args.(*CreateReaderPerspectiveEntryArgs)
@@ -180,17 +174,13 @@ func (t *CreateReaderPerspectiveEntryTool) Execute(ctx context.Context, args any
 
 	items := make([]reader.ReaderPerspective, len(a.Entries))
 	for i, item := range a.Entries {
-		entry := reader.ReaderPerspective{
+		items[i] = reader.ReaderPerspective{
 			NovelID:        tc.NovelID,
 			Type:           item.Type,
 			Content:        item.Content,
 			PlantedChapter: item.PlantedChapter,
 			RelatedTruth:   item.RelatedTruth,
 		}
-		if item.Type == reader.TypeSuspense || item.Type == reader.TypeMisconception {
-			entry.RevealedChapter = item.PlannedRevealChapter
-		}
-		items[i] = entry
 	}
 
 	if err := tc.DB.WithContext(ctx).Create(&items).Error; err != nil {
@@ -212,13 +202,12 @@ func (t *CreateReaderPerspectiveEntryTool) Execute(ctx context.Context, args any
 
 // UpdateReaderPerspectiveEntryArgs 是 update_reader_perspective_entry 的参数。
 type UpdateReaderPerspectiveEntryArgs struct {
-	EntryID              int `json:"entry_id" jsonschema:"required,description=要更新的条目 ID" validate:"required,min=1"`
-	LastMentionedChapter int `json:"last_mentioned_chapter" jsonschema:"description=最近提及的章节号"`
-	Content              string `json:"content" jsonschema:"description=更新后的完整内容描述"`
-	RevealedChapter      int `json:"revealed_chapter" jsonschema:"description=实际揭露或回收的章节号（设置后该条目不再出现在活跃列表中）"`
-	PlantedChapter       int    `json:"planted_chapter" jsonschema:"description=在哪章种下的章节号"`
-	RelatedTruth         string `json:"related_truth" jsonschema:"description=作者视角的真实情况（支持所有类型）"`
-	Type                 string `json:"type" jsonschema:"description=条目类型：known（已知信息）、suspense（悬念）、misconception（读者误知）"`
+	EntryID         int    `json:"entry_id" jsonschema:"required,description=要更新的条目 ID" validate:"required,min=1"`
+	Content         string `json:"content" jsonschema:"description=更新后的完整内容描述"`
+	RevealedChapter int    `json:"revealed_chapter" jsonschema:"description=实际揭露或回收的章节号（设置后该条目不再出现在活跃列表中）"`
+	PlantedChapter  int    `json:"planted_chapter" jsonschema:"description=在哪章种下的章节号"`
+	RelatedTruth    string `json:"related_truth" jsonschema:"description=作者视角的真实情况（支持所有类型）"`
+	Type            string `json:"type" jsonschema:"description=条目类型：known（已知信息）、suspense（悬念）、misconception（读者误知）"`
 }
 
 // UpdateReaderPerspectiveEntryTool 更新读者认知条目。
@@ -228,7 +217,6 @@ func (t *UpdateReaderPerspectiveEntryTool) Name() string { return "update_reader
 func (t *UpdateReaderPerspectiveEntryTool) Description() string {
 	return "更新一条读者认知条目。常见用途：\n" +
 		"- 回收悬念：设置 revealed_chapter\n" +
-		"- 更新提及频率：设置 last_mentioned_chapter\n" +
 		"- 揭露误知：设置 revealed_chapter"
 }
 func (t *UpdateReaderPerspectiveEntryTool) Category() ToolCategory { return CategoryWritingAssistant }
@@ -238,12 +226,12 @@ func (t *UpdateReaderPerspectiveEntryTool) JSONSchema() json.RawMessage {
 }
 
 func (t *UpdateReaderPerspectiveEntryTool) ExposeToLLM() bool { return true }
-func (t *UpdateReaderPerspectiveEntryTool) NewArgs() any     { return &UpdateReaderPerspectiveEntryArgs{} }
+func (t *UpdateReaderPerspectiveEntryTool) NewArgs() any      { return &UpdateReaderPerspectiveEntryArgs{} }
 
 func (t *UpdateReaderPerspectiveEntryTool) Execute(ctx context.Context, args any, tc ToolContext) (*ToolResult, error) {
 	a := args.(*UpdateReaderPerspectiveEntryArgs)
 
-	if a.LastMentionedChapter == 0 && a.RevealedChapter == 0 && a.PlantedChapter == 0 && a.Content == "" && a.Type == "" && a.RelatedTruth == "" {
+	if a.RevealedChapter == 0 && a.PlantedChapter == 0 && a.Content == "" && a.Type == "" && a.RelatedTruth == "" {
 		return &ToolResult{Success: false, Error: "至少需要提供一个要修改的字段"}, nil
 	}
 

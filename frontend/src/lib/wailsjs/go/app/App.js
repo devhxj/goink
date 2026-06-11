@@ -82,6 +82,10 @@ export function GetPlatform() {
   return window['go']['app']['App']['GetPlatform']();
 }
 
+export function GetReaderPerspectives(arg1) {
+  return window['go']['app']['App']['GetReaderPerspectives'](arg1);
+}
+
 export function GetSession(arg1) {
   return window['go']['app']['App']['GetSession'](arg1);
 }

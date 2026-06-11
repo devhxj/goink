@@ -9,6 +9,7 @@ import CharacterGraph from '@/components/character/CharacterGraph'
 import LocationGraph from '@/components/location/LocationGraph'
 import ArcListView from '@/components/storyarc/ArcListView'
 import TimelineView from '@/components/timeline/TimelineView'
+import ReaderView from '@/components/reader/ReaderView'
 import ChatPanel from '@/components/chat/ChatPanel'
 import GitHubLink from '@/components/shell/GitHubLink'
 import SettingsDialog from '@/components/settings/SettingsDialog'
@@ -189,7 +190,7 @@ export default function WorkspaceView({ initialNovelId }: Props) {
           onCreateNovel={handleCreateNovel}
         />
 
-        {activePanel !== 'characters' && activePanel !== 'locations' && activePanel !== 'storyarcs' && activePanel !== 'timeline' && (
+        {activePanel !== 'characters' && activePanel !== 'locations' && activePanel !== 'storyarcs' && activePanel !== 'timeline' && activePanel !== 'reader' && (
           <ContentPanel ref={contentRef} novelId={activeNovelId} onContentChange={setActiveContent} />
         )}
 
@@ -201,6 +202,8 @@ export default function WorkspaceView({ initialNovelId }: Props) {
           <ArcListView novelId={activeNovelId} />
         ) : activePanel === 'timeline' ? (
           <TimelineView novelId={activeNovelId} />
+        ) : activePanel === 'reader' ? (
+          <ReaderView novelId={activeNovelId} />
         ) : null}
 
         <ChatPanel novelId={activeNovelId} onApprove={handleApprove} onReject={handleReject} />

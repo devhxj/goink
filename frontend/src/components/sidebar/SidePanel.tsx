@@ -62,6 +62,10 @@ export default function SidePanel({
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-muted-foreground">时间线</p>
         </div>
+      ) : activePanel === 'reader' ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground">读者视角</p>
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-muted-foreground">即将推出</p>

@@ -34,8 +34,9 @@ import {
   GetArcNodes,
   GetChapterPlans,
   GetTimelineEntries,
+  GetReaderPerspectives,
 } from '@/lib/wailsjs/go/app/App'
-import type { app, novel, chapter, config, llm, session, character, location, storyarc, timeline } from '@/lib/wailsjs/go/models'
+import type { app, novel, chapter, config, llm, session, character, location, storyarc, timeline, reader } from '@/lib/wailsjs/go/models'
 
 export function useApp() {
   return useMemo(() => ({
@@ -73,7 +74,8 @@ export function useApp() {
     GetArcNodes,
     GetChapterPlans,
     GetTimelineEntries,
+    GetReaderPerspectives,
   }), [])
 }
 
-export type { app, novel, chapter, config, llm, session, character, location, storyarc, timeline }
+export type { app, novel, chapter, config, llm, session, character, location, storyarc, timeline, reader }
