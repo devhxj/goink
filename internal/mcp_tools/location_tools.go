@@ -21,7 +21,7 @@ type GetLocationsArgs struct {
 	LocationID   int64  `json:"location_id" jsonschema:"description=地点ID（detail模式必填）"                                                                    validate:"omitempty,min=1"`
 	LocationType string `json:"location_type" jsonschema:"description=按类型筛选（list模式可选）"`
 	Search       string `json:"search" jsonschema:"description=按名称搜索（list模式可选）"`
-	PageArgs             // 嵌入分页参数
+	PageArgs            // 嵌入分页参数
 }
 
 // GetLocationsTool 获取地点信息，支持三种模式。

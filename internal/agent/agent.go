@@ -18,8 +18,8 @@ import (
 	"novel/internal/approval"
 	"novel/internal/llm"
 	"novel/internal/mcp_tools"
-	"novel/internal/storage"
 	"novel/internal/session"
+	"novel/internal/storage"
 )
 
 // Agent 是对话编排核心，持有运行所需的所有基础设施。
@@ -36,18 +36,18 @@ type Agent struct {
 
 // RunOptions 是单次 Run() 的参数。
 type RunOptions struct {
-	TurnID           int
-	SessionID        string
-	NovelID          int64
-	Messages         []map[string]any
-	AllowedTools     map[string]bool
-	ActiveVersion    int
-	Model            *llm.ModelInfo
-	ProviderName     string
-	AgentType        string
-	SubTaskID        string // 子 Agent 事件路由 ID
-	EventSeq         *int   // 共享事件序号，nil 时自建（主Agent）；子Agent传入父的指针
-	MaxTurns int
+	TurnID        int
+	SessionID     string
+	NovelID       int64
+	Messages      []map[string]any
+	AllowedTools  map[string]bool
+	ActiveVersion int
+	Model         *llm.ModelInfo
+	ProviderName  string
+	AgentType     string
+	SubTaskID     string // 子 Agent 事件路由 ID
+	EventSeq      *int   // 共享事件序号，nil 时自建（主Agent）；子Agent传入父的指针
+	MaxTurns      int
 }
 
 // New 创建 Agent 实例。

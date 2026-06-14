@@ -11,8 +11,8 @@ import (
 	"novel/internal/agent"
 	"novel/internal/agentcfg"
 	"novel/internal/git"
-	"novel/internal/session"
 	"novel/internal/rollback"
+	"novel/internal/session"
 )
 
 // ChatInput 是一次对话请求的入参。

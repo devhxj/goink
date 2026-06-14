@@ -8,9 +8,9 @@ type UserLLMConfig struct {
 
 // AvailableModel 是前端下拉列表的模型选项。
 type AvailableModel struct {
-	Key              string   // "deepseek/deepseek-v4-pro"
-	ProviderName     string   // "DeepSeek"
-	ModelName        string   // "DeepSeek V4 Pro"
+	Key              string // "deepseek/deepseek-v4-pro"
+	ProviderName     string // "DeepSeek"
+	ModelName        string // "DeepSeek V4 Pro"
 	ContextWindow    int
 	MaxOutputTokens  int
 	SupportsThinking bool

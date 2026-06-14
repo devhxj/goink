@@ -391,7 +391,7 @@ func (t *UpdateCharacterRelationshipTool) evolveRelation(ctx context.Context, a 
 
 	return &ToolResult{
 		Success: true,
-		Data: map[string]any{"id": newRel.ID, "action": "evolve"},
+		Data:    map[string]any{"id": newRel.ID, "action": "evolve"},
 	}, nil
 }
 

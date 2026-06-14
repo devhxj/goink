@@ -156,12 +156,20 @@ func (t *DeleteRecordTool) deleteCharacterRelation(ctx context.Context, a *Delet
 		return nil, fmt.Errorf("query character relation: %w", err)
 	}
 
+	// 解析关联角色名
+	nameMap := make(map[int64]string)
+	var chars []character.Character
+	tc.DB.WithContext(ctx).Where("id IN ? AND novel_id = ?", []int64{rec.SourceCharacterID, rec.TargetCharacterID}, tc.NovelID).Find(&chars)
+	for _, ch := range chars {
+		nameMap[ch.ID] = ch.Name
+	}
+
 	meta := map[string]any{
-		"id":                  rec.ID,
-		"source_character_id": rec.SourceCharacterID,
-		"target_character_id": rec.TargetCharacterID,
-		"relation_describe":   rec.RelationDescribe,
-		"type":                "character_relation",
+		"id":       rec.ID,
+		"source":   nameMap[rec.SourceCharacterID],
+		"target":   nameMap[rec.TargetCharacterID],
+		"relation": rec.RelationDescribe,
+		"type":     "character_relation",
 	}
 	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
@@ -240,12 +248,20 @@ func (t *DeleteRecordTool) deleteLocationRelation(ctx context.Context, a *Delete
 		return nil, fmt.Errorf("query location relation: %w", err)
 	}
 
+	// 解析关联地点名
+	nameMap := make(map[int64]string)
+	var locs []location.Location
+	tc.DB.WithContext(ctx).Where("id IN ? AND novel_id = ?", []int64{rec.LocationA, rec.LocationB}, tc.NovelID).Find(&locs)
+	for _, loc := range locs {
+		nameMap[loc.ID] = loc.Name
+	}
+
 	meta := map[string]any{
-		"id":            rec.ID,
-		"location_a_id": rec.LocationA,
-		"location_b_id": rec.LocationB,
-		"relation_type": rec.RelationType,
-		"type":          "location_relation",
+		"id":         rec.ID,
+		"location_a": nameMap[rec.LocationA],
+		"location_b": nameMap[rec.LocationB],
+		"relation":   rec.RelationType,
+		"type":       "location_relation",
 	}
 	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
@@ -330,11 +346,18 @@ func (t *DeleteRecordTool) deleteArcNode(ctx context.Context, a *DeleteRecordArg
 		return nil, fmt.Errorf("query arc node: %w", err)
 	}
 
+	// 解析所属故事弧名
+	var arc storyarc.StoryArc
+	arcName := ""
+	if err := tc.DB.WithContext(ctx).Where("id = ? AND novel_id = ?", rec.StoryArcID, tc.NovelID).First(&arc).Error; err == nil {
+		arcName = arc.Name
+	}
+
 	meta := map[string]any{
-		"id":           rec.ID,
-		"title":        rec.Title,
-		"story_arc_id": rec.StoryArcID,
-		"type":         "arc_node",
+		"id":        rec.ID,
+		"title":     rec.Title,
+		"story_arc": arcName,
+		"type":      "arc_node",
 	}
 	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
