@@ -3,7 +3,7 @@ import { type OnMount, DiffEditor } from '@monaco-editor/react'
 import { FileText, Loader2 } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import { useEditorTabs } from '@/hooks/useEditorTabs'
-import { EventsOn, EventsOff } from '@/lib/wailsjs/runtime/runtime'
+import { EventsOn } from '@/lib/wailsjs/runtime/runtime'
 import TabBar from './TabBar'
 import ContentEditor from './ContentEditor'
 import OutlineViewer from './OutlineViewer'
@@ -14,6 +14,10 @@ import type { EditorTab } from './types'
 export interface ContentPanelHandle {
   openFile: (path: string, title: string) => void
   closeAllTabs: () => void
+  openDiffTab: (data: {
+    path: string; title: string; diff: string; original: string; modified: string
+    changeType: string; reason: string; toolId: string
+  }) => void
   handleDiffApprove: (toolId: string) => Promise<void>
   handleDiffReject: (toolId: string) => void
 }
@@ -228,38 +232,11 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
   useImperativeHandle(ref, () => ({
     openFile: doOpenFile,
     closeAllTabs,
+    openDiffTab,
     handleDiffApprove,
     handleDiffReject,
-  }), [doOpenFile, closeAllTabs, handleDiffApprove, handleDiffReject])
+  }), [doOpenFile, closeAllTabs, openDiffTab, handleDiffApprove, handleDiffReject])
 
-  // ── approval:requested 监听 ─────────────────────────────
-
-  useEffect(() => {
-    EventsOn('approval:requested', (data: any) => {
-      const p = data?.payload ?? {}
-      let title = `diff: ${p.path || ''}`
-      if (p.path?.startsWith('chapters/')) {
-        const num = p.path.replace('chapters/', '').replace('.md', '')
-        title = `diff: 第${parseInt(num)}章`
-      } else if (p.path === 'goink.md') {
-        title = 'diff: 故事状态'
-      } else if (p.path?.startsWith('outlines/')) {
-        const num = p.path.replace('outlines/', '').replace('.md', '')
-        title = `diff: 第${parseInt(num)}章大纲`
-      }
-      openDiffTab({
-        path: p.path ?? '',
-        title,
-        diff: p.diff ?? '',
-        original: p.original ?? '',
-        modified: p.modified ?? '',
-        changeType: p.change_type ?? '',
-        reason: p.reason ?? '',
-        toolId: data?.tool_id ?? '',
-      })
-    })
-    return () => { EventsOff('approval:requested') }
-  }, [openDiffTab])
 
   // ── 渲染 ────────────────────────────────────────────────
 

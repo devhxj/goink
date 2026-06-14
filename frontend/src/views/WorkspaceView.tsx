@@ -89,6 +89,13 @@ export default function WorkspaceView({ initialNovelId }: Props) {
     contentRef.current?.handleDiffReject(toolId)
   }
 
+  function handleApprovalFileEdit(data: {
+    path: string; title: string; diff: string; original: string; modified: string
+    changeType: string; reason: string; toolId: string
+  }) {
+    contentRef.current?.openDiffTab(data)
+  }
+
   // ── 自动选择小说 ────────────────────────────────────────
 
   useEffect(() => {
@@ -257,7 +264,7 @@ export default function WorkspaceView({ initialNovelId }: Props) {
           <PreferenceView novelId={activeNovelId} />
         ) : null}
 
-        <ChatPanel novelId={activeNovelId} onApprove={handleApprove} onReject={handleReject} />
+        <ChatPanel novelId={activeNovelId} onApprove={handleApprove} onReject={handleReject} onApprovalFileEdit={handleApprovalFileEdit} />
       </div>
 
       <StatusBar content={activeContent} />

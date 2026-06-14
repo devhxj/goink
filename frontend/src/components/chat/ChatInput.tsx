@@ -1,10 +1,5 @@
 import { useState, useCallback } from 'react'
-import { ArrowUp, Square, Check, X } from 'lucide-react'
-
-interface ApprovalState {
-  path: string
-  changeType: string
-}
+import { ArrowUp, Square } from 'lucide-react'
 
 interface Props {
   disabled: boolean
@@ -12,12 +7,9 @@ interface Props {
   placeholder: string
   onSend: (message: string) => void
   onStop: () => void
-  approval: ApprovalState | null
-  onApprove: (feedback: string) => void
-  onReject: (feedback: string) => void
 }
 
-export default function ChatInput({ disabled, isLoading, placeholder, onSend, onStop, approval, onApprove, onReject }: Props) {
+export default function ChatInput({ disabled, isLoading, placeholder, onSend, onStop }: Props) {
   const [hasContent, setHasContent] = useState(false)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -57,71 +49,6 @@ export default function ChatInput({ disabled, isLoading, placeholder, onSend, on
     onStop()
   }, [onStop])
 
-  const getFeedback = () => {
-    const textarea = document.getElementById('chat-input-textarea') as HTMLTextAreaElement | null
-    return textarea?.value.trim() ?? ''
-  }
-
-  const clearFeedback = () => {
-    const textarea = document.getElementById('chat-input-textarea') as HTMLTextAreaElement | null
-    if (textarea) {
-      textarea.value = ''
-      textarea.style.height = 'auto'
-      setHasContent(false)
-    }
-  }
-
-  const handleApproveClick = useCallback(() => {
-    const fb = getFeedback()
-    clearFeedback()
-    onApprove(fb)
-  }, [onApprove])
-
-  const handleRejectClick = useCallback(() => {
-    const fb = getFeedback()
-    clearFeedback()
-    onReject(fb)
-  }, [onReject])
-
-  // 审批模式
-  if (approval) {
-    return (
-      <div className="px-4 pt-2 shrink-0">
-        <div className="flex items-end gap-2 bg-amber-50/50 rounded-2xl border border-amber-200 px-2 py-2">
-          <textarea
-            id="chat-input-textarea"
-            placeholder="反馈（可选）..."
-            disabled={false}
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleApproveClick()
-              }
-            }}
-            onInput={handleInput}
-            className="flex-1 bg-transparent resize-none text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 py-2 px-2 min-h-[28px] max-h-[180px]"
-          />
-          <button
-            onClick={handleRejectClick}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors cursor-pointer shrink-0"
-          >
-            <X className="w-3.5 h-3.5" />
-            拒绝
-          </button>
-          <button
-            onClick={handleApproveClick}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors cursor-pointer shrink-0"
-          >
-            <Check className="w-3.5 h-3.5" />
-            批准
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // 正常模式
   return (
     <div className="px-4 pt-2 shrink-0">
       <div className="flex items-end gap-2 bg-muted/30 rounded-2xl border px-2 py-2">

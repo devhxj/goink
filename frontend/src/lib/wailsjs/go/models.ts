@@ -654,8 +654,8 @@ export namespace location {
 	export class LocationRelation {
 	    id: number;
 	    novel_id: number;
-	    location_a: number;
-	    location_b: number;
+	    location_a_id: number;
+	    location_b_id: number;
 	    relation_type: string;
 	    description: string;
 	    // Go type: time
@@ -671,8 +671,8 @@ export namespace location {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.novel_id = source["novel_id"];
-	        this.location_a = source["location_a"];
-	        this.location_b = source["location_b"];
+	        this.location_a_id = source["location_a_id"];
+	        this.location_b_id = source["location_b_id"];
 	        this.relation_type = source["relation_type"];
 	        this.description = source["description"];
 	        this.created_at = this.convertValues(source["created_at"], null);

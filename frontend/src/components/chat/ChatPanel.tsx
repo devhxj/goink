@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { MessageSquare, Loader2, History, Plus } from 'lucide-react'
-import { EventsOn, EventsOff } from '@/lib/wailsjs/runtime/runtime'
+import { EventsOn } from '@/lib/wailsjs/runtime/runtime'
 import { useApp } from '@/hooks/useApp'
 import type { llm, app } from '@/hooks/useApp'
 import type { AgentEvent, Turn } from './types'
@@ -21,6 +21,10 @@ interface Props {
   novelId: number
   onApprove: (toolId: string, feedback: string) => Promise<void>
   onReject: (toolId: string, feedback: string) => Promise<void>
+  onApprovalFileEdit?: (payload: {
+    path: string; title: string; diff: string; original: string; modified: string
+    changeType: string; reason: string; toolId: string
+  }) => void
 }
 
 const MIN_WIDTH = 280
@@ -39,7 +43,7 @@ interface ChatStartedEvent {
   turn_id: number
 }
 
-export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
+export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFileEdit }: Props) {
   const app = useApp()
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [isDragging, setIsDragging] = useState(false)
@@ -60,20 +64,6 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
   const [sessions, setSessions] = useState<app.SessionMeta[]>([])
   const [sessionsTotal, setSessionsTotal] = useState(0)
   const [showHistoryPanel, setShowHistoryPanel] = useState(false)
-  const [activeApproval, setActiveApproval] = useState<{ toolId: string; path: string; changeType: string } | null>(null)
-
-  // 监听审批请求，更新工具卡片状态和输入区审批栏
-  useEffect(() => {
-    EventsOn('approval:requested', (data: any) => {
-      const toolId = data?.tool_id ?? ''
-      setActiveApproval({
-        toolId,
-        path: data?.payload?.path ?? '',
-        changeType: data?.payload?.change_type ?? '',
-      })
-    })
-    return () => { EventsOff('approval:requested') }
-  }, [])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -82,6 +72,8 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
   const startedUnsubRef = useRef<(() => void) | null>(null)
   const agentUnsubRef = useRef<(() => void) | null>(null)
   const eventQueuesRef = useRef<Map<number, EventQueue>>(new Map())
+  const onApprovalFileEditRef = useRef(onApprovalFileEdit)
+  useEffect(() => { onApprovalFileEditRef.current = onApprovalFileEdit }, [onApprovalFileEdit])
 
   // 加载模型列表
   useEffect(() => {
@@ -392,14 +384,11 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
 
         case AgentEventType.ToolCall: {
           const isSubagent = event.tool_name === 'run_subagent'
-          const toolStatus = event.phase === 'completed' ? 'completed' as const
+          const toolStatus =
+            event.phase === 'awaiting_approval' ? 'awaiting_approval' as const
+            : event.phase === 'completed' ? 'completed' as const
             : event.phase === 'failed' ? 'failed' as const
             : 'executing' as const
-
-          // 工具结束即清除审批等待标记
-          if (toolStatus !== 'executing' && event.tool_id) {
-            setActiveApproval(prev => prev?.toolId === event.tool_id ? null : prev)
-          }
 
           // run_subagent：维护对应的 subagent segment
           if (isSubagent) {
@@ -438,6 +427,13 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
             seg.type === 'tool' && event.tool_id && seg.toolId === event.tool_id
           )
 
+          const approvalType = toolStatus === 'awaiting_approval'
+            ? (event.metadata?.approval_type as string | undefined)
+            : undefined
+          const approvalPayload = toolStatus === 'awaiting_approval'
+            ? (event.metadata?.payload as Record<string, unknown> | undefined)
+            : undefined
+
           if (idx >= 0) {
             segments[idx] = {
               ...segments[idx],
@@ -445,6 +441,8 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
               displayText: event.display_text || segments[idx].displayText,
               activityKind: event.activity_kind || segments[idx].activityKind || '',
               error: event.error || '',
+              approvalType: approvalType ?? segments[idx].approvalType,
+              approvalPayload: approvalPayload ?? segments[idx].approvalPayload,
             }
           } else {
             segments.push({
@@ -456,8 +454,37 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
               displayText: event.display_text || event.tool_name || '',
               activityKind: event.activity_kind || '',
               error: event.error || '',
+              approvalType,
+              approvalPayload,
             })
           }
+
+          // 文件编辑审批 → 通知 ContentPanel 打开 diff 标签页
+          if (toolStatus === 'awaiting_approval' && approvalType === 'file_edit' && approvalPayload) {
+            const p = approvalPayload
+            const path = (p.path as string) || ''
+            let title = `diff: ${path}`
+            if (path.startsWith('chapters/')) {
+              const num = path.replace('chapters/', '').replace('.md', '')
+              title = `diff: 第${parseInt(num)}章`
+            } else if (path === 'goink.md') {
+              title = 'diff: 故事状态'
+            } else if (path.startsWith('outlines/')) {
+              const num = path.replace('outlines/', '').replace('.md', '')
+              title = `diff: 第${parseInt(num)}章大纲`
+            }
+            onApprovalFileEditRef.current?.({
+              path,
+              title,
+              diff: '',
+              original: (p.original as string) || '',
+              modified: (p.modified as string) || '',
+              changeType: (p.change_type as string) || '',
+              reason: (p.reason as string) || '',
+              toolId: (event.tool_id as string) || '',
+            })
+          }
+
           return { ...turn, segments }
         }
 
@@ -686,20 +713,6 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
   const showRecent = !hasActiveSession && !hasTurns && !isLoading
 
 
-  const handleApprovalApprove = useCallback(async (feedback: string) => {
-    if (!activeApproval) return
-    const toolId = activeApproval.toolId
-    setActiveApproval(null)
-    await onApprove(toolId, feedback)
-  }, [activeApproval, onApprove])
-
-  const handleApprovalReject = useCallback(async (feedback: string) => {
-    if (!activeApproval) return
-    const toolId = activeApproval.toolId
-    setActiveApproval(null)
-    await onReject(toolId, feedback)
-  }, [activeApproval, onReject])
-
   const inputPlaceholder = !hasNovel
     ? '请先选择作品'
     : !selectedKey
@@ -802,6 +815,18 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
                             status={seg.toolStatus}
                             activityKind={seg.activityKind}
                             error={seg.error}
+                            approvalType={seg.approvalType}
+                            approvalPayload={seg.approvalPayload}
+                            onApprove={
+                              seg.toolStatus === 'awaiting_approval'
+                                ? (feedback: string) => onApprove(seg.toolId, feedback)
+                                : undefined
+                            }
+                            onReject={
+                              seg.toolStatus === 'awaiting_approval'
+                                ? (feedback: string) => onReject(seg.toolId, feedback)
+                                : undefined
+                            }
                           />
                         )
                       }
@@ -862,9 +887,6 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
         placeholder={inputPlaceholder}
         onSend={handleSend}
         onStop={() => app.CancelChat(sessionId)}
-        approval={activeApproval}
-        onApprove={handleApprovalApprove}
-        onReject={handleApprovalReject}
       />
 
       <div className="border-t mx-4" />

@@ -20,7 +20,7 @@ export interface AgentEvent {
   data?: string
   tool_name?: string
   tool_id?: string
-  phase?: string         // "selected" | "executing" | "completed" | "failed" | "loop_detected"
+  phase?: string         // "selected" | "executing" | "awaiting_approval" | "completed" | "failed" | "loop_detected"
   tool_args?: Record<string, unknown>
   success?: boolean
   error?: string
@@ -44,10 +44,13 @@ export interface TurnSegment {
   // tool
   toolName: string
   toolId: string
-  toolStatus: 'executing' | 'completed' | 'failed'
+  toolStatus: 'executing' | 'awaiting_approval' | 'completed' | 'failed'
   displayText: string
   activityKind: string
   error: string
+  // approval
+  approvalType?: string
+  approvalPayload?: Record<string, unknown>
   // subagent
   status?: 'streaming' | 'done' | 'failed'
   agentType?: 'memory' | 'review'
