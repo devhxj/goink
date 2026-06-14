@@ -87,6 +87,8 @@ export function SetActiveNovel(arg1:app.SetActiveNovelInput):Promise<void>;
 
 export function SetApprovalMode(arg1:string):Promise<void>;
 
+export function TestConnection(arg1:app.TestConnectionInput):Promise<void>;
+
 export function UpdateDataDir(arg1:string):Promise<void>;
 
 export function UpdatePreference(arg1:number,arg2:app.UpdatePreferenceInput):Promise<novel.PreferenceItem>;

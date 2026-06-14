@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, X, CheckCircle2 } from 'lucide-react'
+import { Plus, X, CheckCircle2, Loader2 } from 'lucide-react'
 import type { llm } from '@/hooks/useApp'
 
 interface Props {
@@ -7,9 +7,12 @@ interface Props {
   onUpdate: (key: string, patch: Partial<llm.ProviderView>) => void
   onAddCustomModel: (providerKey: string, model: llm.ModelInfo) => void
   onRemoveCustomModel: (providerKey: string, modelId: string) => void
+  onTest: (providerKey: string) => Promise<string | null>
+  testResults: Record<string, { ok: boolean; msg?: string } | undefined>
+  testing: Record<string, boolean>
 }
 
-export default function BuiltinProviderPane({ providers, onUpdate, onAddCustomModel, onRemoveCustomModel }: Props) {
+export default function BuiltinProviderPane({ providers, onUpdate, onAddCustomModel, onRemoveCustomModel, onTest, testResults, testing }: Props) {
   const [selectedKey, setSelectedKey] = useState(providers[0]?.key || '')
   const [showAddModel, setShowAddModel] = useState(false)
   const [newModelId, setNewModelId] = useState('')
@@ -21,6 +24,8 @@ export default function BuiltinProviderPane({ providers, onUpdate, onAddCustomMo
   }
 
   const hasKey = !!provider.api_key
+  const isTesting = testing[selectedKey]
+  const testResult = testResults[selectedKey]
 
   const handleAddModel = () => {
     if (!newModelId.trim() || !newModelName.trim()) return
@@ -56,8 +61,8 @@ export default function BuiltinProviderPane({ providers, onUpdate, onAddCustomMo
         </span>
       </div>
 
-      {/* API Key */}
-      <div className="flex items-center gap-3">
+      {/* API Key + 测试 */}
+      <div className="flex items-center gap-2">
         <label className="text-xs text-muted-foreground w-14 shrink-0">API Key</label>
         <input
           type="password"
@@ -66,7 +71,21 @@ export default function BuiltinProviderPane({ providers, onUpdate, onAddCustomMo
           placeholder="输入 API Key"
           className="flex-1 h-8 rounded-md border bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         />
+        <button
+          onClick={() => onTest(selectedKey)}
+          disabled={!provider.api_key || isTesting}
+          className="h-8 px-2.5 rounded-md border text-xs shrink-0 hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '测试'}
+        </button>
       </div>
+
+      {/* 测试结果 */}
+      {testResult && (
+        <div className={`text-xs pl-[4.5rem] ${testResult.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+          {testResult.ok ? '✓ 连通成功' : `✗ ${testResult.msg || '连接失败'}`}
+        </div>
+      )}
 
       {/* Temperature */}
       <div className="flex items-center gap-3">

@@ -150,6 +150,10 @@ export function SetApprovalMode(arg1) {
   return window['go']['app']['App']['SetApprovalMode'](arg1);
 }
 
+export function TestConnection(arg1) {
+  return window['go']['app']['App']['TestConnection'](arg1);
+}
+
 export function UpdateDataDir(arg1) {
   return window['go']['app']['App']['UpdateDataDir'](arg1);
 }

@@ -890,8 +890,8 @@ export default function ChatPanel({ novelId, onApprove, onReject }: Props) {
 
       <SettingsDialog
         open={showSettings}
-        onClose={() => {
-          setShowSettings(false)
+        onClose={() => setShowSettings(false)}
+        onSaved={() => {
           app.GetModels().then(list => {
             if (list && list.length > 0) {
               setModels(list)

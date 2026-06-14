@@ -244,6 +244,24 @@ export namespace app {
 	        this.novel_id = source["novel_id"];
 	    }
 	}
+	export class TestConnectionInput {
+	    provider_name: string;
+	    chat_url: string;
+	    api_key: string;
+	    model_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestConnectionInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider_name = source["provider_name"];
+	        this.chat_url = source["chat_url"];
+	        this.api_key = source["api_key"];
+	        this.model_id = source["model_id"];
+	    }
+	}
 	export class UpdatePreferenceInput {
 	    category?: string;
 	    content?: string;

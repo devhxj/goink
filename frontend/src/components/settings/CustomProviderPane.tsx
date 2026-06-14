@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, Loader2 } from 'lucide-react'
 import type { llm } from '@/hooks/useApp'
 
 interface Props {
@@ -9,9 +9,12 @@ interface Props {
   onRemove: (key: string) => void
   onAddCustomModel: (providerKey: string, model: llm.ModelInfo) => void
   onRemoveCustomModel: (providerKey: string, modelId: string) => void
+  onTest: (providerKey: string) => Promise<string | null>
+  testResults: Record<string, { ok: boolean; msg?: string } | undefined>
+  testing: Record<string, boolean>
 }
 
-export default function CustomProviderPane({ providers, onAdd, onUpdate, onRemove, onAddCustomModel, onRemoveCustomModel }: Props) {
+export default function CustomProviderPane({ providers, onAdd, onUpdate, onRemove, onAddCustomModel, onRemoveCustomModel, onTest, testResults, testing }: Props) {
   const [selectedKey, setSelectedKey] = useState(providers[0]?.key || '')
   const [showNewForm, setShowNewForm] = useState(false)
   const [newName, setNewName] = useState('')
@@ -22,6 +25,8 @@ export default function CustomProviderPane({ providers, onAdd, onUpdate, onRemov
   const [newModelName, setNewModelName] = useState('')
 
   const provider = providers.find(p => p.key === selectedKey)
+  const isTesting = testing[selectedKey]
+  const testResult = testResults[selectedKey]
 
   const handleAdd = () => {
     if (!newName.trim() || !newChatURL.trim()) return
@@ -163,7 +168,7 @@ export default function CustomProviderPane({ providers, onAdd, onUpdate, onRemov
             />
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <label className="text-xs text-muted-foreground w-16 shrink-0">API Key</label>
             <input
               type="password"
@@ -172,7 +177,21 @@ export default function CustomProviderPane({ providers, onAdd, onUpdate, onRemov
               placeholder="输入 API Key"
               className="flex-1 h-8 rounded-md border bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             />
+            <button
+              onClick={() => onTest(selectedKey)}
+              disabled={!provider.api_key || isTesting}
+              className="h-8 px-2.5 rounded-md border text-xs shrink-0 hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '测试'}
+            </button>
           </div>
+
+          {/* 测试结果 */}
+          {testResult && (
+            <div className={`text-xs pl-[4.5rem] ${testResult.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+              {testResult.ok ? '✓ 连通成功' : `✗ ${testResult.msg || '连接失败'}`}
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <label className="text-xs text-muted-foreground w-16 shrink-0">创意度</label>
