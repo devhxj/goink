@@ -277,6 +277,7 @@ func PageMeta[T any](r *storage.PageResult[T]) map[string]any {
 		"size":        r.Size,
 		"total":       r.Total,
 		"total_pages": r.TotalPages,
+		"truncated":   r.Total > int64(r.Page*r.Size),
 	}
 }
 

@@ -326,8 +326,8 @@ func (t *UpdateLocationTool) Execute(ctx context.Context, args any, tc ToolConte
 
 // CreateLocationRelationItem 是 create_location_relation 的单条参数。
 type CreateLocationRelationItem struct {
-	LocationA    int64  `json:"location_a" jsonschema:"required,description=地点A的ID"               validate:"required,min=1"`
-	LocationB    int64  `json:"location_b" jsonschema:"required,description=地点B的ID"               validate:"required,min=1"`
+	LocationA    int64  `json:"location_a_id" jsonschema:"required,description=地点A的ID"               validate:"required,min=1"`
+	LocationB    int64  `json:"location_b_id" jsonschema:"required,description=地点B的ID"               validate:"required,min=1"`
 	RelationType string `json:"relation_type" jsonschema:"required,description=空间关系描述，如'相邻''由山路连通'" validate:"required"`
 	Description  string `json:"description" jsonschema:"description=补充细节"`
 }

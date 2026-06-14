@@ -78,8 +78,8 @@ func (Location) TableName() string { return "locations" }
 type LocationRelation struct {
 	ID           int64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	NovelID      int64     `gorm:"column:novel_id;not null;index"              json:"novel_id"`
-	LocationA    int64     `gorm:"column:location_a;uniqueIndex:uk_location_pair;not null" json:"location_a"` // 总是较小 ID
-	LocationB    int64     `gorm:"column:location_b;uniqueIndex:uk_location_pair;not null" json:"location_b"` // 总是较大 ID
+	LocationA    int64     `gorm:"column:location_a;uniqueIndex:uk_location_pair;not null" json:"location_a_id"` // 总是较小 ID
+	LocationB    int64     `gorm:"column:location_b;uniqueIndex:uk_location_pair;not null" json:"location_b_id"` // 总是较大 ID
 	RelationType string    `gorm:"column:relation_type;not null"              json:"relation_type"`           // 自由文本："相邻""由山路连通""可望见"
 	Description  string    `gorm:"column:description"                          json:"description"`             // 补充细节
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"            json:"created_at"`
