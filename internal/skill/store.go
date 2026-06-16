@@ -19,7 +19,7 @@ type Store struct {
 
 // NewStore 创建 Store 并初始加载内置和用户级 skill。
 func NewStore(logger *slog.Logger, userSkillsDir string) (*Store, error) {
-	builtin, err := LoadBuiltinSkills()
+	builtin, err := LoadBuiltinSkills(logger)
 	if err != nil {
 		logger.Warn("加载内置 skill 失败，内置列表为空", "err", err)
 		builtin = nil
@@ -103,7 +103,7 @@ func (s *Store) ReloadUser(userSkillsDir string) error {
 
 // ReloadNovel 重新扫描指定小说的 skill 目录。
 func (s *Store) ReloadNovel(novelID int64, novelSkillsDir string) error {
-	skills, err := scanDir(novelSkillsDir)
+	skills, err := scanDir(s.logger, novelSkillsDir)
 	if err != nil {
 		return fmt.Errorf("skill: reload novel %d: %w", novelID, err)
 	}
@@ -119,7 +119,7 @@ func (s *Store) ReloadNovel(novelID int64, novelSkillsDir string) error {
 
 // loadUser 需在持有锁时调用。
 func (s *Store) loadUser(dir string) error {
-	skills, err := scanDir(dir)
+	skills, err := scanDir(s.logger, dir)
 	if err != nil {
 		return err
 	}

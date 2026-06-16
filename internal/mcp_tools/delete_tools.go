@@ -80,11 +80,12 @@ func (t *DeleteRecordTool) Execute(ctx context.Context, args any, tc ToolContext
 
 // ── helper ──────────────────────────────────────────────
 
-// requestDeleteApproval 发起删除审批。返回 nil, nil 表示通过，可继续删除。
-// 返回 *ToolResult 表示被拒绝，调用方应直接返回该结果。
-func requestDeleteApproval(ctx context.Context, tc ToolContext, payload map[string]any) (*ToolResult, error) {
+// requestDeleteApproval 发起删除审批。
+// 返回 (injects, result, error)：injects 非 nil 表示审批通过且有用户反馈，
+// result 非 nil 表示被拒绝或中断（调用方直接返回），error 为系统错误。
+func requestDeleteApproval(ctx context.Context, tc ToolContext, payload map[string]any) ([]InjectMessage, *ToolResult, error) {
 	if tc.Approver == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if tc.EmitApproval != nil {
 		tc.EmitApproval(tc.ToolID, "delete", payload)
@@ -92,23 +93,26 @@ func requestDeleteApproval(ctx context.Context, tc ToolContext, payload map[stri
 	approval, err := tc.Approver.RequestApproval(ctx, tc.ToolID, payload)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return &ToolResult{Success: false, Error: "操作被中断"}, nil
+			return nil, &ToolResult{Success: false, Error: "操作被中断"}, nil
 		}
-		return nil, fmt.Errorf("approval: %w", err)
+		return nil, nil, fmt.Errorf("approval: %w", err)
 	}
 	if !approval.Approved {
 		info := "删除被用户拒绝"
 		if approval.Feedback != "" {
 			info += "。用户反馈：" + approval.Feedback
 		}
-		return &ToolResult{
+		return nil, &ToolResult{
 			Success: false,
 			Error:   "审批未通过",
 			Data:    map[string]any{"approved": false},
 			Inject:  []InjectMessage{{Role: "user", Content: info}},
 		}, nil
 	}
-	return nil, nil
+	if approval.Feedback != "" {
+		return []InjectMessage{{Role: "user", Content: "用户通过了删除审批并反馈：" + approval.Feedback}}, nil, nil
+	}
+	return nil, nil, nil
 }
 
 // ── 各表删除方法 ────────────────────────────────────────
@@ -138,9 +142,10 @@ func (t *DeleteRecordTool) deleteCharacter(ctx context.Context, a *DeleteRecordA
 	}
 
 	meta := map[string]any{"id": rec.ID, "name": rec.Name, "type": "character"}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -148,7 +153,7 @@ func (t *DeleteRecordTool) deleteCharacter(ctx context.Context, a *DeleteRecordA
 		return nil, fmt.Errorf("delete character: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteCharacterRelation(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -175,9 +180,10 @@ func (t *DeleteRecordTool) deleteCharacterRelation(ctx context.Context, a *Delet
 		"relation": rec.RelationDescribe,
 		"type":     "character_relation",
 	}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -185,7 +191,7 @@ func (t *DeleteRecordTool) deleteCharacterRelation(ctx context.Context, a *Delet
 		return nil, fmt.Errorf("delete character relation: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteLocation(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -230,9 +236,10 @@ func (t *DeleteRecordTool) deleteLocation(ctx context.Context, a *DeleteRecordAr
 	}
 
 	meta := map[string]any{"id": rec.ID, "name": rec.Name, "type": "location"}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -240,7 +247,7 @@ func (t *DeleteRecordTool) deleteLocation(ctx context.Context, a *DeleteRecordAr
 		return nil, fmt.Errorf("delete location: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteLocationRelation(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -267,9 +274,10 @@ func (t *DeleteRecordTool) deleteLocationRelation(ctx context.Context, a *Delete
 		"relation":   rec.RelationType,
 		"type":       "location_relation",
 	}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -277,7 +285,7 @@ func (t *DeleteRecordTool) deleteLocationRelation(ctx context.Context, a *Delete
 		return nil, fmt.Errorf("delete location relation: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteTimelineEntry(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -290,9 +298,10 @@ func (t *DeleteRecordTool) deleteTimelineEntry(ctx context.Context, a *DeleteRec
 	}
 
 	meta := map[string]any{"id": rec.ID, "title": rec.Title, "type": "timeline_entry"}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -300,7 +309,7 @@ func (t *DeleteRecordTool) deleteTimelineEntry(ctx context.Context, a *DeleteRec
 		return nil, fmt.Errorf("delete timeline entry: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteStoryArc(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -328,9 +337,10 @@ func (t *DeleteRecordTool) deleteStoryArc(ctx context.Context, a *DeleteRecordAr
 	}
 
 	meta := map[string]any{"id": rec.ID, "name": rec.Name, "type": "story_arc"}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -338,7 +348,7 @@ func (t *DeleteRecordTool) deleteStoryArc(ctx context.Context, a *DeleteRecordAr
 		return nil, fmt.Errorf("delete story arc: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteArcNode(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -363,9 +373,10 @@ func (t *DeleteRecordTool) deleteArcNode(ctx context.Context, a *DeleteRecordArg
 		"story_arc": arcName,
 		"type":      "arc_node",
 	}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -373,7 +384,7 @@ func (t *DeleteRecordTool) deleteArcNode(ctx context.Context, a *DeleteRecordArg
 		return nil, fmt.Errorf("delete arc node: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deleteReaderPerspectiveEntry(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -391,9 +402,10 @@ func (t *DeleteRecordTool) deleteReaderPerspectiveEntry(ctx context.Context, a *
 		"planted_chapter": rec.PlantedChapter,
 		"type":            "reader_perspective_entry",
 	}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -401,7 +413,7 @@ func (t *DeleteRecordTool) deleteReaderPerspectiveEntry(ctx context.Context, a *
 		return nil, fmt.Errorf("delete reader perspective: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 func (t *DeleteRecordTool) deletePreference(ctx context.Context, a *DeleteRecordArgs, tc ToolContext) (*ToolResult, error) {
@@ -414,9 +426,10 @@ func (t *DeleteRecordTool) deletePreference(ctx context.Context, a *DeleteRecord
 	}
 
 	meta := map[string]any{"id": rec.ID, "category": rec.Category, "type": "preference"}
-	if result, err := requestDeleteApproval(ctx, tc, map[string]any{
+	injects, result, err := requestDeleteApproval(ctx, tc, map[string]any{
 		"table": a.Table, "id": a.ID, "deleted": meta,
-	}); err != nil || result != nil {
+	})
+	if err != nil || result != nil {
 		return result, err
 	}
 
@@ -424,7 +437,7 @@ func (t *DeleteRecordTool) deletePreference(ctx context.Context, a *DeleteRecord
 		return nil, fmt.Errorf("delete preference: %w", err)
 	}
 
-	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}}, nil
+	return &ToolResult{Success: true, Data: map[string]any{"deleted": meta}, Inject: injects}, nil
 }
 
 // ── 注册 ────────────────────────────────────────────────

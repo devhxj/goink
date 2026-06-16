@@ -3,6 +3,7 @@ package skill
 import (
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,7 +95,7 @@ func parseFrontmatter(raw string) (*Skill, error) {
 }
 
 // scanFS 扫描 fs.FS 指定目录下的所有 .md 文件并解析为 Skill 切片。
-func scanFS(fsys fs.FS, dir string) ([]Skill, error) {
+func scanFS(logger *slog.Logger, fsys fs.FS, dir string) ([]Skill, error) {
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return nil, fmt.Errorf("skill: 读取目录 %s 失败: %w", dir, err)
@@ -107,6 +108,7 @@ func scanFS(fsys fs.FS, dir string) ([]Skill, error) {
 		}
 		sk, err := ParseFS(fsys, dir+"/"+entry.Name())
 		if err != nil {
+			logger.Warn("skill: 解析内置 skill 失败，已跳过", "file", entry.Name(), "err", err)
 			continue
 		}
 		skills = append(skills, *sk)
@@ -117,7 +119,7 @@ func scanFS(fsys fs.FS, dir string) ([]Skill, error) {
 // scanDir 扫描目录下所有 .md 文件并解析为 Skill 切片。
 // YAML name 与文件名不一致时以 YAML name 为准重命名文件。
 // 目录不存在时返回空切片（不报错）。
-func scanDir(dir string) ([]Skill, error) {
+func scanDir(logger *slog.Logger, dir string) ([]Skill, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -133,6 +135,7 @@ func scanDir(dir string) ([]Skill, error) {
 		}
 		sk, err := ParseFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
+			logger.Warn("skill: 解析 skill 文件失败，已跳过", "file", entry.Name(), "err", err)
 			continue
 		}
 		fileBase := strings.TrimSuffix(entry.Name(), ".md")

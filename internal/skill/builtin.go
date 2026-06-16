@@ -1,11 +1,14 @@
 package skill
 
-import "embed"
+import (
+	"embed"
+	"log/slog"
+)
 
 //go:embed builtin/*.md
 var BuiltinFS embed.FS
 
 // LoadBuiltinSkills 从嵌入式文件系统解析内置 skill。
-func LoadBuiltinSkills() ([]Skill, error) {
-	return scanFS(BuiltinFS, "builtin")
+func LoadBuiltinSkills(logger *slog.Logger) ([]Skill, error) {
+	return scanFS(logger, BuiltinFS, "builtin")
 }

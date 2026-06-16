@@ -98,6 +98,7 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 	}
 
 	// 5. 审批（阻塞等待用户确认）
+	var approvalFeedback string
 	if tc.Approver != nil {
 		payload := map[string]any{
 			"original":    current,
@@ -132,6 +133,7 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 				Inject: []InjectMessage{{Role: "user", Content: info}},
 			}, nil
 		}
+		approvalFeedback = approval.Feedback
 	}
 
 	// 6. 自动创建 DB 记录（文件不存在且为章节/大纲路径时）
@@ -188,6 +190,9 @@ func (t *EditTool) Execute(ctx context.Context, args any, tc ToolContext) (*Tool
 
 	// 9. inject 维护提醒（章节全量替换且 >500 字时）
 	var injects []InjectMessage
+	if approvalFeedback != "" {
+		injects = append(injects, InjectMessage{Role: "user", Content: "用户通过了审批并反馈：" + approvalFeedback})
+	}
 	if a.ChangeType == "full_replace" && isChapterPath(a.Path) && len([]rune(proposed)) > 500 {
 		chapNum := parseChapterNum(a.Path)
 		injects = []InjectMessage{{
