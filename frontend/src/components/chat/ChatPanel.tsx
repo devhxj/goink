@@ -65,6 +65,10 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
   const [sessionsTotal, setSessionsTotal] = useState(0)
   const [showHistoryPanel, setShowHistoryPanel] = useState(false)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [initLoadError, setInitLoadError] = useState(false)
+  const [initLoadRetry, setInitLoadRetry] = useState(0)
+  const [historyLoadError, setHistoryLoadError] = useState(false)
+  const [historyLoadRetry, setHistoryLoadRetry] = useState(0)
   const [skills, setSkills] = useState<skill.SkillMeta[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -79,6 +83,7 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
 
   // 加载模型列表并恢复持久化设置
   useEffect(() => {
+    setInitLoadError(false)
     Promise.all([
       app.GetModels(),
       app.GetSettings(),
@@ -119,8 +124,11 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
       if (settings?.last_session_id) {
         lastSessionIdRef.current = settings.last_session_id
       }
-    }).catch(() => {})
-  }, [])
+    }).catch((err) => {
+      console.error('Load models/settings failed', err)
+      setInitLoadError(true)
+    })
+  }, [initLoadRetry])
 
   // 加载会话列表
   useEffect(() => {
@@ -133,7 +141,9 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
         setSessions(r.items)
         setSessionsTotal(r.total)
       }
-    }).catch(() => {})
+    }).catch((err) => {
+      console.error('Load sessions failed', err)
+    })
 
     // 尝试恢复上次活跃会话（仅恢复一次，通过 ref 标记）
     const sid = lastSessionIdRef.current
@@ -153,13 +163,17 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
   useEffect(() => {
     if (!activeSessionId || !novelId) return
     setSessionId(activeSessionId)
+    setHistoryLoadError(false)
     setIsLoadingHistory(true)
     app.GetSessionMessages(activeSessionId).then(msgs => {
       if (msgs) {
         setTurns(rebuildTurns(msgs))
       }
-    }).catch(() => {}).finally(() => setIsLoadingHistory(false))
-  }, [activeSessionId, novelId])
+    }).catch((err) => {
+      console.error('Load messages failed', err)
+      setHistoryLoadError(true)
+    }).finally(() => setIsLoadingHistory(false))
+  }, [activeSessionId, novelId, historyLoadRetry])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -232,7 +246,9 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
     setLastUsage(null)
     app.GetSessions({ novel_id: novelId, page: 1, size: 5, search: '' }).then(r => {
       if (r) { setSessions(r.items); setSessionsTotal(r.total) }
-    }).catch(() => {})
+    }).catch((err) => {
+      console.error('Refresh sessions failed', err)
+    })
   }, [novelId, app])
 
   const handleOpenHistory = useCallback(() => {
@@ -248,7 +264,9 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
     try {
       const list = await app.ListSkills({ novel_id: novelId })
       setSkills(list ?? [])
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('Load skills failed', err)
+    }
   }, [app, novelId])
 
   useEffect(() => { loadSkills() }, [loadSkills])
@@ -739,7 +757,9 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
       // 刷新会话列表
       app.GetSessions({ novel_id: novelId, page: 1, size: 5, search: '' }).then(r => {
         if (r) { setSessions(r.items); setSessionsTotal(r.total) }
-      }).catch(() => {})
+      }).catch((err) => {
+        console.error('Post-send refresh sessions failed', err)
+      })
     } catch (err) {
       setTurns(prev => prev.map(t => {
         if (t.id !== turnId) return t
@@ -812,6 +832,18 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
         </div>
       </div>
 
+      {initLoadError && (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-xs text-red-600 flex items-center justify-between shrink-0">
+          <span>加载设置失败，模型列表和偏好可能不准确</span>
+          <button
+            onClick={() => setInitLoadRetry(n => n + 1)}
+            className="underline hover:text-red-800 cursor-pointer"
+          >
+            重试
+          </button>
+        </div>
+      )}
+
       <div className="absolute left-0 right-0 top-[41px] bottom-0 pointer-events-none z-30">
         <SessionHistory
           open={showHistoryPanel}
@@ -843,7 +875,19 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
         ) : (
           <>
             {/* 消息列表 */}
-            {!hasTurns && !isLoading ? (
+            {historyLoadError ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <p className="text-sm text-red-500 mb-2">加载消息失败</p>
+                  <button
+                    onClick={() => setHistoryLoadRetry(n => n + 1)}
+                    className="text-xs text-primary underline cursor-pointer"
+                  >
+                    重试
+                  </button>
+                </div>
+              </div>
+            ) : !hasTurns && !isLoading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <MessageSquare className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
@@ -1014,7 +1058,9 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
                 }
               }
             }
-          }).catch(() => {})
+          }).catch((err) => {
+            console.error('Refresh models failed', err)
+          })
         }}
         initialTab="model"
       />

@@ -77,7 +77,9 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
       loadedRef.current.add(t.id)
       app.GetContent(novelId, t.path).then(content => {
         updateTab(t.id, { content: content ?? '' })
-      }).catch(() => {})
+      }).catch(() => {
+        updateTab(t.id, { content: '加载失败，请关闭标签页后重试' })
+      })
     }
   }, [tabs, novelId, initRef.current])
 

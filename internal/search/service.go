@@ -86,7 +86,9 @@ func (s *Service) searchEntities(ctx context.Context, novelID int64, query strin
 		Search:     query,
 		PageParams: storage.PageParams{Page: 1, Size: EntityLimit},
 	})
-	if err == nil && chars != nil {
+	if err != nil {
+		s.logger.Warn("character search failed", "err", err)
+	} else if chars != nil {
 		for _, c := range chars.Items {
 			results = append(results, Result{
 				Type:    "character",
@@ -102,7 +104,9 @@ func (s *Service) searchEntities(ctx context.Context, novelID int64, query strin
 		Search:     query,
 		PageParams: storage.PageParams{Page: 1, Size: EntityLimit},
 	})
-	if err == nil && locs != nil {
+	if err != nil {
+		s.logger.Warn("location search failed", "err", err)
+	} else if locs != nil {
 		for _, l := range locs.Items {
 			results = append(results, Result{
 				Type:     "location",
@@ -116,7 +120,9 @@ func (s *Service) searchEntities(ctx context.Context, novelID int64, query strin
 
 	// 时间线
 	timelineEntries, err := s.tlStore.SearchByNovel(ctx, novelID, query, EntityLimit)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("timeline search failed", "err", err)
+	} else {
 		for _, e := range timelineEntries {
 			subtitle := e.Category
 			if e.Category == "foreshadowing" {
@@ -137,7 +143,9 @@ func (s *Service) searchEntities(ctx context.Context, novelID int64, query strin
 
 	// 故事弧
 	arcs, err := s.arcStore.SearchByNovel(ctx, novelID, query, EntityLimit)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("story arc search failed", "err", err)
+	} else {
 		for _, arc := range arcs {
 			results = append(results, Result{
 				Type:     "storyarc",
@@ -151,7 +159,9 @@ func (s *Service) searchEntities(ctx context.Context, novelID int64, query strin
 
 	// 章节
 	chapters, err := s.chapStore.SearchByNovel(ctx, novelID, query, EntityLimit)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("chapter title search failed", "err", err)
+	} else {
 		for _, ch := range chapters {
 			results = append(results, Result{
 				Type:       "chapter",
@@ -222,7 +232,9 @@ func (s *Service) searchContent(ctx context.Context, novelID int64, query string
 	// 获取章节元数据（标题）
 	allChapters, err := s.chapStore.ListAllByNovel(ctx, novelID)
 	chapMeta := make(map[int]chapter.Chapter)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("chapter list for search content failed", "err", err)
+	} else {
 		for _, ch := range allChapters {
 			chapMeta[ch.ChapterNumber] = ch
 		}
@@ -356,7 +368,9 @@ func (s *Service) searchRAG(ctx context.Context, novelID int64, query string) []
 
 	allChapters, err := s.chapStore.ListAllByNovel(ctx, novelID)
 	chapMeta := make(map[int]chapter.Chapter)
-	if err == nil {
+	if err != nil {
+		s.logger.Warn("chapter list for RAG search failed", "err", err)
+	} else {
 		for _, ch := range allChapters {
 			chapMeta[ch.ChapterNumber] = ch
 		}
