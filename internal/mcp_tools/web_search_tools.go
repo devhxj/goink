@@ -19,7 +19,7 @@ func (t *WebSearchTool) ExposeToLLM() bool      { return true }
 
 func (t *WebSearchTool) Description() string {
 	return "联网搜索真实信息，返回综合答案和参考来源。适用于需要实时数据、新闻、技术文档或超出模型知识范围的内容。" +
-		"搜索结果已由 AI 综合分析，可直接引用返回的 summary；sources 为来源 URL 列表。"
+		"搜索结果已由 AI 综合分析，可直接引用返回的 summary；sources 为来源 URL 列表。如需查看某个来源的原文细节，可用 web_fetch 抓取。"
 }
 
 func (t *WebSearchTool) JSONSchema() json.RawMessage {

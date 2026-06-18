@@ -3,6 +3,8 @@ module novel
 go 1.25.0
 
 require (
+	github.com/JohannesKaufmann/html-to-markdown v1.6.0
+	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/invopop/jsonschema v0.14.0
@@ -18,6 +20,7 @@ require (
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect

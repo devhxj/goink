@@ -49,6 +49,7 @@ var toolDisplayNames = map[string]string{
 	"edit":                            "编辑文件内容",
 	"read":                            "读取文件内容",
 	"web_search":                      "搜索网络信息",
+	"web_fetch":                       "抓取网页内容",
 }
 
 // toolActivityKinds 工具名 → 前端展示类别。
@@ -93,6 +94,7 @@ var toolActivityKinds = map[string]string{
 	"edit":                            "write",
 	"read":                            "view",
 	"web_search":                      "browse",
+	"web_fetch":                       "view",
 }
 
 // chapterTools 需要查章节标题的工具集。

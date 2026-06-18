@@ -30,6 +30,7 @@ var mainAgentTools = []string{
 	"read",
 	"search_story_memory",
 	"web_search",
+	"web_fetch",
 	"run_subagent",
 }
 
