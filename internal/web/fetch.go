@@ -11,9 +11,11 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/abadojack/whatlanggo"
 	readability "codeberg.org/readeck/go-readability/v2"
 )
 
@@ -24,6 +26,8 @@ const (
 	fetchDelayMin  = 500 * time.Millisecond
 	fetchDelayMax  = 1500 * time.Millisecond
 	fetchUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+	garbledMinTotal = 50 // 总字符数低于此值不检测（太短无法判断）
 )
 
 var cookieJar, _ = cookiejar.New(nil)
@@ -66,7 +70,7 @@ func Fetch(rawURL string) (*FetchResult, error) {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Sec-Ch-Ua", `"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"`)
+	req.Header.Set("Sec-Ch-Ua", `"Google Chrome";v="149", "Chromium";v="149", "Not.A/Brand";v="99"`)
 	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
 	req.Header.Set("Sec-Ch-Ua-Platform", `"Windows"`)
 	req.Header.Set("Sec-Fetch-Dest", "document")
@@ -131,6 +135,9 @@ func Fetch(rawURL string) (*FetchResult, error) {
 	}
 
 	text = strings.TrimSpace(text)
+	if isGarbled(text) {
+		return nil, fmt.Errorf("网页内容为乱码，无法解析")
+	}
 	if len([]rune(text)) > fetchMaxChars {
 		runes := []rune(text)
 		text = string(runes[:fetchMaxChars]) + "\n\n...[内容已截断]"
@@ -141,6 +148,41 @@ func Fetch(rawURL string) (*FetchResult, error) {
 		Title: title,
 		Text:  text,
 	}, nil
+}
+
+// isGarbled 检测文本是否为乱码，综合语言检测和结构分析。
+func isGarbled(text string) bool {
+	runes := []rune(text)
+	if len(runes) < garbledMinTotal {
+		return false
+	}
+
+	// 含替换字符 → 明确乱码
+	if strings.ContainsRune(text, '�') {
+		return true
+	}
+
+	// CJK 占比高 → 不可能是乱码（编码错误产不出大量有效汉字）
+	var cjk int
+	for _, r := range runes {
+		if unicode.Is(unicode.Han, r) ||
+			unicode.Is(unicode.Hiragana, r) ||
+			unicode.Is(unicode.Katakana, r) ||
+			unicode.Is(unicode.Hangul, r) {
+			cjk++
+		}
+	}
+	if cjk > len(runes)/3 {
+		return false
+	}
+
+	// 语言检测：乱码的可信度通常极低
+	info := whatlanggo.Detect(text)
+	if info.Confidence < 0.3 {
+		return true
+	}
+
+	return false
 }
 
 func parseAndValidate(rawURL string) (*url.URL, error) {
