@@ -198,14 +198,14 @@ function PreferenceCard({
             value={editing!.category}
             onChange={e => setEditingCategory(e.target.value)}
             placeholder="分类"
-            className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-slate-300"
+            className="w-full text-xs border border-border rounded px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <textarea
             value={editing!.content}
             onChange={e => setEditingContent(e.target.value)}
             placeholder="偏好内容"
             rows={3}
-            className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-slate-300 resize-none"
+            className="w-full text-xs border border-border rounded px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
           />
           <div className="flex items-center gap-2">
             <button
@@ -264,14 +264,14 @@ function AddForm({
         value={category}
         onChange={e => onCategoryChange(e.target.value)}
         placeholder="分类（如：风格、对话、世界观）"
-        className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-slate-300"
+        className="w-full text-xs border border-border rounded px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <textarea
         value={content}
         onChange={e => onContentChange(e.target.value)}
         placeholder="偏好内容"
         rows={3}
-        className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-slate-300 resize-none"
+        className="w-full text-xs border border-border rounded px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
       />
       <div className="flex items-center gap-2">
         <button

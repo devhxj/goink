@@ -219,8 +219,9 @@ export default function WorkspaceView({ initialNovelId }: Props) {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header
-        className="h-11 flex items-center border-b bg-sidebar shrink-0 select-none"
+        className="h-11 flex items-center border-b bg-sidebar shrink-0 select-none cursor-default"
         style={{ '--wails-draggable': 'drag' } as React.CSSProperties}
+        onDoubleClick={() => { WindowToggleMaximise(); setIsMaximised(!isMaximised) }}
       >
         <img src={logo} alt="Goink" className="h-7 w-7 ml-3 shrink-0" />
         <span className="text-sm font-medium pl-2 flex-1">

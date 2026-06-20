@@ -108,7 +108,7 @@ export default function ProfileView() {
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
         {/* 头像 + 问候 */}
         <div className="flex items-center gap-4">
-          <div className="relative group flex-shrink-0 cursor-pointer" onClick={handleAvatarClick}>
+          <div className="relative group flex-shrink-0 cursor-pointer select-none" onClick={handleAvatarClick}>
             {avatarErrored ? (
               <div className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
                 <User className="w-7 h-7 text-slate-400 dark:text-slate-500" />
@@ -138,7 +138,7 @@ export default function ProfileView() {
             ) : (
               <h1
                 onClick={startEditName}
-                className={`text-lg font-semibold cursor-pointer hover:text-primary transition-colors ${settings?.user_name ? 'text-slate-800 dark:text-foreground' : 'text-slate-400 dark:text-slate-500'}`}
+                className={`text-lg font-semibold cursor-pointer hover:text-primary transition-colors select-none ${settings?.user_name ? 'text-slate-800 dark:text-foreground' : 'text-slate-400 dark:text-slate-500'}`}
               >
                 {settings?.user_name || '未设置昵称'}
               </h1>

@@ -820,7 +820,7 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
         onMouseDown={handleMouseDown}
       />
 
-      <div className="px-4 py-2.5 border-b shrink-0 flex items-center justify-between">
+      <div className="px-4 py-2.5 border-b shrink-0 flex items-center justify-between select-none">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">AI 对话</span>
         <div className="flex items-center gap-2">
           <button

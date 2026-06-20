@@ -76,7 +76,7 @@ export default function BookshelfView({
             {novels.map(n => (
               <div
                 key={n.id}
-                className={`group relative flex flex-col rounded-lg border bg-card hover:shadow-md transition-shadow cursor-pointer
+                className={`group relative flex flex-col rounded-lg border bg-card hover:shadow-md transition-shadow cursor-pointer select-none
                   ${n.id === activeNovelId ? 'ring-2 ring-primary' : ''}`}
               >
                 {/* 点击卡片主体切换书 */}
