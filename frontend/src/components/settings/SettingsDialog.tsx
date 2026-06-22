@@ -28,7 +28,7 @@ export default function SettingsDialog({ open, onClose, onSaved, initialTab = 'm
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       {/* 弹窗 */}
-      <div className="relative bg-background rounded-xl shadow-2xl border flex w-[680px] h-[480px] max-w-[90vw] max-h-[85vh]">
+      <div className="relative bg-background rounded-xl shadow-2xl border flex w-[800px] h-[580px] max-w-[95vw] max-h-[90vh]">
         {/* 左侧导航 */}
         <nav className="w-[160px] border-r py-4 px-2 flex flex-col gap-1 shrink-0">
           <div className="text-sm font-medium px-3 pb-3 text-foreground">设置</div>
