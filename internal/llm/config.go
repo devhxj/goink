@@ -5,15 +5,19 @@ import (
 	"strings"
 )
 
-// normalizeURL 为裸域名补全 https://。已有协议头的原样返回。
+// normalizeURL 补全 https:// 协议头，并确保路径以 /chat/completions 结尾。
 func normalizeURL(raw string) string {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return raw
 	}
-	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
-		return raw
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		raw = "https://" + raw
 	}
-	return "https://" + raw
+	if !strings.HasSuffix(raw, "/chat/completions") {
+		raw = strings.TrimRight(raw, "/") + "/chat/completions"
+	}
+	return raw
 }
 
 // UserLLMConfig 是用户 LLM 配置的持久化格式（加密 JSON）。
