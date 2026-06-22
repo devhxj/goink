@@ -61,6 +61,7 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
   const [lastUsage, setLastUsage] = useState<UsageInfo | null>(null)
   const [isCompressing, setIsCompressing] = useState(false)
   const compressingRef = useRef(false)
+  const activeCountRef = useRef(0)
   const [showSettings, setShowSettings] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(undefined)
   const [sessions, setSessions] = useState<app.SessionMeta[]>([])
@@ -291,9 +292,49 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
       }
       case AgentEventType.Compression: {
         const phase = (event.compression_phase || 'started') as 'compressing' | 'done'
+        if (event.sub_task_id) {
+          setTurns(prev => prev.map(turn => {
+            if (turn.turnId !== turnId) return turn
+            const subIdx = turn.segments.findIndex(s =>
+              s.type === 'subagent' && s.taskId === event.sub_task_id
+            )
+            if (subIdx < 0) {
+              turn.segments.push({
+                ...emptySegment(`subagent_${event.sub_task_id}`),
+                type: 'subagent',
+                status: 'streaming',
+                agentType: 'review' as const,
+                taskId: event.sub_task_id,
+                segments: [{
+                  ...emptySegment(`comp_${++counterRef.current}`),
+                  type: 'compression',
+                  compressionPhase: phase,
+                }],
+              })
+              return turn
+            }
+            const subSeg = { ...turn.segments[subIdx] }
+            if (!subSeg.segments) subSeg.segments = []
+            const subSegs = [...subSeg.segments]
+            const compIdx = subSegs.findIndex(s => s.type === 'compression')
+            if (compIdx >= 0) {
+              subSegs[compIdx] = { ...subSegs[compIdx], compressionPhase: phase }
+            } else {
+              subSegs.push({
+                ...emptySegment(`comp_${++counterRef.current}`),
+                type: 'compression',
+                compressionPhase: phase,
+              })
+            }
+            subSeg.segments = subSegs
+            const newSegs = [...turn.segments]
+            newSegs[subIdx] = subSeg
+            return { ...turn, segments: newSegs }
+          }))
+          return
+        }
         setTurns(prev => prev.map(turn => {
           if (turn.turnId !== turnId) return turn
-          // 查找已有 compression segment，找不到则追加
           const compIdx = turn.segments.findIndex(s => s.type === 'compression')
           if (compIdx >= 0) {
             const segs = [...turn.segments]
@@ -639,6 +680,12 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
 
   const handleConfigModel = useCallback(() => setShowSettings(true), [])
 
+  const refreshModels = useCallback(() => {
+    app.GetModels().then(list => {
+      if (list && list.length > 0) setModels(list)
+    }).catch(() => {})
+  }, [app])
+
   const handleSelectModel = useCallback((key: string) => {
     setSelectedKey(key)
     const m = models.find(x => x.Key === key)
@@ -713,6 +760,10 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
   const handleSend = useCallback(async (content: string) => {
     if (!selectedKey) return
     const [p, m] = selectedKey.split('/')
+    activeCountRef.current++
+    if (activeCountRef.current > 1) {
+      app.CancelChat(sessionId)
+    }
     setIsLoading(true)
 
     const turnId = `turn_${++counterRef.current}`
@@ -792,7 +843,10 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
             )}
           : t
       ))
-      setIsLoading(false)
+      activeCountRef.current--
+      if (activeCountRef.current === 0) {
+        setIsLoading(false)
+      }
       startedUnsubRef.current?.()
       startedUnsubRef.current = null
       agentUnsubRef.current?.()
@@ -1042,6 +1096,7 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
         models={models}
         selectedKey={selectedKey}
         onSelectModel={handleSelectModel}
+        onRefreshModels={refreshModels}
         reasoningEffort={reasoningEffort}
         onSelectEffort={handleSelectEffort}
         approvalMode={approvalMode}
@@ -1071,9 +1126,7 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
                 }
               }
             }
-          }).catch((err) => {
-            console.error('Refresh models failed', err)
-          })
+          }).catch(() => {})
         }}
         initialTab="model"
       />
