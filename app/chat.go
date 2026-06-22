@@ -161,7 +161,8 @@ func (a *App) Chat(input ChatInput) (*ChatResult, error) {
 		Model:         model,
 		ProviderName:  input.ProviderName,
 		AgentType:     "main",
-		MaxTurns:      50,
+		MaxTurns:        50,
+		ReasoningEffort: input.ReasoningEffort,
 	})
 
 	// 10. 最终回复已由 agent.Run() 内部 appendMsg 持久化，此处不重复存储

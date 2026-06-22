@@ -42,6 +42,10 @@ export function DeletePreference(arg1) {
   return window['go']['app']['App']['DeletePreference'](arg1);
 }
 
+export function DiscoverModels(arg1, arg2) {
+  return window['go']['app']['App']['DiscoverModels'](arg1, arg2);
+}
+
 export function GetAppConfig() {
   return window['go']['app']['App']['GetAppConfig']();
 }

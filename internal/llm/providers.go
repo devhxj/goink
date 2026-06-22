@@ -141,4 +141,35 @@ var Builtin = map[string]Provider{
 		},
 		BuildRequest: nil,
 	},
+	"moonshot": {
+		Name:         "Kimi",
+		ChatURL:      "https://api.moonshot.cn/v1/chat/completions",
+		BuildRequest: moonshotBuildRequest,
+		Models: []ModelInfo{
+			{
+				ID:               "kimi-k2.7-code",
+				Name:             "Kimi K2.7 Code",
+				ContextWindow:    262_144,
+				MaxOutputTokens:  128_000,
+				SupportsThinking: true,
+				SupportsVision:   true,
+			},
+			{
+				ID:               "kimi-k2.6",
+				Name:             "Kimi K2.6",
+				ContextWindow:    262_144,
+				MaxOutputTokens:  128_000,
+				SupportsThinking: true,
+				SupportsVision:   true,
+			},
+			{
+				ID:               "kimi-k2.5",
+				Name:             "Kimi K2.5",
+				ContextWindow:    262_144,
+				MaxOutputTokens:  128_000,
+				SupportsThinking: true,
+				SupportsVision:   true,
+			},
+		},
+	},
 }

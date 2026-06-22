@@ -3,10 +3,10 @@
 import {app} from '../models';
 import {chapter} from '../models';
 import {novel} from '../models';
+import {llm} from '../models';
 import {storyarc} from '../models';
 import {timeline} from '../models';
 import {character} from '../models';
-import {llm} from '../models';
 import {location} from '../models';
 import {reader} from '../models';
 import {session} from '../models';
@@ -35,6 +35,8 @@ export function DeleteCover(arg1:number):Promise<void>;
 export function DeleteNovel(arg1:number):Promise<void>;
 
 export function DeletePreference(arg1:number):Promise<void>;
+
+export function DiscoverModels(arg1:string,arg2:string):Promise<Array<llm.ModelInfo>>;
 
 export function GetAppConfig():Promise<Record<string, any>>;
 

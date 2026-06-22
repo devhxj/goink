@@ -141,6 +141,10 @@ func BuildConfigView(user *UserLLMConfig) *LLMConfigView {
 		}
 	}
 
+	sort.Slice(view.Providers, func(i, j int) bool {
+		return view.Providers[i].Key < view.Providers[j].Key
+	})
+
 	return view
 }
 
