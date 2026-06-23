@@ -101,18 +101,18 @@ export default function SlashMenu({
             onMouseEnter={() => onHover(i)}
             className={`w-full text-left px-3 py-2 transition-colors ${
               i === selectedIndex
-                ? (isCommand ? 'bg-blue-50 dark:bg-blue-950/30' : 'bg-accent')
-                : (isCommand ? 'hover:bg-blue-50/60 dark:hover:bg-blue-950/20' : 'hover:bg-muted/60')
+                ? (isCommand ? 'bg-tag-blue dark:bg-blue-950/30' : 'bg-accent')
+                : (isCommand ? 'hover:bg-tag-blue/60 dark:hover:bg-blue-950/20' : 'hover:bg-muted/60')
             }`}
           >
             <div className="flex items-center gap-2 min-w-0">
               {isCommand
-                ? <Play className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                : <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                ? <Play className="w-3.5 h-3.5 text-tag-blue-foreground shrink-0" />
+                : <Zap className="w-3.5 h-3.5 text-tag-amber-foreground shrink-0" />
               }
               <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
               <span className={`text-[10px] shrink-0 ml-auto ${
-                isCommand ? 'text-blue-500' : 'text-muted-foreground/40'
+                isCommand ? 'text-tag-blue-foreground' : 'text-muted-foreground/40'
               }`}>
                 {isCommand ? '指令' : '技能'}
               </span>

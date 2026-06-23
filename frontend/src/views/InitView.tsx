@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '@/hooks/useApp'
 import { Button } from '@/components/ui/button'
-import logo from '@/assets/logo.svg'
+import Logo from '@/components/Logo'
 
 interface Props {
   onInitialized: () => void
@@ -34,7 +34,7 @@ export default function InitView({ onInitialized }: Props) {
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="w-full max-w-lg mx-auto px-8 py-12 text-center">
-        <img src={logo} alt="Goink" className="h-16 w-16 mx-auto mb-8" />
+        <Logo className="h-16 w-16 mx-auto mb-8" />
 
         <h1 className="text-3xl font-semibold tracking-tight mb-3">
           欢迎使用 Goink
