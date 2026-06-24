@@ -69,6 +69,16 @@ export default function BuiltinProviderPane({ providers, onUpdate, onAddCustomMo
         </button>
       </div>
 
+      {/* Chat URL */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-muted-foreground w-14 shrink-0">Chat URL</label>
+        <input
+          value={provider.chat_url}
+          onChange={e => onUpdate(selectedKey, { chat_url: e.target.value })}
+          className="flex-1 h-8 rounded-md border bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        />
+      </div>
+
       {/* 测试结果 */}
       {testResult && (
         <div className={`text-xs pl-[4.5rem] ${testResult.ok ? 'text-emerald-600' : 'text-red-500'}`}>

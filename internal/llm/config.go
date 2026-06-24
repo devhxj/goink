@@ -106,21 +106,27 @@ type ProviderView struct {
 func BuildConfigView(user *UserLLMConfig) *LLMConfigView {
 	view := &LLMConfigView{}
 
-	// 内置 provider：从 Builtin 取模板，从 user 取 key 和自定义模型
+	// 内置 provider：从 Builtin 取模板，从 user 取 key、URL 和自定义模型
 	for key, bp := range Builtin {
-		var apiKey string
+		var apiKey, chatURL string
 		var customModels []ModelInfo
 		for _, up := range user.Providers {
 			if up.Name == key {
 				apiKey = up.APIKey
+				if up.ChatURL != "" {
+					chatURL = up.ChatURL
+				}
 				customModels = up.Models
 				break
 			}
 		}
+		if chatURL == "" {
+			chatURL = bp.ChatURL
+		}
 		view.Providers = append(view.Providers, ProviderView{
 			Key:           key,
 			Name:          bp.Name,
-			ChatURL:       bp.ChatURL,
+			ChatURL:       chatURL,
 			APIKey:        apiKey,
 			Temperature:   derefOrZero(bp.Temperature),
 			Source:        "builtin",
@@ -167,6 +173,8 @@ func (v *LLMConfigView) ToUserConfig() *UserLLMConfig {
 			Models: append([]ModelInfo{}, pv.CustomModels...),
 		}
 		if pv.Source != "builtin" {
+			p.ChatURL = normalizeURL(pv.ChatURL)
+		} else if bp, ok := Builtin[pv.Key]; ok && pv.ChatURL != bp.ChatURL {
 			p.ChatURL = normalizeURL(pv.ChatURL)
 		}
 		p.Temperature = floatPtr(pv.Temperature)
