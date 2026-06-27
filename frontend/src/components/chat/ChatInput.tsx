@@ -180,7 +180,7 @@ export default function ChatInput({ disabled, isLoading, placeholder, slashItems
         {isLoading && !hasContent ? (
           <button
             onClick={handleStopClick}
-            className="w-[52px] h-[36px] min-w-[52px] flex items-center justify-center rounded-xl bg-red-500 text-white shadow-md shadow-red-500/20 transition-all hover:bg-red-600 hover:shadow-lg hover:shadow-red-500/30 shrink-0"
+            className="w-[52px] h-[36px] min-w-[52px] flex items-center justify-center rounded-xl bg-destructive text-destructive-foreground shadow-md transition-all hover:bg-destructive/85 shrink-0"
           >
             <Square className="w-4 h-4" fill="currentColor" />
           </button>

@@ -228,7 +228,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp }: Props
   // ── 窗口按钮样式 ────────────────────────────────────────
 
   const winBtn = 'w-12 h-full flex items-center justify-center cursor-pointer text-foreground/80 hover:text-foreground hover:bg-black/25 hover:shadow-md transition-all'
-  const closeBtn = 'w-12 h-full flex items-center justify-center cursor-pointer text-foreground/80 hover:text-white hover:bg-red-500 transition-colors'
+  const closeBtn = 'w-12 h-full flex items-center justify-center cursor-pointer text-foreground/80 hover:text-destructive-foreground hover:bg-destructive transition-colors'
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
