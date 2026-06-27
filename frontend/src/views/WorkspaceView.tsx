@@ -55,6 +55,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp }: Props
   const [showHelp, setShowHelp] = useState(false)
   const [tabTarget, setTabTarget] = useState<{ path: string; title: string } | null>(null)
   const [activeContent, setActiveContent] = useState('')
+  const [isDirty, setIsDirty] = useState(false)
   const [activeSkillName, setActiveSkillName] = useState<string | null>(null)
   const [isMaximised, setIsMaximised] = useState(false)
   const [platformOS, setPlatformOS] = useState('')
@@ -343,7 +344,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp }: Props
             onSaveCover={handleSaveCover}
           />
         ) : activePanel !== 'characters' && activePanel !== 'locations' && activePanel !== 'storyarcs' && activePanel !== 'timeline' && activePanel !== 'reader' && activePanel !== 'preferences' && activePanel !== 'profile' && (
-          <ContentPanel ref={contentRef} novelId={activeNovelId} onContentChange={setActiveContent} />
+          <ContentPanel ref={contentRef} novelId={activeNovelId} onContentChange={setActiveContent} onDirtyChange={setIsDirty} />
         )}
 
         {activePanel === 'characters' ? (
@@ -367,7 +368,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp }: Props
         )}
       </div>
 
-      <StatusBar content={activeContent} />
+      <StatusBar content={activeContent} isDirty={isDirty} />
 
       <SettingsDialog
         open={showSettings}

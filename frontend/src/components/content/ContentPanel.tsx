@@ -32,10 +32,11 @@ export interface ContentPanelHandle {
 interface Props {
   novelId: number
   onContentChange?: (content: string) => void
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
 const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel(
-  { novelId, onContentChange }, ref
+  { novelId, onContentChange, onDirtyChange }, ref
 ) {
   const app = useApp()
   const {
@@ -66,6 +67,10 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
       onContentChange?.(activeTab.content ?? '')
     }
   }, [activeTab, onContentChange])
+
+  useEffect(() => {
+    onDirtyChange?.(activeTab?.isDirty ?? false)
+  }, [activeTab?.isDirty, onDirtyChange])
 
   // 从 localStorage 恢复 tab 后，自动加载文件内容
   const loadedRef = useRef<Set<string>>(new Set())
@@ -133,6 +138,20 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
     app.SaveContent({ novel_id: novelIdRef.current, path, content })
     updateTab(tabId, { isDirty: false })
   }, [app, updateTab])
+
+  // Ctrl+S 立即保存
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 's') {
+        e.preventDefault()
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+        const s = savingRef.current
+        if (s) doSave(s.id, s.path, s.content)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [doSave])
 
   const handleEditorChange = useCallback((tabId: string, value: string | undefined) => {
     const content = value ?? ''
