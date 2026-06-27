@@ -82,6 +82,10 @@ export function DeleteReaderPerspective(arg1, arg2) {
   return window['go']['app']['App']['DeleteReaderPerspective'](arg1, arg2);
 }
 
+export function DeleteSkill(arg1) {
+  return window['go']['app']['App']['DeleteSkill'](arg1);
+}
+
 export function DeleteStoryArc(arg1, arg2) {
   return window['go']['app']['App']['DeleteStoryArc'](arg1, arg2);
 }

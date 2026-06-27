@@ -234,6 +234,22 @@ export namespace app {
 	        this.source = source["source"];
 	    }
 	}
+	export class DeleteSkillInput {
+	    novel_id: number;
+	    name: string;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeleteSkillInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.novel_id = source["novel_id"];
+	        this.name = source["name"];
+	        this.source = source["source"];
+	    }
+	}
 	export class ExtractStyleInput {
 	    novel_id: number;
 	    sample: string;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Search, Plus, Sparkle } from 'lucide-react'
+import { Search, Plus, Sparkle, Pencil, Trash2 } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import type { skill } from '@/hooks/useApp'
 import ExtractStyleDialog from './ExtractStyleDialog'
@@ -8,6 +8,7 @@ interface Props {
   novelId: number
   activeSkillName: string | null
   onSelectSkill: (path: string, title: string, readOnly: boolean) => void
+  onEditSkill: (path: string, title: string, readOnly: boolean) => void
   onNewSkill: (name: string) => void
 }
 
@@ -20,7 +21,7 @@ function skillPath(name: string, source: string): string {
   }
 }
 
-export default function SkillList({ novelId, activeSkillName, onSelectSkill, onNewSkill }: Props) {
+export default function SkillList({ novelId, activeSkillName, onSelectSkill, onEditSkill, onNewSkill }: Props) {
   const app = useApp()
   const [skills, setSkills] = useState<skill.SkillMeta[]>([])
   const [search, setSearch] = useState('')
@@ -53,6 +54,16 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onN
   const novelSkills = filtered.filter(s => s.source === 'novel')
   const userSkills = filtered.filter(s => s.source === 'user')
   const builtinSkills = filtered.filter(s => s.source === 'builtin')
+
+  const handleDelete = async (s: skill.SkillMeta) => {
+    if (!confirm(`确定删除技能「${s.name}」？此操作不可撤销。`)) return
+    try {
+      await app.DeleteSkill({ novel_id: novelId, name: s.name, source: s.source })
+      await load()
+    } catch (err) {
+      console.error('Failed to delete skill:', err)
+    }
+  }
 
   return (
     <>
@@ -138,13 +149,34 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onN
         ) : (
           <>
             {novelSkills.length > 0 && (
-              <SkillGroup title="当前小说" skills={novelSkills} activeSkillName={activeSkillName} onSelect={onSelectSkill} />
+              <SkillGroup
+                title="当前小说"
+                skills={novelSkills}
+                activeSkillName={activeSkillName}
+                onSelect={onSelectSkill}
+                onEdit={onEditSkill}
+                onDelete={handleDelete}
+              />
             )}
             {userSkills.length > 0 && (
-              <SkillGroup title="用户级" skills={userSkills} activeSkillName={activeSkillName} onSelect={onSelectSkill} />
+              <SkillGroup
+                title="用户级"
+                skills={userSkills}
+                activeSkillName={activeSkillName}
+                onSelect={onSelectSkill}
+                onEdit={onEditSkill}
+                onDelete={handleDelete}
+              />
             )}
             {builtinSkills.length > 0 && (
-              <SkillGroup title="内置" skills={builtinSkills} activeSkillName={activeSkillName} onSelect={onSelectSkill} />
+              <SkillGroup
+                title="内置"
+                skills={builtinSkills}
+                activeSkillName={activeSkillName}
+                onSelect={onSelectSkill}
+                onEdit={onEditSkill}
+                onDelete={handleDelete}
+              />
             )}
           </>
         )}
@@ -159,12 +191,15 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onN
   )
 }
 
-function SkillGroup({ title, skills, activeSkillName, onSelect }: {
+function SkillGroup({ title, skills, activeSkillName, onSelect, onEdit, onDelete }: {
   title: string
   skills: skill.SkillMeta[]
   activeSkillName: string | null
   onSelect: (path: string, title: string, readOnly: boolean) => void
+  onEdit: (path: string, title: string, readOnly: boolean) => void
+  onDelete: (s: skill.SkillMeta) => void
 }) {
+  const isBuiltin = skills[0]?.source === 'builtin'
   return (
     <div>
       <div className="px-3 py-1.5">
@@ -176,20 +211,46 @@ function SkillGroup({ title, skills, activeSkillName, onSelect }: {
         const readOnly = s.source === 'builtin'
         const active = activeSkillName === display
         return (
-          <button
-            key={`${s.source}:${s.name}`}
-            onClick={() => onSelect(path, display, readOnly)}
-            className={`w-full flex flex-col px-3 py-1.5 text-left hover:bg-muted/50 transition-colors relative
-              ${active ? 'bg-muted' : ''}`}
-          >
-            {active && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full" />
+          <div key={`${s.source}:${s.name}`} className="group relative">
+            <button
+              onClick={() => onSelect(path, display, readOnly)}
+              className={`w-full flex flex-col px-3 py-1.5 text-left hover:bg-muted/50 transition-colors ${
+                active ? 'bg-muted' : ''
+              }`}
+            >
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full" />
+              )}
+              <span className="text-sm truncate">{s.name}</span>
+              {s.description && (
+                <span className="text-[11px] text-muted-foreground truncate">{s.description}</span>
+              )}
+            </button>
+            {!isBuiltin && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    onEdit(path, display, readOnly)
+                  }}
+                  className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+                  title="编辑技能"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    onDelete(s)
+                  }}
+                  className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-destructive transition-colors"
+                  title="删除技能"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             )}
-            <span className="text-sm truncate">{s.name}</span>
-            {s.description && (
-              <span className="text-[11px] text-muted-foreground truncate">{s.description}</span>
-            )}
-          </button>
+          </div>
         )
       })}
     </div>

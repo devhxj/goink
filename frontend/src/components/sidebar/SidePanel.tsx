@@ -29,6 +29,7 @@ interface Props {
   onCreateNovel: () => void
   activeSkillName: string | null
   onSelectSkill: (path: string, title: string, readOnly: boolean) => void
+  onEditSkill: (path: string, title: string, readOnly: boolean) => void
   onNewSkill: (name: string) => void
   onSearchNavigateEntity: (panelId: string, entityId: number) => void
   onSearchNavigateChapter: (filePath: string, title: string, chapterNum: number, matchPos: number, matchLen: number) => void
@@ -43,7 +44,7 @@ export default function SidePanel({
   onSelectChapter, onSelectGoink, onExportNovel, target,
   showCreate, setShowCreate, title, setTitle, description, setDescription,
   onCreateNovel,
-  activeSkillName, onSelectSkill, onNewSkill,
+  activeSkillName, onSelectSkill, onEditSkill, onNewSkill,
   onSearchNavigateEntity, onSearchNavigateChapter,
   searchQuery, searchResults, onSearchChange,
 }: Props) {
@@ -63,6 +64,7 @@ export default function SidePanel({
           novelId={novelId}
           activeSkillName={activeSkillName}
           onSelectSkill={onSelectSkill}
+          onEditSkill={onEditSkill}
           onNewSkill={onNewSkill}
         />
       ) : activePanel === 'novels' ? (

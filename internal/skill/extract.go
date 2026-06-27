@@ -62,7 +62,7 @@ const extractSystemPrompt = `你是一位专业的写作风格分析师。请分
 name: {风格名称}
 description: {一句话简要描述该风格，描述何时使用}
 category: 风格仿写
-mode: on_demand
+mode: auto
 author: ai
 version: 1
 ---

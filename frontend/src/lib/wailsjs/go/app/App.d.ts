@@ -56,6 +56,8 @@ export function DeletePreference(arg1:number):Promise<void>;
 
 export function DeleteReaderPerspective(arg1:number,arg2:number):Promise<void>;
 
+export function DeleteSkill(arg1:app.DeleteSkillInput):Promise<void>;
+
 export function DeleteStoryArc(arg1:number,arg2:number):Promise<void>;
 
 export function DeleteTimelineEntry(arg1:number,arg2:number):Promise<void>;

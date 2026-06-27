@@ -336,9 +336,13 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp }: Props
             setActiveSkillName(title)
             contentRef.current?.openFile(path, title, readOnly)
           }}
+          onEditSkill={(path, title, readOnly) => {
+            setActiveSkillName(title)
+            contentRef.current?.openFile(path, title, readOnly, 'edit')
+          }}
           onNewSkill={(name) => {
             setActiveSkillName(`技能: ${name}`)
-            contentRef.current?.openFile(`skills/${name}.md`, `技能: ${name}`)
+            contentRef.current?.openFile(`skills/${name}.md`, `技能: ${name}`, false, 'edit')
           }}
           onSearchNavigateEntity={handleSearchNavigateEntity}
           onSearchNavigateChapter={handleSearchNavigateChapter}
