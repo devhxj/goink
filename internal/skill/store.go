@@ -107,12 +107,6 @@ func (s *Store) ListMetaForCatalog(all []SkillMeta) []SkillMeta {
 	return result
 }
 
-// ListAllForCatalog 未过滤，保留兼容旧调用方（已弃用）。
-// Deprecated: 使用 ListMetaForCatalog。
-func (s *Store) ListAllForCatalog(novelID int64) []SkillMeta {
-	return s.ListMeta(novelID)
-}
-
 // ReloadUser 重新扫描用户级 skill 目录。
 func (s *Store) ReloadUser(userSkillsDir string) error {
 	s.mu.Lock()

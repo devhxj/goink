@@ -15,6 +15,8 @@ interface Props {
 }
 
 export default function SkillEditForm({ content, readOnly, onSave, onCancel }: Props) {
+  const KNOWN_FIELDS = ['name', 'description', 'category', 'mode', 'author', 'version']
+
   const { meta, body } = splitFrontmatter(content)
 
   const [name, setName] = useState(meta.name || '')
@@ -26,6 +28,7 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
   const [bodyText, setBodyText] = useState(body || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [extraFields, setExtraFields] = useState<[string, string][]>([])
 
   useEffect(() => {
     const { meta: m, body: b } = splitFrontmatter(content)
@@ -37,6 +40,13 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
     setVersion(m.version || '1')
     setBodyText(b || '')
     setError('')
+    const extras: [string, string][] = []
+    for (const [k, v] of Object.entries(m)) {
+      if (!KNOWN_FIELDS.includes(k)) {
+        extras.push([k, v])
+      }
+    }
+    setExtraFields(extras)
   }, [content])
 
   if (readOnly) {
@@ -48,6 +58,7 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
   }
 
   const handleSave = async () => {
+    if (saving) return
     if (!name.trim()) { setError('名称不能为空'); return }
     if (!description.trim()) { setError('简介不能为空'); return }
     setSaving(true)
@@ -64,6 +75,9 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
         lines.push(`author: ${author.trim()}`)
       }
       lines.push(`version: ${parseInt(version) || 1}`)
+      for (const [k, v] of extraFields) {
+        lines.push(`${k}: ${v}`)
+      }
       lines.push('---', '', bodyText.trim())
       await onSave(lines.join('\n'))
     } catch (e: any) {
