@@ -146,7 +146,11 @@ export default function ModelDiscoveryPanel({ chatUrl, apiKey, existingIds, onAd
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setSelectedForImport(new Set(discoveredModels.map(m => m.id)))}
+                onClick={() => {
+                  const allIds = discoveredModels.map(m => m.id)
+                  const allSelected = allIds.every(id => selectedForImport.has(id))
+                  setSelectedForImport(allSelected ? new Set() : new Set(allIds))
+                }}
                 className="text-xs text-muted-foreground hover:underline"
               >全选</button>
               <button
