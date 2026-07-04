@@ -746,6 +746,70 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateDraftFromBlueprintReturnsCandidatesWithoutMutatingChapterContent()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("候选草稿不落章测试", "", ""), CancellationToken.None);
+        var chapters = new FileSystemChapterContentService(options, novels);
+        var chapter = await chapters.CreateChapterAsync(
+            new CreateChapterPayload(novel.Id, "第一章"),
+            CancellationToken.None);
+        const string originalContent = "林岚站在门口，雨声压低了整条街的呼吸。";
+        await chapters.SaveContentAsync(
+            new SaveContentPayload(novel.Id, chapter.FilePath, originalContent),
+            CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var sourcePath = CreateSourceFile(
+            "candidate-only-anchor.md",
+            """
+            # 第一章
+
+            雨声压低了整条街的呼吸。
+            """);
+        var referenceAnchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await referenceAnchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "候选草稿参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                chapter.ChapterNumber,
+                "第一章蓝图",
+                "雨声压低了整条街的呼吸",
+                [anchor.AnchorId],
+                KnownFacts: ["雨声压低了整条街的呼吸"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+        await service.BindBlueprintMaterialsAsync(
+            new BindReferenceBlueprintMaterialsPayload(novel.Id, blueprint.BlueprintId, 2),
+            CancellationToken.None);
+
+        var draft = await service.GenerateDraftFromBlueprintAsync(
+            new GenerateReferenceAnchoredDraftPayload(novel.Id, blueprint.BlueprintId, BeatIds: []),
+            CancellationToken.None);
+
+        var candidate = Assert.Single(draft.Candidates);
+        Assert.Equal(blueprint.BlueprintId, candidate.BlueprintId);
+        Assert.False(string.IsNullOrWhiteSpace(candidate.Text));
+        Assert.Equal(
+            originalContent,
+            await chapters.GetContentAsync(novel.Id, chapter.FilePath, CancellationToken.None));
+        var reloadedChapters = new FileSystemChapterContentService(options, novels);
+        Assert.Equal(
+            originalContent,
+            await reloadedChapters.GetContentAsync(novel.Id, chapter.FilePath, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ApprovedBlueprintBecomesStaleWhenSourceChapterPlanChanges()
     {
         var options = CreateOptions();

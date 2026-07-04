@@ -241,7 +241,7 @@ Recommended implementation slices:
 - [x] Draft candidates fail when a declared Chinese emotion change has no trigger, suppressed reaction, or external-evidence mechanic present in the text.
 - [ ] Draft candidates are audited against the beat's emotion trigger, suppressed reaction, external evidence, and after-state.
 - [x] Draft candidates expose source material id, beat id, rewrite level, changed slots, non-slot edits, and audit result in the bridge payload.
-- [ ] Draft service returns candidates only and never mutates chapter content.
+- [x] Draft service returns candidates only and never mutates chapter content.
 
 **Verification:**
 
@@ -254,6 +254,7 @@ Recommended implementation slices:
 - [x] component tests for dialogue-only drift, action-only drift, missing prose duty evidence, missing emotion evidence, POV leakage, and missing required prose target
 - [ ] integration test for `AdaptMaterialAsync`
 - [x] integration test for `GenerateDraftFromBlueprintAsync`
+- [x] integration test proving `GenerateDraftFromBlueprintAsync` returns candidates without mutating chapter content
 - [ ] integration test proving unapproved/stale blueprint generation is blocked
 - [x] bridge test proving `GenerateReferenceAnchoredDraft` returns a stable validation error before approval
 
