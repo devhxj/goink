@@ -210,6 +210,7 @@ reference_blueprint_material_links
 - selected INTEGER NOT NULL
 - score REAL NOT NULL
 - score_components_json TEXT NOT NULL
+- fit_explanation TEXT NOT NULL
 - status TEXT NOT NULL
 - created_at TEXT NOT NULL
 

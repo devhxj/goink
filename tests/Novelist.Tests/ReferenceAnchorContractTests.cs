@@ -120,6 +120,33 @@ public sealed class ReferenceAnchorContractTests
     }
 
     [Fact]
+    public void ReferenceBlueprintMaterialLinkPayloadUsesStableFitExplanationJsonName()
+    {
+        var link = new ReferenceBlueprintMaterialLinkPayload(
+            LinkId: "link-1",
+            BlueprintId: 10,
+            BeatId: "beat-1",
+            MaterialId: "material-1",
+            IntendedUse: "show restrained pressure",
+            MaxRewriteLevel: ReferenceRewriteLevels.L1,
+            Selected: true,
+            Score: 9.5,
+            ScoreComponents: new Dictionary<string, double>
+            {
+                ["function"] = 3.0,
+                ["emotion"] = 2.0
+            },
+            FitExplanation: "function and emotion match the beat reference query.",
+            CreatedAt: DateTimeOffset.Parse("2026-07-05T00:00:00Z"));
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(link, BridgeJson.SerializerOptions));
+        var root = json.RootElement;
+
+        Assert.Equal("function and emotion match the beat reference query.", root.GetProperty("fit_explanation").GetString());
+        Assert.False(root.TryGetProperty("FitExplanation", out _));
+    }
+
+    [Fact]
     public void ReferenceChapterBlueprintPayloadsUseStableSnakeCaseJsonNames()
     {
         var beat = new ReferenceChapterBlueprintBeatPayload(

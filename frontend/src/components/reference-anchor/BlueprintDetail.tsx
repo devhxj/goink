@@ -461,6 +461,9 @@ export function BlueprintDetail({
                   <span className="text-muted-foreground">{link.score.toFixed(2)}</span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">{link.intended_use} · {link.max_rewrite_level}</p>
+                {link.fit_explanation && (
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{link.fit_explanation}</p>
+                )}
                 {scoreComponents(link).length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {scoreComponents(link).map(([name, value]) => (

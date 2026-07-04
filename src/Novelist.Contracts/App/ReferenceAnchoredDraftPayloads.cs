@@ -245,6 +245,7 @@ public sealed record ReferenceBlueprintMaterialLinkPayload(
     [property: JsonPropertyName("selected")] bool Selected,
     [property: JsonPropertyName("score")] double Score,
     [property: JsonPropertyName("score_components")] IReadOnlyDictionary<string, double> ScoreComponents,
+    [property: JsonPropertyName("fit_explanation")] string FitExplanation,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
 
 public sealed record ReferenceBlueprintMaterialBindingResultPayload(

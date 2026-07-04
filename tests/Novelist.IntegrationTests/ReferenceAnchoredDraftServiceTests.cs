@@ -844,6 +844,8 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.True(link.ScoreComponents.Count > 0);
         Assert.Contains("function", link.ScoreComponents.Keys);
         Assert.Contains("lexical", link.ScoreComponents.Keys);
+        Assert.Contains("Beat", link.FitExplanation, StringComparison.Ordinal);
+        Assert.Contains("function", link.FitExplanation, StringComparison.OrdinalIgnoreCase);
 
         var afterBinding = await service.GetChapterBlueprintAsync(novel.Id, blueprint.BlueprintId, CancellationToken.None);
         Assert.NotNull(afterBinding);
@@ -2106,6 +2108,7 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         var scoreComponents = selectedLink.GetProperty("score_components");
         Assert.True(scoreComponents.TryGetProperty("function", out _));
         Assert.True(scoreComponents.TryGetProperty("lexical", out _));
+        Assert.Contains("Beat", selectedLink.GetProperty("fit_explanation").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]

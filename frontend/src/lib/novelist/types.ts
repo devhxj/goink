@@ -790,6 +790,7 @@ export namespace reference {
     selected: boolean
     score: number
     score_components: Record<string, number>
+    fit_explanation: string
     created_at: Timestamp
   }
 

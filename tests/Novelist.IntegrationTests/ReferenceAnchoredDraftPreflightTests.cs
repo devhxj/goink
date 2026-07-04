@@ -325,6 +325,7 @@ public sealed class ReferenceAnchoredDraftPreflightTests
             Selected: true,
             Score: 1.0,
             ScoreComponents: new Dictionary<string, double>(),
+            FitExplanation: "test fit",
             DateTimeOffset.UnixEpoch);
     }
 

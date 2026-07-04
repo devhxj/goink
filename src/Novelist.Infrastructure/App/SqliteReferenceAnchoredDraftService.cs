@@ -793,8 +793,73 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             Selected: false,
             roundedScore,
             components,
+            BuildMaterialFitExplanation(
+                beat,
+                material,
+                functionFit,
+                emotionFit,
+                povFit,
+                proseDutyFit,
+                materialTypeFit,
+                acceptedFeedbackMaterialIds.Contains(material.MaterialId)),
             now);
         return new ScoredMaterialLink(link, analysisContractHash, components, hasFunctionalFit);
+    }
+
+    private static string BuildMaterialFitExplanation(
+        ReferenceChapterBlueprintBeatPayload beat,
+        ReferenceMaterialPayload material,
+        bool functionFit,
+        bool emotionFit,
+        bool povFit,
+        bool proseDutyFit,
+        bool materialTypeFit,
+        bool acceptedFeedbackFit)
+    {
+        var matches = new List<string>();
+        if (materialTypeFit)
+        {
+            matches.Add("material type " + material.MaterialType);
+        }
+
+        if (functionFit)
+        {
+            matches.Add("function " + material.FunctionTag);
+        }
+
+        if (emotionFit)
+        {
+            matches.Add("emotion " + material.EmotionTag);
+        }
+
+        if (povFit)
+        {
+            matches.Add("POV " + material.PovTag);
+        }
+
+        if (proseDutyFit)
+        {
+            matches.Add("prose duty");
+        }
+
+        if (acceptedFeedbackFit)
+        {
+            matches.Add("accepted feedback");
+        }
+
+        var fit = matches.Count == 0 ? "lexical and confidence only" : string.Join(", ", matches);
+        var intendedUse = TruncateForExplanation(beat.NarrativeFunction, maxLength: 96);
+        return string.IsNullOrWhiteSpace(intendedUse)
+            ? $"Beat {beat.BeatIndex} fit: {fit}."
+            : $"Beat {beat.BeatIndex} fit: {fit}. Intended use: {intendedUse}";
+    }
+
+    private static string TruncateForExplanation(string value, int maxLength)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength].TrimEnd() + "...";
     }
 
     private static bool ContainsTag(IReadOnlyList<string> tags, string value)
@@ -1411,7 +1476,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
         command.CommandText = $$"""
             SELECT l.link_id, l.blueprint_id, l.beat_id, l.material_id, l.intended_use,
-                   l.max_rewrite_level, l.selected, l.score, l.score_components_json, l.created_at
+                   l.max_rewrite_level, l.selected, l.score, l.score_components_json, l.fit_explanation, l.created_at
             FROM reference_blueprint_material_links l
             INNER JOIN reference_chapter_blueprints b ON b.blueprint_id = l.blueprint_id
             WHERE b.novel_id = $novel_id
@@ -1438,7 +1503,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 reader.GetInt32(6) != 0,
                 reader.GetDouble(7),
                 ReadJson<IReadOnlyDictionary<string, double>>(reader.GetString(8)),
-                ParseTimestamp(reader.GetString(9)));
+                reader.GetString(9),
+                ParseTimestamp(reader.GetString(10)));
             linked[link.BeatId] = link;
         }
 
@@ -1467,10 +1533,10 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             command.CommandText = """
                 INSERT INTO reference_blueprint_material_links
                   (link_id, blueprint_id, analysis_contract_hash, beat_id, material_id, intended_use, max_rewrite_level,
-                   selected, score, score_components_json, status, created_at)
+                   selected, score, score_components_json, fit_explanation, status, created_at)
                 VALUES
                   ($link_id, $blueprint_id, $analysis_contract_hash, $beat_id, $material_id, $intended_use, $max_rewrite_level,
-                   $selected, $score, $score_components_json, $status, $created_at);
+                   $selected, $score, $score_components_json, $fit_explanation, $status, $created_at);
                 """;
             command.Parameters.AddWithValue("$link_id", item.Link.LinkId);
             command.Parameters.AddWithValue("$blueprint_id", item.Link.BlueprintId);
@@ -1482,6 +1548,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             command.Parameters.AddWithValue("$selected", item.Link.Selected ? 1 : 0);
             command.Parameters.AddWithValue("$score", item.Link.Score);
             command.Parameters.AddWithValue("$score_components_json", JsonSerializer.Serialize(item.ScoreComponents, JsonOptions));
+            command.Parameters.AddWithValue("$fit_explanation", item.Link.FitExplanation);
             command.Parameters.AddWithValue("$status", "active");
             command.Parameters.AddWithValue("$created_at", FormatTimestamp(item.Link.CreatedAt));
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -2037,6 +2104,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
               selected INTEGER NOT NULL,
               score REAL NOT NULL,
               score_components_json TEXT NOT NULL,
+              fit_explanation TEXT NOT NULL,
               status TEXT NOT NULL,
               created_at TEXT NOT NULL,
               FOREIGN KEY(blueprint_id) REFERENCES reference_chapter_blueprints(blueprint_id) ON DELETE CASCADE
@@ -2197,6 +2265,12 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             "reference_blueprint_material_links",
             "score_components_json",
             "TEXT NOT NULL DEFAULT '{}'",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "reference_blueprint_material_links",
+            "fit_explanation",
+            "TEXT NOT NULL DEFAULT ''",
             cancellationToken);
         await EnsureColumnAsync(
             connection,
