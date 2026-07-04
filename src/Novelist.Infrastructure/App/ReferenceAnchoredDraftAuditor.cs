@@ -274,11 +274,40 @@ internal static class ReferenceAnchoredDraftAuditor
             return [];
         }
 
-        return ContainsAny(
+        var violations = new List<string>();
+        if (ContainsAny(
             candidateText,
-            ["镜头", "画面切", "画面拉", "上帝视角", "全知", "读者可以看到", "we see", "camera"])
-            ? ["close narrative distance cannot use camera or omniscient framing."]
-            : [];
+            ["镜头", "画面切", "画面拉", "上帝视角", "全知", "读者可以看到", "we see", "camera"]))
+        {
+            violations.Add("close narrative distance cannot use camera or omniscient framing.");
+        }
+
+        violations.AddRange(FindUnperceivedPovFactReveals(beat, candidateText));
+        return violations;
+    }
+
+    private static IEnumerable<string> FindUnperceivedPovFactReveals(
+        ReferenceChapterBlueprintBeatPayload beat,
+        string candidateText)
+    {
+        if (string.IsNullOrWhiteSpace(beat.PovCharacter))
+        {
+            yield break;
+        }
+
+        var povCharacter = Regex.Escape(beat.PovCharacter.Trim());
+        const string negativePerception = "(?:看不见|没看见|没有看见|看不到|不知道|并不知道|没有察觉|未曾发现|没有发现|无从知道)";
+        var pattern = povCharacter + @"[^。！？!?；;\n]{0,8}" + negativePerception + @"(?<reveal>[^。！？!?；;\n]{2,30})";
+        foreach (Match match in Regex.Matches(candidateText, pattern, RegexOptions.IgnoreCase))
+        {
+            var reveal = match.Groups["reveal"].Value.Trim(' ', '\t', '，', ',', '。', '.', '；', ';');
+            if (ContainsAny(
+                reveal,
+                ["身后", "背后", "门后", "屋内", "暗处", "袖口", "口袋", "抽屉", "里", "内", "藏", "已经", "正", "正在", "真相", "身份", "钥匙", "证据", "文件", "血迹", "暗门"]))
+            {
+                yield return "limited POV cannot reveal unperceived facts to the reader.";
+            }
+        }
     }
 
     private static IReadOnlyList<string> FindUnsupportedFacts(
