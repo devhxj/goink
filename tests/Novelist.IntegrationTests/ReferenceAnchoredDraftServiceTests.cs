@@ -1671,6 +1671,11 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
             return ValueTask.FromResult<IReadOnlyList<ReferenceUserFeedbackPayload>>([]);
         }
 
+        public ValueTask<ReferenceMaterialPayload> UpdateMaterialTagsAsync(
+            UpdateReferenceMaterialTagsPayload input,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public ValueTask<ReferenceAnchorPayload> CreateAnchorAsync(
             CreateReferenceAnchorPayload input,
             CancellationToken cancellationToken) =>

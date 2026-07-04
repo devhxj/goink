@@ -290,6 +290,35 @@ public sealed class ReferenceAnchorContractTests
     }
 
     [Fact]
+    public void ReferenceMaterialTagUpdatePayloadUsesStableSnakeCaseJsonNames()
+    {
+        var input = new UpdateReferenceMaterialTagsPayload(
+            NovelId: 42,
+            MaterialId: "material-1",
+            FunctionTag: "interiority",
+            EmotionTag: "unease",
+            SceneTag: "threshold",
+            PovTag: "close",
+            TechniqueTag: "afterbeat",
+            Origin: "user",
+            Note: "manual correction after reviewing search results");
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(input, BridgeJson.SerializerOptions));
+        var root = json.RootElement;
+
+        Assert.Equal(42, root.GetProperty("novel_id").GetInt64());
+        Assert.Equal("material-1", root.GetProperty("material_id").GetString());
+        Assert.Equal("interiority", root.GetProperty("function_tag").GetString());
+        Assert.Equal("unease", root.GetProperty("emotion_tag").GetString());
+        Assert.Equal("threshold", root.GetProperty("scene_tag").GetString());
+        Assert.Equal("close", root.GetProperty("pov_tag").GetString());
+        Assert.Equal("afterbeat", root.GetProperty("technique_tag").GetString());
+        Assert.Equal("user", root.GetProperty("origin").GetString());
+        Assert.Equal("manual correction after reviewing search results", root.GetProperty("note").GetString());
+        Assert.False(root.TryGetProperty("NovelId", out _));
+    }
+
+    [Fact]
     public void ReferenceConstantsDocumentInitialStateAndRewriteVocabulary()
     {
         Assert.Equal("L0", ReferenceRewriteLevels.L0);
@@ -323,6 +352,7 @@ public sealed class ReferenceAnchorContractTests
             "AuditReferenceReuse",
             "RecordReferenceUserFeedback",
             "GetReferenceUserFeedback",
+            "UpdateReferenceMaterialTags",
             "GenerateReferenceChapterBlueprint",
             "GetReferenceChapterBlueprints",
             "GetReferenceChapterBlueprint",

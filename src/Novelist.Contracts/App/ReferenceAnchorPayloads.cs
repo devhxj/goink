@@ -149,6 +149,17 @@ public sealed record ReferenceMaterialPayload(
     [property: JsonPropertyName("user_verified")] bool UserVerified,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
 
+public sealed record UpdateReferenceMaterialTagsPayload(
+    [property: JsonPropertyName("novel_id")] long NovelId,
+    [property: JsonPropertyName("material_id")] string MaterialId,
+    [property: JsonPropertyName("function_tag")] string? FunctionTag,
+    [property: JsonPropertyName("emotion_tag")] string? EmotionTag,
+    [property: JsonPropertyName("scene_tag")] string? SceneTag,
+    [property: JsonPropertyName("pov_tag")] string? PovTag,
+    [property: JsonPropertyName("technique_tag")] string? TechniqueTag,
+    [property: JsonPropertyName("origin")] string? Origin,
+    [property: JsonPropertyName("note")] string? Note);
+
 public sealed record ReferenceMaterialQueryPayload(
     [property: JsonPropertyName("query")] string Query,
     [property: JsonPropertyName("material_types")] IReadOnlyList<string> MaterialTypes,

@@ -624,6 +624,30 @@ public sealed class MafToolRegistryTests
                 TotalPages: 1));
         }
 
+        public ValueTask<ReferenceMaterialPayload> UpdateMaterialTagsAsync(
+            UpdateReferenceMaterialTagsPayload input,
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new ReferenceMaterialPayload(
+                input.MaterialId,
+                7,
+                "seg-1",
+                ReferenceMaterialTypes.Sentence,
+                input.FunctionTag ?? "environment",
+                input.EmotionTag ?? "pressure",
+                input.SceneTag ?? "rain",
+                input.PovTag ?? "close",
+                input.TechniqueTag ?? "sensory",
+                1,
+                1,
+                1,
+                "雨声压低了整条街的呼吸。",
+                "hash",
+                "test",
+                true,
+                DateTimeOffset.UtcNow));
+        }
+
         public ValueTask<AdaptReferenceMaterialResultPayload> AdaptMaterialAsync(
             AdaptReferenceMaterialPayload input,
             CancellationToken cancellationToken)

@@ -146,6 +146,77 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateMaterialTagsMarksMaterialAsUserVerifiedAndSearchesByCorrectedTags()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("标签校正测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile("anchor.md", "他在门口停了很久。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "标签参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var materials = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "门口",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        var material = Assert.Single(materials.Items);
+
+        var updated = await service.UpdateMaterialTagsAsync(
+            new UpdateReferenceMaterialTagsPayload(
+                novel.Id,
+                material.MaterialId,
+                FunctionTag: "interiority",
+                EmotionTag: "unease",
+                SceneTag: "threshold",
+                PovTag: "close",
+                TechniqueTag: "afterbeat",
+                Origin: "user",
+                Note: "门口停顿其实用于近距离内心戏"),
+            CancellationToken.None);
+
+        Assert.Equal(material.MaterialId, updated.MaterialId);
+        Assert.Equal("interiority", updated.FunctionTag);
+        Assert.Equal("unease", updated.EmotionTag);
+        Assert.Equal("threshold", updated.SceneTag);
+        Assert.Equal("close", updated.PovTag);
+        Assert.Equal("afterbeat", updated.TechniqueTag);
+        Assert.Equal(1, updated.FunctionConfidence);
+        Assert.Equal(1, updated.EmotionConfidence);
+        Assert.Equal(1, updated.PovConfidence);
+        Assert.True(updated.UserVerified);
+
+        var reloaded = new SqliteReferenceAnchorService(options, novels);
+        var corrected = await reloaded.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                EmotionTags: ["unease"],
+                FunctionTags: ["interiority"],
+                PovTags: ["close"],
+                TechniqueTags: ["afterbeat"],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+
+        var correctedMaterial = Assert.Single(corrected.Items);
+        Assert.Equal(material.MaterialId, correctedMaterial.MaterialId);
+        Assert.True(correctedMaterial.UserVerified);
+    }
+
+    [Fact]
     public async Task AdaptMaterialAppliesDeclaredSlotsAndAuditsRewriteLevel()
     {
         var options = CreateOptions();
@@ -646,6 +717,67 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
         var feedback = Assert.Single(listed.RootElement.GetProperty("result").EnumerateArray());
         Assert.Equal(recorded.RootElement.GetProperty("result").GetProperty("feedback_id").GetString(), feedback.GetProperty("feedback_id").GetString());
         Assert.Equal("manual_edit", feedback.GetProperty("feedback_tags")[0].GetString());
+    }
+
+    [Fact]
+    public async Task BridgeReferenceAnchorHandlersUpdateMaterialTags()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("桥接标签测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile("anchor.md", "他在门口停了很久。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "标签参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var materials = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "门口",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        var material = Assert.Single(materials.Items);
+        var dispatcher = new BridgeDispatcher()
+            .RegisterCompatibilityAppMethodHandlers()
+            .RegisterReferenceAnchorHandlers(service);
+
+        using var updated = ParseOutbound(await dispatcher.DispatchAsync($$"""
+            {
+              "kind": "request",
+              "id": "req_update_material_tags",
+              "method": "UpdateReferenceMaterialTags",
+              "payload": {
+                "args": [
+                  {
+                    "novel_id": {{novel.Id}},
+                    "material_id": {{JsonSerializer.Serialize(material.MaterialId)}},
+                    "function_tag": "interiority",
+                    "emotion_tag": "unease",
+                    "scene_tag": "threshold",
+                    "pov_tag": "close",
+                    "technique_tag": "afterbeat",
+                    "origin": "user",
+                    "note": "bridge tag correction"
+                  }
+                ]
+              }
+            }
+            """));
+
+        Assert.True(updated.RootElement.GetProperty("ok").GetBoolean());
+        var result = updated.RootElement.GetProperty("result");
+        Assert.Equal(material.MaterialId, result.GetProperty("material_id").GetString());
+        Assert.Equal("interiority", result.GetProperty("function_tag").GetString());
+        Assert.Equal("unease", result.GetProperty("emotion_tag").GetString());
+        Assert.True(result.GetProperty("user_verified").GetBoolean());
     }
 
     public void Dispose()

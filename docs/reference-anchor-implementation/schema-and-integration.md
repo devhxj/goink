@@ -295,8 +295,11 @@ DeleteReferenceAnchor
 RebuildReferenceAnchor
 GetReferenceAnchorBuildStatus
 SearchReferenceMaterials
+UpdateReferenceMaterialTags
 AdaptReferenceMaterial
 AuditReferenceReuse
+RecordReferenceUserFeedback
+GetReferenceUserFeedback
 GenerateReferenceChapterBlueprint
 GetReferenceChapterBlueprints
 GetReferenceChapterBlueprint
@@ -328,6 +331,7 @@ Handler pattern should mirror `WorkspaceUtilityBridgeHandlers`:
 - throw `BridgeValidationException` for shape issues
 - let service-level `ArgumentException` map to validation errors
 - return structured payloads
+- `UpdateReferenceMaterialTags` updates the stored material row for user-confirmed function, emotion, POV, scene, or technique tags and marks it `user_verified`
 
 ## Desktop Composition Plan
 
@@ -475,6 +479,7 @@ export namespace reference {
   export interface Anchor { ... }
   export interface BuildStatus { ... }
   export interface Material { ... }
+  export interface UpdateMaterialTagsInput { ... }
   export interface SearchMaterialsInput { ... }
   export interface ReuseCandidate { ... }
   export interface ReuseAudit { ... }

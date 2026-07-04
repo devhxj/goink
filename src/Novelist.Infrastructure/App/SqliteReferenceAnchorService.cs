@@ -320,6 +320,63 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         }
     }
 
+    public async ValueTask<ReferenceMaterialPayload> UpdateMaterialTagsAsync(
+        UpdateReferenceMaterialTagsPayload input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ValidateNovelId(input.NovelId);
+        await EnsureNovelExistsAsync(input.NovelId, cancellationToken);
+
+        var materialId = NormalizeRequiredText(input.MaterialId, nameof(input.MaterialId), maxLength: 256);
+        var functionTag = NormalizeOptionalText(input.FunctionTag, nameof(input.FunctionTag), maxLength: 128);
+        var emotionTag = NormalizeOptionalText(input.EmotionTag, nameof(input.EmotionTag), maxLength: 128);
+        var sceneTag = NormalizeOptionalText(input.SceneTag, nameof(input.SceneTag), maxLength: 128);
+        var povTag = NormalizeOptionalText(input.PovTag, nameof(input.PovTag), maxLength: 128);
+        var techniqueTag = NormalizeOptionalText(input.TechniqueTag, nameof(input.TechniqueTag), maxLength: 128);
+        _ = NormalizeOptionalText(input.Origin, nameof(input.Origin), maxLength: 128);
+        _ = NormalizeOptionalText(input.Note, nameof(input.Note), maxLength: 2_000);
+
+        var hasTagOverride = functionTag.Length > 0 ||
+            emotionTag.Length > 0 ||
+            sceneTag.Length > 0 ||
+            povTag.Length > 0 ||
+            techniqueTag.Length > 0;
+        if (!hasTagOverride)
+        {
+            throw new ArgumentException("At least one material tag must be provided.", nameof(input));
+        }
+
+        await _mutex.WaitAsync(cancellationToken);
+        try
+        {
+            var databasePath = await DatabasePathAsync(cancellationToken);
+            await EnsureSchemaAsync(databasePath, cancellationToken);
+            await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+            var material = await ReadMaterialAsync(connection, input.NovelId, materialId, cancellationToken)
+                ?? throw new ArgumentException("Reference material does not exist.", nameof(input));
+            var updated = material with
+            {
+                FunctionTag = functionTag.Length > 0 ? functionTag : material.FunctionTag,
+                EmotionTag = emotionTag.Length > 0 ? emotionTag : material.EmotionTag,
+                SceneTag = sceneTag.Length > 0 ? sceneTag : material.SceneTag,
+                PovTag = povTag.Length > 0 ? povTag : material.PovTag,
+                TechniqueTag = techniqueTag.Length > 0 ? techniqueTag : material.TechniqueTag,
+                FunctionConfidence = functionTag.Length > 0 ? 1.0 : material.FunctionConfidence,
+                EmotionConfidence = emotionTag.Length > 0 ? 1.0 : material.EmotionConfidence,
+                PovConfidence = povTag.Length > 0 ? 1.0 : material.PovConfidence,
+                UserVerified = true
+            };
+
+            await UpdateMaterialTagsAsync(connection, input.NovelId, updated, cancellationToken);
+            return updated;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
     public async ValueTask<AdaptReferenceMaterialResultPayload> AdaptMaterialAsync(
         AdaptReferenceMaterialPayload input,
         CancellationToken cancellationToken)
@@ -867,6 +924,48 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         command.Parameters.AddWithValue("$material_id", materialId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadMaterial(reader) : null;
+    }
+
+    private static async ValueTask UpdateMaterialTagsAsync(
+        SqliteConnection connection,
+        long novelId,
+        ReferenceMaterialPayload material,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE reference_materials
+            SET function_tag = $function_tag,
+                emotion_tag = $emotion_tag,
+                scene_tag = $scene_tag,
+                pov_tag = $pov_tag,
+                technique_tag = $technique_tag,
+                function_confidence = $function_confidence,
+                emotion_confidence = $emotion_confidence,
+                pov_confidence = $pov_confidence,
+                user_verified = 1
+            WHERE material_id = $material_id
+              AND anchor_id IN (
+                SELECT anchor_id
+                FROM reference_anchors
+                WHERE novel_id = $novel_id
+              );
+            """;
+        command.Parameters.AddWithValue("$function_tag", material.FunctionTag);
+        command.Parameters.AddWithValue("$emotion_tag", material.EmotionTag);
+        command.Parameters.AddWithValue("$scene_tag", material.SceneTag);
+        command.Parameters.AddWithValue("$pov_tag", material.PovTag);
+        command.Parameters.AddWithValue("$technique_tag", material.TechniqueTag);
+        command.Parameters.AddWithValue("$function_confidence", material.FunctionConfidence);
+        command.Parameters.AddWithValue("$emotion_confidence", material.EmotionConfidence);
+        command.Parameters.AddWithValue("$pov_confidence", material.PovConfidence);
+        command.Parameters.AddWithValue("$material_id", material.MaterialId);
+        command.Parameters.AddWithValue("$novel_id", novelId);
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        if (affected == 0)
+        {
+            throw new ArgumentException("Reference material does not exist.", nameof(material));
+        }
     }
 
     private static async ValueTask<IReadOnlyList<ReferenceMaterialSlot>> ReadMaterialSlotsAsync(

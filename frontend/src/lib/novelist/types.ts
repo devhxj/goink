@@ -472,6 +472,18 @@ export namespace reference {
     created_at: Timestamp
   }
 
+  export interface UpdateMaterialTagsInput {
+    novel_id: number
+    material_id: string
+    function_tag?: string | null
+    emotion_tag?: string | null
+    scene_tag?: string | null
+    pov_tag?: string | null
+    technique_tag?: string | null
+    origin?: string | null
+    note?: string | null
+  }
+
   export interface MaterialQuery {
     query: string
     material_types: string[]
