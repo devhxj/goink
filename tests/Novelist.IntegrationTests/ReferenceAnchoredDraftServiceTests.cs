@@ -897,6 +897,105 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateDraftFromBlueprintRejectsMissingFailedStaleOrUnapprovedBlueprints()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("草稿蓝图状态门禁测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+
+        var missing = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.GenerateDraftFromBlueprintAsync(
+                new GenerateReferenceAnchoredDraftPayload(novel.Id, 987654321, BeatIds: []),
+                CancellationToken.None));
+        Assert.Contains("does not exist", missing.Message, StringComparison.OrdinalIgnoreCase);
+
+        var failedBlueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                17,
+                "第十七章蓝图",
+                "制造压力并留下钩子",
+                AnchorIds: [],
+                KnownFacts: ["主角已经到场"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var failedRevision = await service.ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novel.Id,
+                failedBlueprint.BlueprintId,
+                StrictReviewGateRevisionChanges(failedBlueprint.Beats[0].BeatId),
+                "user",
+                "exercise failed review gate"),
+            CancellationToken.None);
+        var failedReview = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, failedRevision.BlueprintId),
+            CancellationToken.None);
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, failedReview.Status);
+        var failedState = await service.GetChapterBlueprintAsync(novel.Id, failedRevision.BlueprintId, CancellationToken.None);
+        Assert.NotNull(failedState);
+        Assert.Equal(ReferenceBlueprintStates.ReviewFailed, failedState.Status);
+        var failed = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.GenerateDraftFromBlueprintAsync(
+                new GenerateReferenceAnchoredDraftPayload(novel.Id, failedRevision.BlueprintId, BeatIds: []),
+                CancellationToken.None));
+        Assert.Contains("approved", failed.Message, StringComparison.OrdinalIgnoreCase);
+
+        var unapprovedBlueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                18,
+                "第十八章蓝图",
+                "先审批再生成正文",
+                AnchorIds: [],
+                KnownFacts: ["主角已经到场"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        Assert.Equal(ReferenceBlueprintStates.Draft, unapprovedBlueprint.Status);
+        var unapproved = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.GenerateDraftFromBlueprintAsync(
+                new GenerateReferenceAnchoredDraftPayload(novel.Id, unapprovedBlueprint.BlueprintId, BeatIds: []),
+                CancellationToken.None));
+        Assert.Contains("approved", unapproved.Message, StringComparison.OrdinalIgnoreCase);
+
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "主角先在雨夜门口等待。"),
+            CancellationToken.None);
+        var staleBlueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                19,
+                "第十九章蓝图",
+                "雨夜等待",
+                AnchorIds: [],
+                KnownFacts: ["主角在门口"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var staleReview = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, staleBlueprint.BlueprintId),
+            CancellationToken.None);
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, staleBlueprint.BlueprintId, staleReview.ReviewId),
+            CancellationToken.None);
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "主角改为直接进入屋内。"),
+            CancellationToken.None);
+        var staleState = await service.GetChapterBlueprintAsync(novel.Id, staleBlueprint.BlueprintId, CancellationToken.None);
+        Assert.NotNull(staleState);
+        Assert.Equal(ReferenceBlueprintStates.Stale, staleState.Status);
+
+        var stale = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.GenerateDraftFromBlueprintAsync(
+                new GenerateReferenceAnchoredDraftPayload(novel.Id, staleBlueprint.BlueprintId, BeatIds: []),
+                CancellationToken.None));
+        Assert.Contains("stale", stale.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ReviewPassedBlueprintWithoutExplicitApprovalCannotBindOrDraft()
     {
         var options = CreateOptions();
