@@ -41,6 +41,50 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsMissingAnalysisTrack()
+    {
+        var blueprint = Blueprint(beat => beat) with
+        {
+            LogicAnalysis = new ReferenceChapterBlueprintAnalysisTrackPayload("logic", "", [])
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.LogicErrors, item => item.Contains("logic, emotion, narration", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsMissingCausalityOut()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            CausalityOut = ""
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.CausalityErrors, item => item.Contains("causality_out", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsEmotionChangeWithoutExternalEvidence()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            EmotionBefore = "克制",
+            EmotionAfter = "紧张",
+            ExternalEvidence = ""
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.EmotionErrors, item => item.Contains("external evidence", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsForbiddenFactInFinalHook()
     {
         var blueprint = Blueprint(
@@ -61,6 +105,25 @@ public sealed class ReferenceChapterBlueprintReviewerTests
         {
             BeatType = ReferenceBlueprintBeatTypes.Action,
             ProseDuties = ["action"],
+            SubtextPlan = string.Empty,
+            SensoryAnchorTarget = string.Empty,
+            SourceBackedDetailTarget = string.Empty
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ScreenplayDriftRisks, item => item.Contains("action/dialogue", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(review.NovelisticNarrationErrors, item => item.Contains("screenplay", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsDialogueBeatWithoutNovelisticDuties()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            BeatType = ReferenceBlueprintBeatTypes.DialogueExchange,
+            ProseDuties = ["dialogue"],
             SubtextPlan = string.Empty,
             SensoryAnchorTarget = string.Empty,
             SourceBackedDetailTarget = string.Empty
