@@ -69,6 +69,12 @@
       "expected_error": "narrative distance"
     },
     {
+      "name": "limited_pov_unperceived_fact",
+      "mutation": "limited_pov",
+      "text": "雨声压低了整条街的呼吸，林岚心里一紧，却没有看见周鸣袖口里的钥匙。",
+      "expected_error": "unperceived"
+    },
+    {
       "name": "missing_required_subtext",
       "mutation": "required_subtext",
       "text": "雨声压低了整条街的呼吸，林岚心里一紧，指尖停住。",

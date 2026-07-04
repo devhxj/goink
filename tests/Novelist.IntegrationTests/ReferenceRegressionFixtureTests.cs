@@ -124,6 +124,11 @@ public sealed class ReferenceRegressionFixtureTests
                 PovCharacter = "林岚",
                 CharacterStatesBefore = ["林岚 controlled", "周鸣 guarded"]
             },
+            "limited_pov" => beat with
+            {
+                PovCharacter = "林岚",
+                NarrativeDistance = "limited"
+            },
             "required_subtext" => beat with
             {
                 SubtextPlan = "required: 没有回答"
