@@ -151,7 +151,7 @@ Recommended implementation slices:
 **Acceptance criteria:**
 
 - [x] Blueprint generation targets `novel_id` and `chapter_number`.
-- [ ] Blueprint generation builds and hashes a normalized context pack before persistence.
+- [x] Blueprint generation builds and hashes a normalized context pack before persistence.
 - [x] Blueprint stores chapter function, causality chain, emotion trajectory, POV constraints, scene facts, forbidden facts, prose duties, and beat-level reference queries.
 - [x] Blueprint stores complete logic, emotion, narration, character, reference-use, transition, and execution tracks.
 - [x] Each beat stores transition-in/out, character goal/knowledge/misbelief/state delta, suppressed reaction, external evidence, narration strategy, rhythm strategy, paragraph intention, execution mode, anti-screenplay duty, source-backed detail target, slot plan, locked phrase policy, and no-reuse reason.
@@ -180,7 +180,7 @@ Recommended implementation slices:
 **Verification:**
 
 - [x] unit tests for blueprint payload serialization
-- [ ] unit tests for context-pack hashing and stale detection
+- [x] unit tests for context-pack hashing and stale detection
 - [x] component tests for blueprint normalization and analysis-contract hashing
 - [x] component tests for deterministic blueprint review rules, including anti-screenplay and execution-track defects
 - [x] fixture tests for fake emotion, hard transition, POV leak, missing prose duty, action/dialogue-only beat, and material mismatch

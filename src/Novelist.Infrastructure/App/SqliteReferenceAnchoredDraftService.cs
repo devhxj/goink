@@ -47,14 +47,24 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             ?? plans.FirstOrDefault()
             ?? new ChapterPlanPayload(input.NovelId, "next", string.Empty);
         var planText = string.IsNullOrWhiteSpace(sourcePlan.Content) ? input.ChapterGoal ?? string.Empty : sourcePlan.Content;
-        var sourcePlanHash = HashText(sourcePlan.Scope + "\n" + sourcePlan.Content);
+        var sourcePlanHash = ReferenceChapterBlueprintNormalizer.ComputeSourcePlanHash(sourcePlan.Scope, sourcePlan.Content);
         var knownFacts = NormalizeList(input.KnownFacts);
         var forbiddenFacts = NormalizeList(input.ForbiddenFacts);
-        var contextHash = HashText(string.Join("\n", [input.ChapterGoal ?? string.Empty, .. knownFacts, .. forbiddenFacts, .. input.AnchorIds.Select(id => id.ToString(CultureInfo.InvariantCulture))]));
+        var anchorIds = NormalizeAnchorIds(input.AnchorIds);
+        var contextHash = ReferenceChapterBlueprintNormalizer.ComputeContextHash(
+            new ReferenceChapterBlueprintContextPack(
+                input.NovelId,
+                input.ChapterNumber,
+                sourcePlan.Scope,
+                sourcePlan.Content,
+                input.ChapterGoal,
+                anchorIds,
+                knownFacts,
+                forbiddenFacts));
         var now = DateTimeOffset.UtcNow;
         var title = NormalizeOptional(input.Title, "Chapter " + input.ChapterNumber.ToString(CultureInfo.InvariantCulture), 200);
         var chapterFunction = NormalizeOptional(input.ChapterGoal, "establish a reviewable chapter blueprint before prose generation", 2_000);
-        var primaryAnchorId = input.AnchorIds.FirstOrDefault(id => id > 0);
+        var primaryAnchorId = anchorIds.FirstOrDefault();
         var blueprint = BuildDeterministicBlueprint(
             0,
             input.NovelId,
@@ -1261,7 +1271,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         var scope = string.IsNullOrWhiteSpace(sourcePlanScope) ? "next" : sourcePlanScope;
         var plans = await _planning.GetChapterPlansAsync(novelId, cancellationToken);
         var plan = plans.FirstOrDefault(item => string.Equals(item.Scope, scope, StringComparison.Ordinal));
-        return HashText(scope + "\n" + (plan?.Content ?? string.Empty));
+        return ReferenceChapterBlueprintNormalizer.ComputeSourcePlanHash(scope, plan?.Content ?? string.Empty);
     }
 
     private static bool IsStalenessExempt(string status)
@@ -2191,6 +2201,14 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
             .Distinct(StringComparer.Ordinal)
+            .ToArray() ?? [];
+    }
+
+    private static IReadOnlyList<long> NormalizeAnchorIds(IReadOnlyList<long>? values)
+    {
+        return values?
+            .Where(value => value > 0)
+            .Distinct()
             .ToArray() ?? [];
     }
 

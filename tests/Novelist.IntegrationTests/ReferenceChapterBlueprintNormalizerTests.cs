@@ -6,6 +6,87 @@ namespace Novelist.IntegrationTests;
 public sealed class ReferenceChapterBlueprintNormalizerTests
 {
     [Fact]
+    public void ComputeContextHashIgnoresEquivalentWhitespaceAndNullLists()
+    {
+        var baseline = new ReferenceChapterBlueprintContextPack(
+            NovelId: 10,
+            ChapterNumber: 3,
+            SourcePlanScope: "next",
+            SourcePlanContent: "rain plan",
+            ChapterGoal: "pressure the protagonist",
+            AnchorIds: [7],
+            KnownFacts: ["rain pressure"],
+            ForbiddenFacts: ["killer identity"]);
+        var equivalent = new ReferenceChapterBlueprintContextPack(
+            NovelId: 10,
+            ChapterNumber: 3,
+            SourcePlanScope: "  next  ",
+            SourcePlanContent: "  rain plan\r\n",
+            ChapterGoal: "  pressure the protagonist  ",
+            AnchorIds: [7],
+            KnownFacts: ["  rain pressure  ", ""],
+            ForbiddenFacts: ["  killer identity  "]);
+        var empty = new ReferenceChapterBlueprintContextPack(
+            NovelId: 10,
+            ChapterNumber: 3,
+            SourcePlanScope: "next",
+            SourcePlanContent: "rain plan",
+            ChapterGoal: "pressure the protagonist",
+            AnchorIds: null,
+            KnownFacts: null,
+            ForbiddenFacts: null);
+        var emptyEquivalent = new ReferenceChapterBlueprintContextPack(
+            NovelId: 10,
+            ChapterNumber: 3,
+            SourcePlanScope: "next",
+            SourcePlanContent: "rain plan",
+            ChapterGoal: "pressure the protagonist",
+            AnchorIds: [],
+            KnownFacts: [],
+            ForbiddenFacts: []);
+
+        Assert.Equal(
+            ReferenceChapterBlueprintNormalizer.ComputeContextHash(baseline),
+            ReferenceChapterBlueprintNormalizer.ComputeContextHash(equivalent));
+        Assert.Equal(
+            ReferenceChapterBlueprintNormalizer.ComputeContextHash(empty),
+            ReferenceChapterBlueprintNormalizer.ComputeContextHash(emptyEquivalent));
+    }
+
+    [Fact]
+    public void ComputeContextHashChangesWhenContextInputChanges()
+    {
+        var baseline = new ReferenceChapterBlueprintContextPack(
+            NovelId: 10,
+            ChapterNumber: 3,
+            SourcePlanScope: "next",
+            SourcePlanContent: "rain plan",
+            ChapterGoal: "pressure the protagonist",
+            AnchorIds: [7],
+            KnownFacts: ["rain pressure"],
+            ForbiddenFacts: ["killer identity"]);
+        var changed = baseline with
+        {
+            KnownFacts = ["door is locked"]
+        };
+
+        Assert.NotEqual(
+            ReferenceChapterBlueprintNormalizer.ComputeContextHash(baseline),
+            ReferenceChapterBlueprintNormalizer.ComputeContextHash(changed));
+    }
+
+    [Fact]
+    public void ComputeSourcePlanHashChangesWhenPlanContentChanges()
+    {
+        var baseline = ReferenceChapterBlueprintNormalizer.ComputeSourcePlanHash("next", "rain plan");
+        var sameDefaultScope = ReferenceChapterBlueprintNormalizer.ComputeSourcePlanHash("", "rain plan");
+        var changed = ReferenceChapterBlueprintNormalizer.ComputeSourcePlanHash("next", "door plan");
+
+        Assert.Equal(baseline, sameDefaultScope);
+        Assert.NotEqual(baseline, changed);
+    }
+
+    [Fact]
     public void ComputeAnalysisContractHashIgnoresEquivalentWhitespace()
     {
         var baseline = Blueprint();

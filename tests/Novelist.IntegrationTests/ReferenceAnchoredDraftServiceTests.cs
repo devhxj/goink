@@ -119,6 +119,46 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateChapterBlueprintPersistsNormalizedContextPackHash()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("蓝图上下文哈希测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "  主角在雨夜门口等待。\r\n"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+        var input = new GenerateReferenceChapterBlueprintPayload(
+            novel.Id,
+            ChapterNumber: 23,
+            Title: "第二十三章蓝图",
+            ChapterGoal: "  让主角从等待转为行动  ",
+            AnchorIds: [7],
+            KnownFacts: ["  主角在门口  ", ""],
+            ForbiddenFacts: ["  不能揭露凶手身份  "]);
+        var expectedContextHash = ReferenceChapterBlueprintNormalizer.ComputeContextHash(
+            new ReferenceChapterBlueprintContextPack(
+                NovelId: novel.Id,
+                ChapterNumber: 23,
+                SourcePlanScope: "next",
+                SourcePlanContent: "  主角在雨夜门口等待。\r\n",
+                ChapterGoal: "  让主角从等待转为行动  ",
+                AnchorIds: [7],
+                KnownFacts: ["  主角在门口  ", ""],
+                ForbiddenFacts: ["  不能揭露凶手身份  "]));
+
+        var blueprint = await service.GenerateChapterBlueprintAsync(input, CancellationToken.None);
+        var reloaded = await service.GetChapterBlueprintAsync(novel.Id, blueprint.BlueprintId, CancellationToken.None);
+
+        Assert.Equal(expectedContextHash, blueprint.ContextHash);
+        Assert.NotNull(reloaded);
+        Assert.Equal(expectedContextHash, reloaded.ContextHash);
+    }
+
+    [Fact]
     public async Task ReviseApprovedBlueprintInvalidatesApprovalAndMaterialLinks()
     {
         var options = CreateOptions();

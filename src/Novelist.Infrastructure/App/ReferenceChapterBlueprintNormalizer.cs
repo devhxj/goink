@@ -6,9 +6,48 @@ using Novelist.Contracts.Bridge;
 
 namespace Novelist.Infrastructure.App;
 
+internal sealed record ReferenceChapterBlueprintContextPack(
+    long NovelId,
+    int ChapterNumber,
+    string? SourcePlanScope,
+    string? SourcePlanContent,
+    string? ChapterGoal,
+    IReadOnlyList<long>? AnchorIds,
+    IReadOnlyList<string>? KnownFacts,
+    IReadOnlyList<string>? ForbiddenFacts);
+
 internal static class ReferenceChapterBlueprintNormalizer
 {
     private static readonly JsonSerializerOptions JsonOptions = BridgeJson.SerializerOptions;
+
+    public static string ComputeContextHash(ReferenceChapterBlueprintContextPack contextPack)
+    {
+        ArgumentNullException.ThrowIfNull(contextPack);
+        return HashText(NormalizeContextPackJson(contextPack));
+    }
+
+    public static string ComputeSourcePlanHash(string? sourcePlanScope, string? sourcePlanContent)
+    {
+        var scope = string.IsNullOrWhiteSpace(sourcePlanScope) ? "next" : sourcePlanScope;
+        return HashText(scope + "\n" + (sourcePlanContent ?? string.Empty));
+    }
+
+    public static string NormalizeContextPackJson(ReferenceChapterBlueprintContextPack contextPack)
+    {
+        ArgumentNullException.ThrowIfNull(contextPack);
+        var normalized = new
+        {
+            contextPack.NovelId,
+            contextPack.ChapterNumber,
+            SourcePlanScope = NormalizeString(contextPack.SourcePlanScope),
+            SourcePlanContent = NormalizeString(contextPack.SourcePlanContent),
+            ChapterGoal = NormalizeString(contextPack.ChapterGoal),
+            AnchorIds = NormalizeAnchorIds(contextPack.AnchorIds),
+            KnownFacts = NormalizeContextStringList(contextPack.KnownFacts),
+            ForbiddenFacts = NormalizeContextStringList(contextPack.ForbiddenFacts)
+        };
+        return JsonSerializer.Serialize(normalized, JsonOptions);
+    }
 
     public static string ComputeAnalysisContractHash(ReferenceChapterBlueprintPayload blueprint)
     {
@@ -133,6 +172,23 @@ internal static class ReferenceChapterBlueprintNormalizer
         return values?
             .Select(NormalizeString)
             .Where(value => value.Length > 0)
+            .ToArray() ?? [];
+    }
+
+    private static IReadOnlyList<string> NormalizeContextStringList(IReadOnlyList<string>? values)
+    {
+        return values?
+            .Select(NormalizeString)
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray() ?? [];
+    }
+
+    private static IReadOnlyList<long> NormalizeAnchorIds(IReadOnlyList<long>? values)
+    {
+        return values?
+            .Where(value => value > 0)
+            .Distinct()
             .ToArray() ?? [];
     }
 
