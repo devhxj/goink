@@ -469,6 +469,50 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReviewChapterBlueprintReusesExistingReviewForUnchangedContract()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("幂等评审测试", "", ""), CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, new FileSystemPlanningService(options, novels));
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                21,
+                "第二十一章蓝图",
+                "同一蓝图重复评审应复用结果",
+                [],
+                KnownFacts: ["主角已经到场"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+
+        var first = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        var second = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+
+        Assert.Equal(first.ReviewId, second.ReviewId);
+        Assert.Equal(first.ReviewedAt, second.ReviewedAt);
+        Assert.Equal(first.Status, second.Status);
+        Assert.Equal(1, await CountBlueprintReviewsAsync(options, blueprint.BlueprintId));
+
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, first.ReviewId),
+            CancellationToken.None);
+        var third = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        var reloaded = await service.GetChapterBlueprintAsync(novel.Id, blueprint.BlueprintId, CancellationToken.None);
+
+        Assert.Equal(first.ReviewId, third.ReviewId);
+        Assert.Equal(ReferenceBlueprintStates.Approved, reloaded?.Status);
+        Assert.Equal(1, await CountBlueprintReviewsAsync(options, blueprint.BlueprintId));
+    }
+
+    [Fact]
     public async Task BindBlueprintMaterialsRanksAndPersistsReferenceLinksForApprovedBlueprint()
     {
         var options = CreateOptions();
@@ -2111,6 +2155,27 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         command.Parameters.AddWithValue("$review_id", reviewId);
         var updated = await command.ExecuteNonQueryAsync();
         Assert.True(updated > 0);
+    }
+
+    private static async ValueTask<int> CountBlueprintReviewsAsync(
+        AppInitializationOptions options,
+        long blueprintId)
+    {
+        var databasePath = Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM reference_chapter_blueprint_reviews
+            WHERE blueprint_id = $blueprint_id;
+            """;
+        command.Parameters.AddWithValue("$blueprint_id", blueprintId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
     private static async ValueTask<IReadOnlyList<string>> ReadRevisionFieldPathsAsync(

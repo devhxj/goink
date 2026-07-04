@@ -209,6 +209,12 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 throw new ArgumentException("Stale blueprint must be regenerated before review.", nameof(input));
             }
 
+            if (blueprint.LatestReview is not null &&
+                ReferenceAnchoredDraftPreflight.ReviewMatchesBlueprint(blueprint, blueprint.LatestReview))
+            {
+                return blueprint.LatestReview;
+            }
+
             var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UtcNow);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
             await InsertReviewAsync(connection, transaction, review, cancellationToken);
