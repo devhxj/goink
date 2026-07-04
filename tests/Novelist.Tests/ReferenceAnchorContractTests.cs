@@ -208,6 +208,29 @@ public sealed class ReferenceAnchorContractTests
     }
 
     [Fact]
+    public void ReferenceReuseAuditPayloadsExposeNonSlotEditsAsSnakeCase()
+    {
+        var payload = new ReferenceReuseAuditPayload(
+            AuditId: "audit-1",
+            Status: "passed",
+            RewriteLevel: ReferenceRewriteLevels.L2,
+            ProvenanceErrors: [],
+            UnsupportedFactErrors: [],
+            AiProseRisks: [],
+            NonSlotEdits: ["Inserted non-slot text '却' at offset 1."],
+            RequiredFixes: [],
+            AuditedAt: DateTimeOffset.Parse("2026-07-04T00:00:00Z"));
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(payload, BridgeJson.SerializerOptions));
+        var root = json.RootElement;
+
+        Assert.Equal("audit-1", root.GetProperty("audit_id").GetString());
+        Assert.Equal("L2", root.GetProperty("rewrite_level").GetString());
+        Assert.Equal("Inserted non-slot text '却' at offset 1.", root.GetProperty("non_slot_edits")[0].GetString());
+        Assert.False(root.TryGetProperty("NonSlotEdits", out _));
+    }
+
+    [Fact]
     public void ReferenceConstantsDocumentInitialStateAndRewriteVocabulary()
     {
         Assert.Equal("L0", ReferenceRewriteLevels.L0);

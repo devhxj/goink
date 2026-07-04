@@ -28,8 +28,9 @@ internal static class ReferenceRewriteLevelClassifier
             return ReferenceRewriteLevels.L2;
         }
 
+        var nonSlotEdits = ReferenceNonSlotEditReporter.Report(sourceText, candidateText, changedSlots);
         var similarity = CharacterJaccard(sourceText, candidateText);
-        if (similarity >= 0.88)
+        if (similarity >= 0.88 && nonSlotEdits.Count <= 3)
         {
             return ReferenceRewriteLevels.L2;
         }

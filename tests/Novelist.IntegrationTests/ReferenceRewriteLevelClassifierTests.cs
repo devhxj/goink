@@ -47,6 +47,30 @@ public sealed class ReferenceRewriteLevelClassifierTests
     }
 
     [Fact]
+    public void ReportNonSlotEditsIgnoresDeclaredSlotReplacementAndReportsConnectorEdit()
+    {
+        var edits = ReferenceNonSlotEditReporter.Report(
+            "他握住{{object}}，没有立刻说话。",
+            "他却握住门把手，没有立刻说话。",
+            [new ReferenceSlotValuePayload("object", "门把手")]);
+
+        var edit = Assert.Single(edits);
+        Assert.Contains("inserted", edit, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("却", edit, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReportNonSlotEditsReturnsEmptyForDeclaredSlotOnlyReplacement()
+    {
+        var edits = ReferenceNonSlotEditReporter.Report(
+            "他握住{{object}}，没有立刻说话。",
+            "他握住门把手，没有立刻说话。",
+            [new ReferenceSlotValuePayload("object", "门把手")]);
+
+        Assert.Empty(edits);
+    }
+
+    [Fact]
     public void ClassifyReturnsL3ForLooseStructuralRewrite()
     {
         var level = ReferenceRewriteLevelClassifier.Classify(

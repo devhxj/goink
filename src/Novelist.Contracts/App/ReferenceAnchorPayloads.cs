@@ -175,5 +175,6 @@ public sealed record ReferenceReuseAuditPayload(
     [property: JsonPropertyName("provenance_errors")] IReadOnlyList<string> ProvenanceErrors,
     [property: JsonPropertyName("unsupported_fact_errors")] IReadOnlyList<string> UnsupportedFactErrors,
     [property: JsonPropertyName("ai_prose_risks")] IReadOnlyList<string> AiProseRisks,
+    [property: JsonPropertyName("non_slot_edits")] IReadOnlyList<string> NonSlotEdits,
     [property: JsonPropertyName("required_fixes")] IReadOnlyList<string> RequiredFixes,
     [property: JsonPropertyName("audited_at")] DateTimeOffset AuditedAt);

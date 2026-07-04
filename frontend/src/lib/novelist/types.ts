@@ -523,6 +523,7 @@ export namespace reference {
     provenance_errors: string[]
     unsupported_fact_errors: string[]
     ai_prose_risks: string[]
+    non_slot_edits: string[]
     required_fixes: string[]
     audited_at: Timestamp
   }

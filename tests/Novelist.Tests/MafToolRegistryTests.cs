@@ -643,6 +643,7 @@ public sealed class MafToolRegistryTests
                     [],
                     [],
                     [],
+                    [],
                     DateTimeOffset.UtcNow)));
         }
 
@@ -654,6 +655,7 @@ public sealed class MafToolRegistryTests
                 "audit-1",
                 "passed",
                 ReferenceRewriteLevels.L1,
+                [],
                 [],
                 [],
                 [],

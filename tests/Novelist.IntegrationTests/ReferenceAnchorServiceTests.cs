@@ -245,6 +245,48 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AuditCandidateReportsL2NonSlotEdits()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("L2报告测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile("anchor.md", "他在门口停了很久。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var materials = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "门口",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        var material = Assert.Single(materials.Items);
+
+        var audit = await service.AuditCandidateAsync(
+            new AuditReferenceReusePayload(
+                novel.Id,
+                material.MaterialId,
+                "他却在门口停了很久。",
+                ReferenceRewriteLevels.L2,
+                SceneFacts: []),
+            CancellationToken.None);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.Equal(ReferenceRewriteLevels.L2, audit.RewriteLevel);
+        var edit = Assert.Single(audit.NonSlotEdits);
+        Assert.Contains("却", edit, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CreateAnchorRejectsUnsupportedSourceFiles()
     {
         var options = CreateOptions();

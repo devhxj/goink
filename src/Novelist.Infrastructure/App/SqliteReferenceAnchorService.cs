@@ -340,12 +340,17 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
                 material.Text,
                 adapted.Text,
                 adapted.ChangedSlots);
+            var nonSlotEdits = ReferenceNonSlotEditReporter.Report(
+                material.Text,
+                adapted.Text,
+                adapted.ChangedSlots);
             var audit = BuildReuseAudit(
                 material,
                 adapted.Text,
                 input.MaxRewriteLevel,
                 input.SceneFacts,
                 rewriteLevel,
+                nonSlotEdits,
                 DateTimeOffset.UtcNow);
             var candidateId = "candidate-" + Guid.NewGuid().ToString("N");
             var result = new AdaptReferenceMaterialResultPayload(
@@ -354,7 +359,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
                 rewriteLevel,
                 adapted.Text,
                 adapted.ChangedSlots,
-                NonSlotEdits: [],
+                nonSlotEdits,
                 audit);
             await PersistReuseCandidateAsync(connection, result, cancellationToken);
             return result;
@@ -384,12 +389,14 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             var material = await ReadMaterialAsync(connection, input.NovelId, materialId, cancellationToken)
                 ?? throw new ArgumentException("Reference material does not exist.", nameof(input));
             var rewriteLevel = ReferenceRewriteLevelClassifier.Classify(material.Text, candidateText);
+            var nonSlotEdits = ReferenceNonSlotEditReporter.Report(material.Text, candidateText);
             var audit = BuildReuseAudit(
                 material,
                 candidateText,
                 input.MaxRewriteLevel,
                 input.SceneFacts,
                 rewriteLevel,
+                nonSlotEdits,
                 DateTimeOffset.UtcNow);
             await PersistReuseAuditAsync(connection, candidateId: string.Empty, material.MaterialId, audit, cancellationToken);
             return audit;
@@ -1453,6 +1460,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         string maxRewriteLevel,
         IReadOnlyList<string>? sceneFacts,
         string rewriteLevel,
+        IReadOnlyList<string> nonSlotEdits,
         DateTimeOffset now)
     {
         var provenanceErrors = new List<string>();
@@ -1503,6 +1511,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             provenanceErrors,
             unsupportedFactErrors,
             aiProseRisks,
+            nonSlotEdits,
             requiredFixes,
             now);
     }
