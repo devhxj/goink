@@ -46,6 +46,11 @@
       "expected_error": "scene fact"
     },
     {
+      "name": "pov_forbidden_scene_fact",
+      "mutation": "pov_forbidden_scene_fact",
+      "expected_error": "forbidden POV"
+    },
+    {
       "name": "material_mismatch",
       "mutation": "material_mismatch",
       "expected_error": "material fit"

@@ -182,6 +182,28 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsSceneFactConflictingWithPovForbiddenKnowledge()
+    {
+        var blueprint = Blueprint(
+            beat => beat with
+            {
+                SceneFacts = ["雨声压低了整条街的呼吸", "周鸣是卧底"],
+                ViewpointForbiddenKnowledge = ["周鸣是卧底"]
+            },
+            knownFacts: ["雨声压低了整条街的呼吸", "周鸣是卧底"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.PovErrors, item => item.Contains("forbidden POV", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(review.PovErrors, item => item.Contains("周鸣是卧底", StringComparison.Ordinal));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "pov" &&
+                defect.FieldPath.Contains("scene_facts", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsActionBeatWithoutNovelisticDuties()
     {
         var blueprint = Blueprint(beat => beat with

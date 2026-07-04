@@ -18,6 +18,7 @@ public sealed class ReferenceRegressionFixtureTests
             var expected = fixture.GetProperty("expected_error").GetString() ?? string.Empty;
             var blueprint = Blueprint(
                 beat => ApplyBlueprintMutation(beat, mutation),
+                knownFacts: KnownFactsForMutation(mutation),
                 finalHook: FinalHookForMutation(mutation));
 
             var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
@@ -106,6 +107,11 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 SceneFacts = ["雨声压低了整条街的呼吸", "周鸣其实是卧底"]
             },
+            "pov_forbidden_scene_fact" => beat with
+            {
+                SceneFacts = ["雨声压低了整条街的呼吸", "周鸣是卧底"],
+                ViewpointForbiddenKnowledge = ["周鸣是卧底"]
+            },
             "material_mismatch" => beat with
             {
                 ReferenceQuery = beat.ReferenceQuery with
@@ -125,7 +131,17 @@ public sealed class ReferenceRegressionFixtureTests
         return mutation switch
         {
             "unsupported_final_hook" => "周鸣其实是卧底",
+            "pov_forbidden_scene_fact" => "雨声仍在门外压低呼吸",
             _ => "hook"
+        };
+    }
+
+    private static IReadOnlyList<string> KnownFactsForMutation(string mutation)
+    {
+        return mutation switch
+        {
+            "pov_forbidden_scene_fact" => ["雨声压低了整条街的呼吸", "周鸣是卧底"],
+            _ => ["雨声压低了整条街的呼吸"]
         };
     }
 
@@ -194,6 +210,7 @@ public sealed class ReferenceRegressionFixtureTests
 
     private static ReferenceChapterBlueprintPayload Blueprint(
         Func<ReferenceChapterBlueprintBeatPayload, ReferenceChapterBlueprintBeatPayload> configureBeat,
+        IReadOnlyList<string>? knownFacts = null,
         string finalHook = "hook")
     {
         var beat = configureBeat(Beat("1:beat:1"));
@@ -230,7 +247,7 @@ public sealed class ReferenceRegressionFixtureTests
             finalHook,
             "林岚",
             "close",
-            ["雨声压低了整条街的呼吸"],
+            knownFacts ?? ["雨声压低了整条街的呼吸"],
             [],
             [],
             [beat],

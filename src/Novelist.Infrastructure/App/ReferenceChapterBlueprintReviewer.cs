@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 6;
+    public const int CurrentReviewVersion = 7;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -223,6 +223,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "scene_facts",
                     $"Beat {beat.BeatIndex} introduces unsupported scene fact: {unsupportedFact}",
                     "Remove the unsupported scene fact or add it to known facts or declared slot values before review.");
+            }
+
+            foreach (var forbiddenFact in FindSceneFactsConflictingWithForbiddenPov(beat))
+            {
+                AddBeatDefect(
+                    povErrors,
+                    "pov",
+                    beat,
+                    "scene_facts",
+                    $"Beat {beat.BeatIndex} scene fact conflicts with forbidden POV knowledge: {forbiddenFact}",
+                    "Remove the forbidden POV fact from scene_facts or move the beat to a POV that may know it.");
             }
 
             var proseDuties = beat.ProseDuties
@@ -551,6 +562,34 @@ internal static class ReferenceChapterBlueprintReviewer
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static IEnumerable<string> FindSceneFactsConflictingWithForbiddenPov(
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var forbiddenKnowledge = beat.ViewpointForbiddenKnowledge
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var sceneFact in beat.SceneFacts.Where(item => !string.IsNullOrWhiteSpace(item)))
+        {
+            foreach (var forbidden in forbiddenKnowledge)
+            {
+                if (ContainsForbidden(sceneFact, forbidden))
+                {
+                    yield return forbidden;
+                    continue;
+                }
+
+                var sceneAuditableFacts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(sceneFact);
+                var forbiddenAuditableFacts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(forbidden);
+                foreach (var fact in sceneAuditableFacts.Where(fact => IsAllowedFact(fact, forbiddenAuditableFacts)))
+                {
+                    yield return fact;
+                }
+            }
+        }
     }
 
     private static bool IsAllowedFact(string fact, IReadOnlyList<string> allowedFacts)
