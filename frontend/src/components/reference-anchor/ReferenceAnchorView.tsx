@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import {
   BookMarked,
   CheckCircle2,
@@ -34,6 +35,22 @@ type BlueprintForm = {
   forbiddenFacts: string
 }
 
+type BlueprintRevisionForm = {
+  knownFacts: string
+  forbiddenFacts: string
+  povCharacter: string
+  emotionTrigger: string
+  externalEvidence: string
+  paragraphIntention: string
+  proseDuties: string
+  referenceQuery: string
+}
+
+type FindingSection = {
+  label: string
+  items: string[]
+}
+
 const EMPTY_ANCHOR_FORM: AnchorForm = {
   title: '',
   author: '',
@@ -50,6 +67,17 @@ const EMPTY_BLUEPRINT_FORM: BlueprintForm = {
   forbiddenFacts: '',
 }
 
+const EMPTY_REVISION_FORM: BlueprintRevisionForm = {
+  knownFacts: '',
+  forbiddenFacts: '',
+  povCharacter: '',
+  emotionTrigger: '',
+  externalEvidence: '',
+  paragraphIntention: '',
+  proseDuties: '',
+  referenceQuery: '',
+}
+
 const inputClass = 'w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 const actionButtonClass = 'inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50'
 
@@ -60,14 +88,77 @@ function lines(value: string): string[] {
     .filter(Boolean)
 }
 
+function multiline(values: string[] | undefined): string {
+  return (values ?? []).join('\n')
+}
+
+function sameList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index])
+}
+
+function formFromBlueprint(blueprint: reference.ChapterBlueprint | null): BlueprintRevisionForm {
+  if (!blueprint) return EMPTY_REVISION_FORM
+  const beat = blueprint.beats[0]
+  return {
+    knownFacts: multiline(blueprint.known_facts),
+    forbiddenFacts: multiline(blueprint.forbidden_facts),
+    povCharacter: beat?.pov_character ?? '',
+    emotionTrigger: beat?.emotion_trigger ?? '',
+    externalEvidence: beat?.external_evidence ?? '',
+    paragraphIntention: beat?.paragraph_intention ?? '',
+    proseDuties: multiline(beat?.prose_duties),
+    referenceQuery: beat?.reference_query.query ?? '',
+  }
+}
+
 function statusTone(status: string): string {
   if (status === 'approved' || status === 'material_bound' || status === 'passed') return 'text-emerald-600 dark:text-emerald-400'
   if (status === 'failed' || status === 'review_failed' || status === 'stale') return 'text-destructive'
   return 'text-muted-foreground'
 }
 
-function joinErrors(items: string[]): string {
-  return items.filter(Boolean).join('；')
+function findingSections(sections: FindingSection[]): FindingSection[] {
+  return sections
+    .map(section => ({ ...section, items: section.items.filter(Boolean) }))
+    .filter(section => section.items.length > 0)
+}
+
+function reviewFindings(review: reference.ChapterBlueprintReview): FindingSection[] {
+  return findingSections([
+    { label: '逻辑', items: review.logic_errors },
+    { label: '因果', items: review.causality_errors },
+    { label: '情绪', items: review.emotion_errors },
+    { label: '叙述', items: review.narration_errors },
+    { label: '执行', items: review.execution_errors },
+    { label: '角色状态', items: review.character_state_errors },
+    { label: 'POV', items: review.pov_errors },
+    { label: '连续性', items: review.continuity_errors },
+    { label: '转场', items: review.transition_errors },
+    { label: '禁止事实', items: review.forbidden_fact_errors },
+    { label: '引用绑定', items: review.reference_binding_errors },
+    { label: '材料匹配', items: review.material_fit_errors },
+    { label: '剧本化风险', items: review.screenplay_drift_risks },
+    { label: '小说化叙述', items: review.novelistic_narration_errors },
+    { label: 'AI 文风风险', items: review.ai_prose_risks },
+    { label: '必须修复', items: review.required_fixes },
+  ])
+}
+
+function auditFindings(audit: reference.AnchoredDraftAudit): FindingSection[] {
+  return findingSections([
+    { label: '来源溯源', items: audit.provenance_errors },
+    { label: '蓝图约束', items: audit.blueprint_errors },
+    { label: '未支持事实', items: audit.unsupported_fact_errors },
+    { label: 'POV', items: audit.pov_errors },
+    { label: 'AI 文风风险', items: audit.ai_prose_risks },
+    { label: '必须修复', items: audit.required_fixes },
+  ])
+}
+
+function scoreComponents(link: reference.BlueprintMaterialLink): Array<[string, number]> {
+  return Object.entries(link.score_components ?? {})
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .sort(([, left], [, right]) => right - left)
 }
 
 export default function ReferenceAnchorView({ novelId }: Props) {
@@ -82,6 +173,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [draft, setDraft] = useState<reference.AnchoredDraft | null>(null)
   const [anchorForm, setAnchorForm] = useState<AnchorForm>(EMPTY_ANCHOR_FORM)
   const [blueprintForm, setBlueprintForm] = useState<BlueprintForm>(EMPTY_BLUEPRINT_FORM)
+  const [revisionForm, setRevisionForm] = useState<BlueprintRevisionForm>(EMPTY_REVISION_FORM)
   const [materialQuery, setMaterialQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -205,6 +297,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     }), '章节蓝图已生成')
     if (blueprint) {
       setActiveBlueprint(blueprint)
+      setRevisionForm(formFromBlueprint(blueprint))
       setBinding(null)
       setDraft(null)
       await loadBlueprints()
@@ -215,6 +308,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     const blueprint = await run(() => app.GetReferenceChapterBlueprint(novelId, blueprintId))
     if (blueprint) {
       setActiveBlueprint(blueprint)
+      setRevisionForm(formFromBlueprint(blueprint))
       setBinding(null)
       setDraft(null)
     }
@@ -229,6 +323,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     if (review) {
       const refreshed = await app.GetReferenceChapterBlueprint(novelId, activeBlueprint.blueprint_id)
       setActiveBlueprint(refreshed)
+      setRevisionForm(formFromBlueprint(refreshed))
       await loadBlueprints()
     }
   }
@@ -242,6 +337,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     }), '蓝图已批准')
     if (approved) {
       setActiveBlueprint(approved)
+      setRevisionForm(formFromBlueprint(approved))
       await loadBlueprints()
     }
   }
@@ -257,6 +353,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       setBinding(result)
       const refreshed = await app.GetReferenceChapterBlueprint(novelId, activeBlueprint.blueprint_id)
       setActiveBlueprint(refreshed)
+      setRevisionForm(formFromBlueprint(refreshed))
       await loadBlueprints()
     }
   }
@@ -269,6 +366,72 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       beat_ids: [],
     }), '候选段落已生成')
     if (result) setDraft(result)
+  }
+
+  async function saveBlueprintEdits() {
+    if (!activeBlueprint) return
+    const beat = activeBlueprint.beats[0]
+    if (!beat) {
+      setError('当前蓝图没有可编辑节拍')
+      return
+    }
+
+    const changes: reference.BlueprintRevisionChange[] = []
+    const knownFacts = lines(revisionForm.knownFacts)
+    const forbiddenFacts = lines(revisionForm.forbiddenFacts)
+    const proseDuties = lines(revisionForm.proseDuties)
+    const trimmed = {
+      povCharacter: revisionForm.povCharacter.trim(),
+      emotionTrigger: revisionForm.emotionTrigger.trim(),
+      externalEvidence: revisionForm.externalEvidence.trim(),
+      paragraphIntention: revisionForm.paragraphIntention.trim(),
+      referenceQuery: revisionForm.referenceQuery.trim(),
+    }
+
+    if (!sameList(knownFacts, activeBlueprint.known_facts)) {
+      changes.push({ field_path: 'known_facts', new_value: JSON.stringify(knownFacts) })
+    }
+    if (!sameList(forbiddenFacts, activeBlueprint.forbidden_facts)) {
+      changes.push({ field_path: 'forbidden_facts', new_value: JSON.stringify(forbiddenFacts) })
+    }
+    if (trimmed.povCharacter !== beat.pov_character) {
+      changes.push({ field_path: `beat:${beat.beat_id}:pov_character`, new_value: trimmed.povCharacter })
+    }
+    if (trimmed.emotionTrigger !== beat.emotion_trigger) {
+      changes.push({ field_path: `beat:${beat.beat_id}:emotion_trigger`, new_value: trimmed.emotionTrigger })
+    }
+    if (trimmed.externalEvidence !== beat.external_evidence) {
+      changes.push({ field_path: `beat:${beat.beat_id}:external_evidence`, new_value: trimmed.externalEvidence })
+    }
+    if (trimmed.paragraphIntention !== beat.paragraph_intention) {
+      changes.push({ field_path: `beat:${beat.beat_id}:paragraph_intention`, new_value: trimmed.paragraphIntention })
+    }
+    if (!sameList(proseDuties, beat.prose_duties)) {
+      changes.push({ field_path: `beat:${beat.beat_id}:prose_duties`, new_value: JSON.stringify(proseDuties) })
+    }
+    if (trimmed.referenceQuery !== beat.reference_query.query) {
+      changes.push({ field_path: `beat:${beat.beat_id}:reference_query.query`, new_value: trimmed.referenceQuery })
+    }
+
+    if (changes.length === 0) {
+      setMessage('没有需要保存的蓝图修改')
+      return
+    }
+
+    const revised = await run(() => app.ReviseReferenceChapterBlueprint({
+      novel_id: novelId,
+      blueprint_id: activeBlueprint.blueprint_id,
+      changes,
+      origin: 'ui',
+      revision_reason: 'field-level blueprint edit',
+    }), '蓝图已修订，需要重新评审和批准')
+    if (revised) {
+      setActiveBlueprint(revised)
+      setRevisionForm(formFromBlueprint(revised))
+      setBinding(null)
+      setDraft(null)
+      await loadBlueprints()
+    }
   }
 
   return (
@@ -448,6 +611,9 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                 onApprove={approveBlueprint}
                 onBind={bindMaterials}
                 onGenerateDraft={generateDraft}
+                revisionForm={revisionForm}
+                onRevisionFormChange={setRevisionForm}
+                onSaveEdits={saveBlueprintEdits}
               />
             </div>
           </section>
@@ -466,6 +632,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
+function FindingSections({ sections, emptyText }: { sections: FindingSection[]; emptyText: string }) {
+  if (sections.length === 0) {
+    return <p className="mt-2 text-xs text-muted-foreground">{emptyText}</p>
+  }
+
+  return (
+    <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-2">
+      {sections.map(section => (
+        <div key={section.label} className="rounded border border-border bg-card px-3 py-2">
+          <p className="text-[11px] font-medium text-foreground">{section.label}</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground">
+            {section.items.map((item, index) => <li key={index}>{item}</li>)}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function BlueprintDetail({
   blueprint,
   binding,
@@ -475,6 +660,9 @@ function BlueprintDetail({
   onApprove,
   onBind,
   onGenerateDraft,
+  revisionForm,
+  onRevisionFormChange,
+  onSaveEdits,
 }: {
   blueprint: reference.ChapterBlueprint | null
   binding: reference.BlueprintMaterialBindingResult | null
@@ -484,6 +672,9 @@ function BlueprintDetail({
   onApprove: () => void
   onBind: () => void
   onGenerateDraft: () => void
+  revisionForm: BlueprintRevisionForm
+  onRevisionFormChange: Dispatch<SetStateAction<BlueprintRevisionForm>>
+  onSaveEdits: () => void
 }) {
   if (!blueprint) {
     return (
@@ -499,6 +690,9 @@ function BlueprintDetail({
 
   const review = blueprint.latest_review
   const canApprove = review?.status === 'passed' && blueprint.status !== 'approved' && blueprint.status !== 'material_bound'
+  const requiresReview = blueprint.status === 'draft' || blueprint.status === 'review_failed' || blueprint.status === 'stale'
+  const reviewSections = review ? reviewFindings(review) : []
+  const auditSections = draft?.audit ? auditFindings(draft.audit) : []
 
   return (
     <div className="min-w-0 rounded-lg border border-border bg-card p-4">
@@ -512,6 +706,47 @@ function BlueprintDetail({
           <button onClick={onApprove} disabled={loading || !canApprove} className={actionButtonClass}><CheckCircle2 className="h-3.5 w-3.5" />批准</button>
           <button onClick={onBind} disabled={loading || (blueprint.status !== 'approved' && blueprint.status !== 'material_bound')} className={actionButtonClass}><Link2 className="h-3.5 w-3.5" />绑定</button>
           <button onClick={onGenerateDraft} disabled={loading || blueprint.status !== 'material_bound'} className={actionButtonClass}><Wand2 className="h-3.5 w-3.5" />候选</button>
+        </div>
+      </div>
+
+      {requiresReview && (
+        <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+          当前蓝图需要重新评审和批准；材料绑定与候选生成会保持禁用，直到通过评审并批准。
+        </div>
+      )}
+
+      <div className="mt-4 rounded-md border border-border bg-background p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold text-foreground">字段编辑</h4>
+          <button onClick={onSaveEdits} disabled={loading} className={actionButtonClass}>
+            <CheckCircle2 className="h-3.5 w-3.5" />保存修订
+          </button>
+        </div>
+        <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Field label="已知事实">
+            <textarea value={revisionForm.knownFacts} onChange={event => onRevisionFormChange(form => ({ ...form, knownFacts: event.target.value }))} className={`${inputClass} min-h-20 resize-y`} />
+          </Field>
+          <Field label="禁止事实">
+            <textarea value={revisionForm.forbiddenFacts} onChange={event => onRevisionFormChange(form => ({ ...form, forbiddenFacts: event.target.value }))} className={`${inputClass} min-h-20 resize-y`} />
+          </Field>
+          <Field label="POV 角色">
+            <input value={revisionForm.povCharacter} onChange={event => onRevisionFormChange(form => ({ ...form, povCharacter: event.target.value }))} className={inputClass} />
+          </Field>
+          <Field label="引用查询">
+            <input value={revisionForm.referenceQuery} onChange={event => onRevisionFormChange(form => ({ ...form, referenceQuery: event.target.value }))} className={inputClass} />
+          </Field>
+          <Field label="情绪触发">
+            <input value={revisionForm.emotionTrigger} onChange={event => onRevisionFormChange(form => ({ ...form, emotionTrigger: event.target.value }))} className={inputClass} />
+          </Field>
+          <Field label="外部证据">
+            <input value={revisionForm.externalEvidence} onChange={event => onRevisionFormChange(form => ({ ...form, externalEvidence: event.target.value }))} className={inputClass} />
+          </Field>
+          <Field label="段落意图">
+            <textarea value={revisionForm.paragraphIntention} onChange={event => onRevisionFormChange(form => ({ ...form, paragraphIntention: event.target.value }))} className={`${inputClass} min-h-16 resize-y`} />
+          </Field>
+          <Field label="正文职责">
+            <textarea value={revisionForm.proseDuties} onChange={event => onRevisionFormChange(form => ({ ...form, proseDuties: event.target.value }))} className={`${inputClass} min-h-16 resize-y`} />
+          </Field>
         </div>
       </div>
 
@@ -546,11 +781,7 @@ function BlueprintDetail({
         <div className="mt-4 rounded-md border border-border bg-background p-3">
           <h4 className="text-xs font-semibold text-foreground">评审结果</h4>
           <p className={`mt-1 text-xs ${statusTone(review.status)}`}>{review.status} · {review.score.toFixed(2)}</p>
-          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-            {[joinErrors(review.logic_errors), joinErrors(review.emotion_errors), joinErrors(review.narration_errors), joinErrors(review.execution_errors), joinErrors(review.pov_errors), joinErrors(review.required_fixes)]
-              .filter(Boolean)
-              .map((item, index) => <p key={index}>{item}</p>)}
-          </div>
+          <FindingSections sections={reviewSections} emptyText="当前评审没有返回结构化缺陷。" />
         </div>
       )}
 
@@ -565,6 +796,15 @@ function BlueprintDetail({
                   <span className="text-muted-foreground">{link.score.toFixed(2)}</span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">{link.intended_use} · {link.max_rewrite_level}</p>
+                {scoreComponents(link).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {scoreComponents(link).map(([name, value]) => (
+                      <span key={name} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {name} {value.toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -575,14 +815,33 @@ function BlueprintDetail({
         <div className="mt-4 rounded-md border border-border bg-background p-3">
           <h4 className="text-xs font-semibold text-foreground">候选段落</h4>
           {draft.audit && <p className={`mt-1 text-xs ${statusTone(draft.audit.status)}`}>审计 {draft.audit.status} · {draft.audit.rewrite_level}</p>}
+          {draft.audit && <FindingSections sections={auditSections} emptyText="当前草稿审计没有返回结构化问题。" />}
           <div className="mt-2 space-y-2">
             {draft.candidates.map(candidate => (
               <div key={candidate.candidate_id} className="rounded border border-border bg-card px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>节拍 {candidate.beat_id}</span>
+                  <span>材料 {candidate.material_id}</span>
                   <span>{candidate.rewrite_level}</span>
                   <span>{candidate.audit_status}</span>
-                  <span>{candidate.material_id}</span>
                 </div>
+                {candidate.changed_slots.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {candidate.changed_slots.map(slot => (
+                      <span key={`${slot.slot_name}:${slot.value}`} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {slot.slot_name} -&gt; {slot.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {candidate.non_slot_edits.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-medium text-foreground">非槽位改动</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] leading-relaxed text-muted-foreground">
+                      {candidate.non_slot_edits.map((edit, index) => <li key={index}>{edit}</li>)}
+                    </ul>
+                  </div>
+                )}
                 <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-foreground">{candidate.text}</p>
               </div>
             ))}

@@ -209,7 +209,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 throw new ArgumentException("Stale blueprint must be regenerated before review.", nameof(input));
             }
 
-            var review = BuildReview(blueprint, DateTimeOffset.UtcNow);
+            var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UtcNow);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
             await InsertReviewAsync(connection, transaction, review, cancellationToken);
             await UpdateBlueprintStatusAsync(
@@ -260,19 +260,23 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
             var changedBeats = blueprint.Beats.ToDictionary(beat => beat.BeatId, StringComparer.Ordinal);
             var revisionRows = new List<BlueprintRevisionRow>();
+            var revised = blueprint;
             foreach (var change in input.Changes)
             {
-                ApplyRevisionChange(changedBeats, change, revisionRows, origin, reason, blueprint.LatestReview?.ReviewId);
+                revised = ApplyRevisionChange(revised, changedBeats, change, revisionRows, origin, reason, blueprint.LatestReview?.ReviewId);
             }
 
-            var revised = blueprint with
+            revised = revised with
             {
                 Status = ReferenceBlueprintStates.Draft,
-                Beats = blueprint.Beats.Select(beat => changedBeats[beat.BeatId]).ToArray(),
+                Beats = revised.Beats.Select(beat => changedBeats[beat.BeatId]).ToArray(),
                 LatestReview = null,
                 UpdatedAt = DateTimeOffset.UtcNow
             };
-            revised = revised with { AnalysisContractHash = ComputeAnalysisContractHash(revised) };
+            revised = revised with
+            {
+                AnalysisContractHash = ReferenceChapterBlueprintNormalizer.ComputeAnalysisContractHash(revised)
+            };
 
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
             await UpdateBlueprintAfterRevisionAsync(connection, transaction, revised, cancellationToken);
@@ -321,7 +325,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 throw new ArgumentException("Blueprint approval requires a passing review.", nameof(input));
             }
 
-            if (!ReviewMatchesBlueprint(blueprint, review))
+            if (!ReferenceAnchoredDraftPreflight.ReviewMatchesBlueprint(blueprint, review))
             {
                 throw new ArgumentException("Blueprint approval requires a current passing review for this exact blueprint contract.", nameof(input));
             }
@@ -361,7 +365,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             throw new ArgumentException("Material binding requires an approved blueprint.", nameof(input));
         }
 
-        EnsureBlueprintHasCurrentPassingReview(blueprint, "Material binding");
+        ReferenceAnchoredDraftPreflight.EnsureCurrentPassingReview(blueprint, "Material binding");
 
         var now = DateTimeOffset.UtcNow;
         var boundLinks = new List<ScoredMaterialLink>();
@@ -380,7 +384,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 maxResultsPerBeat,
                 cancellationToken);
             var scored = materials
-                .Select(material => ScoreMaterialForBeat(blueprint.BlueprintId, beat, material, now))
+                .Select(material => ScoreMaterialForBeat(blueprint.BlueprintId, blueprint.AnalysisContractHash, beat, material, now))
                 .Where(item => item.Score > 0 && item.HasFunctionalFit)
                 .OrderByDescending(item => item.Score)
                 .ThenBy(item => item.Link.MaterialId, StringComparer.Ordinal)
@@ -424,20 +428,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         ValidateBlueprintId(input.BlueprintId);
         var blueprint = await GetChapterBlueprintAsync(input.NovelId, input.BlueprintId, cancellationToken)
             ?? throw new ArgumentException("Blueprint does not exist.", nameof(input));
-        if (string.Equals(blueprint.Status, ReferenceBlueprintStates.Stale, StringComparison.Ordinal))
-        {
-            throw new ArgumentException("Stale blueprint must be regenerated before reference-anchored draft generation.", nameof(input));
-        }
-
-        if (!string.Equals(blueprint.Status, ReferenceBlueprintStates.Approved, StringComparison.Ordinal) &&
-            !string.Equals(blueprint.Status, ReferenceBlueprintStates.MaterialBound, StringComparison.Ordinal))
-        {
-            throw new ArgumentException("Reference-anchored draft generation requires an approved blueprint.", nameof(input));
-        }
-
-        EnsureBlueprintHasCurrentPassingReview(blueprint, "Reference-anchored draft generation");
-
-        var targetBeats = SelectTargetBeats(blueprint, input.BeatIds);
+        ReferenceAnchoredDraftPreflight.EnsureDraftGenerationAllowed(blueprint);
+        var targetBeats = ReferenceAnchoredDraftPreflight.SelectTargetBeats(blueprint, input.BeatIds);
         var selectedLinks = await EnsureSelectedMaterialLinksAsync(input.NovelId, blueprint, targetBeats, cancellationToken);
         var candidates = await GenerateBeatCandidatesAsync(
             input.NovelId,
@@ -461,7 +453,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         ValidateBlueprintId(input.BlueprintId);
         var blueprint = await GetChapterBlueprintAsync(input.NovelId, input.BlueprintId, cancellationToken)
             ?? throw new ArgumentException("Blueprint does not exist.", nameof(input));
-        EnsureBlueprintHasCurrentPassingReview(blueprint, "Reference-anchored draft audit");
+        ReferenceAnchoredDraftPreflight.EnsureCurrentPassingReview(blueprint, "Reference-anchored draft audit");
 
         var candidateIds = NormalizeList(input.CandidateIds);
         if (candidateIds.Count == 0)
@@ -501,25 +493,6 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         {
             _mutex.Release();
         }
-    }
-
-    private static IReadOnlyList<ReferenceChapterBlueprintBeatPayload> SelectTargetBeats(
-        ReferenceChapterBlueprintPayload blueprint,
-        IReadOnlyList<string>? requestedBeatIds)
-    {
-        var requested = requestedBeatIds?
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id.Trim())
-            .ToHashSet(StringComparer.Ordinal) ?? [];
-        var targetBeats = requested.Count == 0
-            ? blueprint.Beats
-            : blueprint.Beats.Where(beat => requested.Contains(beat.BeatId)).ToArray();
-        if (targetBeats.Count == 0)
-        {
-            throw new ArgumentException("Draft generation requires at least one valid blueprint beat.", nameof(requestedBeatIds));
-        }
-
-        return targetBeats;
     }
 
     private async ValueTask<IReadOnlyList<ReferenceDraftParagraphCandidatePayload>> GenerateBeatCandidatesAsync(
@@ -575,11 +548,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         IReadOnlyList<ReferenceChapterBlueprintBeatPayload> targetBeats,
         CancellationToken cancellationToken)
     {
-        var requiredBeatIds = targetBeats
-            .Where(beat => string.IsNullOrWhiteSpace(beat.NoReuseReason))
-            .Select(beat => beat.BeatId)
-            .ToArray();
-        if (requiredBeatIds.Length == 0)
+        var requiredBeatIds = ReferenceAnchoredDraftPreflight.RequiredMaterialBeatIds(targetBeats);
+        if (requiredBeatIds.Count == 0)
         {
             return new Dictionary<string, ReferenceBlueprintMaterialLinkPayload>(StringComparer.Ordinal);
         }
@@ -594,19 +564,10 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 connection,
                 novelId,
                 blueprint.BlueprintId,
+                blueprint.AnalysisContractHash,
                 requiredBeatIds,
                 cancellationToken);
-            var missing = requiredBeatIds
-                .Where(beatId => !links.ContainsKey(beatId))
-                .ToArray();
-            if (missing.Length > 0)
-            {
-                throw new ArgumentException(
-                    "Reference-anchored draft generation requires selected reference material links for every target beat.",
-                    nameof(targetBeats));
-            }
-
-            return links;
+            return ReferenceAnchoredDraftPreflight.EnsureSelectedMaterialLinksForTargetBeats(targetBeats, links);
         }
         finally
         {
@@ -662,6 +623,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
     private static ScoredMaterialLink ScoreMaterialForBeat(
         long blueprintId,
+        string analysisContractHash,
         ReferenceChapterBlueprintBeatPayload beat,
         ReferenceMaterialPayload material,
         DateTimeOffset now)
@@ -700,8 +662,9 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             beat.MaxRewriteLevel,
             Selected: false,
             roundedScore,
+            components,
             now);
-        return new ScoredMaterialLink(link, components, hasFunctionalFit);
+        return new ScoredMaterialLink(link, analysisContractHash, components, hasFunctionalFit);
     }
 
     private static bool ContainsTag(IReadOnlyList<string> tags, string value)
@@ -785,7 +748,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             ConflictPressure: chapterFunction,
             CausalityIn: "chapter starts from the provided plan or chapter goal",
             CausalityOut: "chapter must reach the declared final hook without adding forbidden facts",
-            TransitionIn: "continue from previous known state",
+            TransitionIn: "transition pressure continues from previous known state",
             TransitionOut: "carry pressure into the final hook",
             PovCharacter: "unspecified",
             NarrativeDistance: "close",
@@ -868,183 +831,10 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             LatestReview: null,
             now,
             now);
-        return payload with { AnalysisContractHash = ComputeAnalysisContractHash(payload) };
-    }
-
-    private static ReferenceChapterBlueprintReviewPayload BuildReview(
-        ReferenceChapterBlueprintPayload blueprint,
-        DateTimeOffset now)
-    {
-        var logicErrors = new List<string>();
-        var causalityErrors = new List<string>();
-        var emotionErrors = new List<string>();
-        var narrationErrors = new List<string>();
-        var executionErrors = new List<string>();
-        var characterStateErrors = new List<string>();
-        var povErrors = new List<string>();
-        var continuityErrors = new List<string>();
-        var transitionErrors = new List<string>();
-        var forbiddenFactErrors = new List<string>();
-        var referenceBindingErrors = new List<string>();
-        var materialFitErrors = new List<string>();
-        var screenplayRisks = new List<string>();
-        var aiRisks = new List<string>();
-        var novelisticNarrationErrors = new List<string>();
-
-        if (IsEmptyTrack(blueprint.LogicAnalysis) ||
-            IsEmptyTrack(blueprint.EmotionAnalysis) ||
-            IsEmptyTrack(blueprint.NarrationAnalysis) ||
-            IsEmptyTrack(blueprint.CharacterAnalysis) ||
-            IsEmptyTrack(blueprint.ReferenceAnalysis) ||
-            IsEmptyTrack(blueprint.TransitionPlan))
+        return payload with
         {
-            logicErrors.Add("Blueprint must contain complete logic, emotion, narration, character, reference, and transition tracks.");
-        }
-
-        if (IsEmptyExecutionTrack(blueprint.ExecutionContract))
-        {
-            executionErrors.Add("Blueprint must contain a complete execution track.");
-        }
-
-        if (blueprint.Beats.Count == 0)
-        {
-            causalityErrors.Add("Blueprint must contain at least one beat.");
-        }
-
-        foreach (var beat in blueprint.Beats.OrderBy(item => item.BeatIndex))
-        {
-            if (beat.BeatIndex > 1 && string.IsNullOrWhiteSpace(beat.CausalityIn))
-            {
-                causalityErrors.Add($"Beat {beat.BeatIndex} is missing causality_in.");
-            }
-
-            if (string.IsNullOrWhiteSpace(beat.CausalityOut))
-            {
-                causalityErrors.Add($"Beat {beat.BeatIndex} is missing causality_out.");
-            }
-
-            if (string.IsNullOrWhiteSpace(beat.TransitionIn) || string.IsNullOrWhiteSpace(beat.TransitionOut))
-            {
-                transitionErrors.Add($"Beat {beat.BeatIndex} is missing transition reason.");
-            }
-
-            if (!string.Equals(beat.EmotionBefore, beat.EmotionAfter, StringComparison.Ordinal) &&
-                (string.IsNullOrWhiteSpace(beat.EmotionTrigger) || string.IsNullOrWhiteSpace(beat.ExternalEvidence)))
-            {
-                emotionErrors.Add($"Beat {beat.BeatIndex} changes emotion without trigger or external evidence.");
-            }
-
-            if (beat.CharacterGoals.Count == 0 || beat.CharacterStatesBefore.Count == 0 || beat.CharacterStatesAfter.Count == 0)
-            {
-                characterStateErrors.Add($"Beat {beat.BeatIndex} is missing character state mechanics.");
-            }
-
-            if (beat.ViewpointForbiddenKnowledge.Any(forbidden =>
-                    beat.ViewpointAllowedKnowledge.Contains(forbidden, StringComparer.OrdinalIgnoreCase)))
-            {
-                povErrors.Add($"Beat {beat.BeatIndex} allows viewpoint knowledge that is also forbidden.");
-            }
-
-            if (beat.ProseDuties.All(duty =>
-                    string.Equals(duty, "action", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(duty, "dialogue", StringComparison.OrdinalIgnoreCase)))
-            {
-                screenplayRisks.Add($"Beat {beat.BeatIndex} has only action/dialogue prose duties.");
-            }
-
-            if (string.IsNullOrWhiteSpace(beat.ParagraphIntention) ||
-                string.IsNullOrWhiteSpace(beat.ExecutionMode) ||
-                string.IsNullOrWhiteSpace(beat.AntiScreenplayDuty) ||
-                string.IsNullOrWhiteSpace(beat.CandidateRejectionRule))
-            {
-                executionErrors.Add($"Beat {beat.BeatIndex} is missing paragraph intention, execution mode, anti-screenplay duty, or rejection rule.");
-            }
-
-            if ((string.Equals(beat.BeatType, ReferenceBlueprintBeatTypes.Action, StringComparison.Ordinal) ||
-                    string.Equals(beat.BeatType, ReferenceBlueprintBeatTypes.DialogueExchange, StringComparison.Ordinal)) &&
-                string.IsNullOrWhiteSpace(beat.SubtextPlan) &&
-                string.IsNullOrWhiteSpace(beat.SensoryAnchorTarget) &&
-                string.IsNullOrWhiteSpace(beat.SourceBackedDetailTarget))
-            {
-                novelisticNarrationErrors.Add($"Beat {beat.BeatIndex} reads like screenplay blocking without subtext, sensory anchor, or source-backed detail.");
-            }
-
-            if (string.IsNullOrWhiteSpace(beat.ReferenceQuery.Query) || beat.RequiredMaterialTypes.Count == 0)
-            {
-                referenceBindingErrors.Add($"Beat {beat.BeatIndex} is missing reference query or material type.");
-            }
-
-            if (string.IsNullOrWhiteSpace(beat.NarrationStrategy))
-            {
-                narrationErrors.Add($"Beat {beat.BeatIndex} is missing narration strategy.");
-            }
-        }
-
-        foreach (var forbidden in blueprint.ForbiddenFacts.Where(item => !string.IsNullOrWhiteSpace(item)))
-        {
-            if (ContainsForbidden(blueprint.FinalHook, forbidden) ||
-                blueprint.Beats.Any(beat => beat.SceneFacts.Any(fact => ContainsForbidden(fact, forbidden))))
-            {
-                forbiddenFactErrors.Add($"Forbidden fact appears in blueprint: {forbidden}");
-            }
-        }
-
-        if (blueprint.RiskFlags.Any(flag => flag.Contains("ai", StringComparison.OrdinalIgnoreCase)))
-        {
-            aiRisks.Add("Blueprint already carries AI prose risk flags.");
-        }
-
-        var defectCount = logicErrors.Count + causalityErrors.Count + emotionErrors.Count +
-            narrationErrors.Count + executionErrors.Count + characterStateErrors.Count + povErrors.Count +
-            continuityErrors.Count + transitionErrors.Count + forbiddenFactErrors.Count +
-            referenceBindingErrors.Count + materialFitErrors.Count + screenplayRisks.Count +
-            novelisticNarrationErrors.Count;
-        var status = defectCount == 0
-            ? ReferenceBlueprintReviewStatuses.Passed
-            : ReferenceBlueprintReviewStatuses.Failed;
-        var requiredFixes = new[]
-        {
-            logicErrors,
-            causalityErrors,
-            emotionErrors,
-            narrationErrors,
-            executionErrors,
-            characterStateErrors,
-            povErrors,
-            continuityErrors,
-            transitionErrors,
-            forbiddenFactErrors,
-            referenceBindingErrors,
-            materialFitErrors,
-            screenplayRisks,
-            novelisticNarrationErrors
-        }.SelectMany(items => items).ToArray();
-
-        return new ReferenceChapterBlueprintReviewPayload(
-            "review-" + Guid.NewGuid().ToString("N"),
-            blueprint.BlueprintId,
-            blueprint.ContextHash,
-            blueprint.SourcePlanHash,
-            blueprint.AnalysisContractHash,
-            status,
-            Math.Max(0, 1.0 - defectCount * 0.1),
-            logicErrors,
-            causalityErrors,
-            emotionErrors,
-            narrationErrors,
-            executionErrors,
-            characterStateErrors,
-            povErrors,
-            continuityErrors,
-            transitionErrors,
-            forbiddenFactErrors,
-            referenceBindingErrors,
-            materialFitErrors,
-            screenplayRisks,
-            aiRisks,
-            novelisticNarrationErrors,
-            requiredFixes,
-            now);
+            AnalysisContractHash = ReferenceChapterBlueprintNormalizer.ComputeAnalysisContractHash(payload)
+        };
     }
 
     private async ValueTask<long> InsertBlueprintAsync(
@@ -1473,6 +1263,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         SqliteConnection connection,
         long novelId,
         long blueprintId,
+        string analysisContractHash,
         IReadOnlyList<string> beatIds,
         CancellationToken cancellationToken)
     {
@@ -1492,17 +1283,19 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
         command.CommandText = $$"""
             SELECT l.link_id, l.blueprint_id, l.beat_id, l.material_id, l.intended_use,
-                   l.max_rewrite_level, l.selected, l.score, l.created_at
+                   l.max_rewrite_level, l.selected, l.score, l.score_components_json, l.created_at
             FROM reference_blueprint_material_links l
             INNER JOIN reference_chapter_blueprints b ON b.blueprint_id = l.blueprint_id
             WHERE b.novel_id = $novel_id
               AND l.blueprint_id = $blueprint_id
+              AND l.analysis_contract_hash = $analysis_contract_hash
               AND l.selected = 1
               AND l.status = 'active'
               AND l.beat_id IN ({{string.Join(", ", parameterNames)}});
             """;
         command.Parameters.AddWithValue("$novel_id", novelId);
         command.Parameters.AddWithValue("$blueprint_id", blueprintId);
+        command.Parameters.AddWithValue("$analysis_contract_hash", analysisContractHash);
         var linked = new Dictionary<string, ReferenceBlueprintMaterialLinkPayload>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -1516,7 +1309,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 reader.GetString(5),
                 reader.GetInt32(6) != 0,
                 reader.GetDouble(7),
-                ParseTimestamp(reader.GetString(8)));
+                ReadJson<IReadOnlyDictionary<string, double>>(reader.GetString(8)),
+                ParseTimestamp(reader.GetString(9)));
             linked[link.BeatId] = link;
         }
 
@@ -1544,14 +1338,15 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             command.Transaction = transaction;
             command.CommandText = """
                 INSERT INTO reference_blueprint_material_links
-                  (link_id, blueprint_id, beat_id, material_id, intended_use, max_rewrite_level,
+                  (link_id, blueprint_id, analysis_contract_hash, beat_id, material_id, intended_use, max_rewrite_level,
                    selected, score, score_components_json, status, created_at)
                 VALUES
-                  ($link_id, $blueprint_id, $beat_id, $material_id, $intended_use, $max_rewrite_level,
+                  ($link_id, $blueprint_id, $analysis_contract_hash, $beat_id, $material_id, $intended_use, $max_rewrite_level,
                    $selected, $score, $score_components_json, $status, $created_at);
                 """;
             command.Parameters.AddWithValue("$link_id", item.Link.LinkId);
             command.Parameters.AddWithValue("$blueprint_id", item.Link.BlueprintId);
+            command.Parameters.AddWithValue("$analysis_contract_hash", item.AnalysisContractHash);
             command.Parameters.AddWithValue("$beat_id", item.Link.BeatId);
             command.Parameters.AddWithValue("$material_id", item.Link.MaterialId);
             command.Parameters.AddWithValue("$intended_use", item.Link.IntendedUse);
@@ -1700,6 +1495,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 reference_analysis_json = $reference_analysis_json,
                 transition_plan_json = $transition_plan_json,
                 execution_contract_json = $execution_contract_json,
+                known_facts_json = $known_facts_json,
+                forbidden_facts_json = $forbidden_facts_json,
                 approved_review_id = '',
                 approved_at = '',
                 updated_at = $updated_at
@@ -1714,6 +1511,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         command.Parameters.AddWithValue("$reference_analysis_json", JsonSerializer.Serialize(blueprint.ReferenceAnalysis, JsonOptions));
         command.Parameters.AddWithValue("$transition_plan_json", JsonSerializer.Serialize(blueprint.TransitionPlan, JsonOptions));
         command.Parameters.AddWithValue("$execution_contract_json", JsonSerializer.Serialize(blueprint.ExecutionContract, JsonOptions));
+        command.Parameters.AddWithValue("$known_facts_json", JsonSerializer.Serialize(blueprint.KnownFacts, JsonOptions));
+        command.Parameters.AddWithValue("$forbidden_facts_json", JsonSerializer.Serialize(blueprint.ForbiddenFacts, JsonOptions));
         command.Parameters.AddWithValue("$updated_at", FormatTimestamp(blueprint.UpdatedAt));
         command.Parameters.AddWithValue("$blueprint_id", blueprint.BlueprintId);
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -2051,6 +1850,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             CREATE TABLE IF NOT EXISTS reference_blueprint_material_links (
               link_id TEXT PRIMARY KEY,
               blueprint_id INTEGER NOT NULL,
+              analysis_contract_hash TEXT NOT NULL,
               beat_id TEXT NOT NULL,
               material_id TEXT NOT NULL,
               intended_use TEXT NOT NULL,
@@ -2195,6 +1995,12 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         await EnsureColumnAsync(
             connection,
             "reference_blueprint_material_links",
+            "analysis_contract_hash",
+            "TEXT NOT NULL DEFAULT ''",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "reference_blueprint_material_links",
             "score_components_json",
             "TEXT NOT NULL DEFAULT '{}'",
             cancellationToken);
@@ -2276,102 +2082,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
     }
 
-    private static bool IsEmptyTrack(ReferenceChapterBlueprintAnalysisTrackPayload track)
-    {
-        return string.IsNullOrWhiteSpace(track.Track) ||
-            string.IsNullOrWhiteSpace(track.Summary) ||
-            track.Points.Count == 0;
-    }
-
-    private static bool IsEmptyExecutionTrack(ReferenceChapterBlueprintExecutionTrackPayload track)
-    {
-        return string.IsNullOrWhiteSpace(track.Track) ||
-            string.IsNullOrWhiteSpace(track.Summary) ||
-            track.ParagraphIntentions.Count == 0 ||
-            track.ExecutionModes.Count == 0 ||
-            track.AntiScreenplayDuties.Count == 0 ||
-            track.CandidateRejectionRules.Count == 0;
-    }
-
-    private static string ComputeAnalysisContractHash(ReferenceChapterBlueprintPayload blueprint)
-    {
-        var contract = new
-        {
-            blueprint.LogicAnalysis,
-            blueprint.EmotionAnalysis,
-            blueprint.NarrationAnalysis,
-            blueprint.CharacterAnalysis,
-            blueprint.ReferenceAnalysis,
-            blueprint.TransitionPlan,
-            blueprint.ExecutionContract,
-            blueprint.KnownFacts,
-            blueprint.ForbiddenFacts,
-            beats = blueprint.Beats.Select(beat => new
-            {
-                beat.BeatId,
-                beat.BeatIndex,
-                beat.NarrativeFunction,
-                beat.CausalityIn,
-                beat.CausalityOut,
-                beat.TransitionIn,
-                beat.TransitionOut,
-                beat.PovCharacter,
-                beat.NarrativeDistance,
-                beat.ViewpointAllowedKnowledge,
-                beat.ViewpointForbiddenKnowledge,
-                beat.CharacterStatesBefore,
-                beat.CharacterStatesAfter,
-                beat.EmotionTrigger,
-                beat.EmotionBefore,
-                beat.EmotionAfter,
-                beat.SuppressedReaction,
-                beat.ExternalEvidence,
-                beat.NarrationStrategy,
-                beat.RhythmStrategy,
-                beat.ParagraphIntention,
-                beat.ExecutionMode,
-                beat.AntiScreenplayDuty,
-                beat.SensoryAnchorTarget,
-                beat.SubtextPlan,
-                beat.SourceBackedDetailTarget,
-                beat.CandidateRejectionRule,
-                beat.SceneFacts,
-                beat.ForbiddenFacts,
-                beat.ReferenceQuery,
-                beat.RequiredMaterialTypes,
-                beat.MaxRewriteLevel,
-                beat.SlotPlan,
-                beat.LockedPhrasePolicy,
-                beat.NoReuseReason,
-                beat.ProseDuties
-            }).ToArray()
-        };
-        return HashText(JsonSerializer.Serialize(contract, JsonOptions));
-    }
-
-    private static bool ReviewMatchesBlueprint(
+    private static ReferenceChapterBlueprintPayload ApplyRevisionChange(
         ReferenceChapterBlueprintPayload blueprint,
-        ReferenceChapterBlueprintReviewPayload review)
-    {
-        return string.Equals(review.ContextHash, blueprint.ContextHash, StringComparison.Ordinal) &&
-            string.Equals(review.SourcePlanHash, blueprint.SourcePlanHash, StringComparison.Ordinal) &&
-            string.Equals(review.AnalysisContractHash, blueprint.AnalysisContractHash, StringComparison.Ordinal);
-    }
-
-    private static void EnsureBlueprintHasCurrentPassingReview(
-        ReferenceChapterBlueprintPayload blueprint,
-        string operationName)
-    {
-        var review = blueprint.LatestReview
-            ?? throw new ArgumentException(operationName + " requires a current passing blueprint review.", nameof(blueprint));
-        if (!string.Equals(review.Status, ReferenceBlueprintReviewStatuses.Passed, StringComparison.Ordinal) ||
-            !ReviewMatchesBlueprint(blueprint, review))
-        {
-            throw new ArgumentException(operationName + " requires a current passing blueprint review for this exact blueprint contract.", nameof(blueprint));
-        }
-    }
-
-    private static void ApplyRevisionChange(
         IDictionary<string, ReferenceChapterBlueprintBeatPayload> beats,
         ReferenceBlueprintRevisionChangePayload change,
         ICollection<BlueprintRevisionRow> revisionRows,
@@ -2388,7 +2100,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         const string beatPrefix = "beat:";
         if (!fieldPath.StartsWith(beatPrefix, StringComparison.Ordinal))
         {
-            throw new ArgumentException("Revision currently supports field paths like 'beat:{beat_id}:paragraph_intention'.", nameof(change));
+            return ApplyBlueprintRevisionChange(blueprint, fieldPath, change, revisionRows, origin, reason, invalidatedReviewId);
         }
 
         var beatAndField = fieldPath[beatPrefix.Length..];
@@ -2405,9 +2117,9 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             throw new ArgumentException("Revision beat id does not exist.", nameof(change));
         }
 
-        var newValue = NormalizeOptional(change.NewValue, string.Empty, 2_000);
         var previousValue = GetRevisableBeatField(beat, fieldName);
-        var updated = SetRevisableBeatField(beat, fieldName, newValue);
+        var updated = SetRevisableBeatField(beat, fieldName, change.NewValue);
+        var newValue = GetRevisableBeatField(updated, fieldName);
         beats[beatId] = updated;
         revisionRows.Add(new BlueprintRevisionRow(
             "revision-" + Guid.NewGuid().ToString("N"),
@@ -2418,12 +2130,303 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             reason,
             invalidatedReviewId ?? string.Empty,
             DateTimeOffset.UtcNow));
+        return blueprint;
+    }
+
+    private static ReferenceChapterBlueprintPayload ApplyBlueprintRevisionChange(
+        ReferenceChapterBlueprintPayload blueprint,
+        string fieldPath,
+        ReferenceBlueprintRevisionChangePayload change,
+        ICollection<BlueprintRevisionRow> revisionRows,
+        string origin,
+        string reason,
+        string? invalidatedReviewId)
+    {
+        switch (fieldPath)
+        {
+            case "known_facts":
+            {
+                var newValues = ParseRevisionStringList(change.NewValue);
+                AddRevisionRow(
+                    revisionRows,
+                    change.FieldPath,
+                    JsonSerializer.Serialize(blueprint.KnownFacts, JsonOptions),
+                    JsonSerializer.Serialize(newValues, JsonOptions),
+                    origin,
+                    reason,
+                    invalidatedReviewId);
+                return blueprint with { KnownFacts = newValues };
+            }
+
+            case "forbidden_facts":
+            {
+                var newValues = ParseRevisionStringList(change.NewValue);
+                AddRevisionRow(
+                    revisionRows,
+                    change.FieldPath,
+                    JsonSerializer.Serialize(blueprint.ForbiddenFacts, JsonOptions),
+                    JsonSerializer.Serialize(newValues, JsonOptions),
+                    origin,
+                    reason,
+                    invalidatedReviewId);
+                return blueprint with { ForbiddenFacts = newValues };
+            }
+
+            default:
+                if (TryApplyAnalysisTrackRevision(
+                    blueprint,
+                    fieldPath,
+                    change,
+                    revisionRows,
+                    origin,
+                    reason,
+                    invalidatedReviewId,
+                    out var analysisRevised))
+                {
+                    return analysisRevised;
+                }
+
+                if (TryApplyExecutionContractRevision(
+                    blueprint,
+                    fieldPath,
+                    change,
+                    revisionRows,
+                    origin,
+                    reason,
+                    invalidatedReviewId,
+                    out var executionRevised))
+                {
+                    return executionRevised;
+                }
+
+                throw new ArgumentException("Unsupported revisable blueprint field.", nameof(change));
+        }
+    }
+
+    private static bool TryApplyAnalysisTrackRevision(
+        ReferenceChapterBlueprintPayload blueprint,
+        string fieldPath,
+        ReferenceBlueprintRevisionChangePayload change,
+        ICollection<BlueprintRevisionRow> revisionRows,
+        string origin,
+        string reason,
+        string? invalidatedReviewId,
+        out ReferenceChapterBlueprintPayload revised)
+    {
+        revised = blueprint;
+        var separator = fieldPath.LastIndexOf('.');
+        if (separator <= 0 || separator == fieldPath.Length - 1)
+        {
+            return false;
+        }
+
+        var trackName = fieldPath[..separator];
+        var fieldName = fieldPath[(separator + 1)..];
+        if (!TryGetAnalysisTrack(blueprint, trackName, out var track))
+        {
+            return false;
+        }
+
+        var updated = fieldName switch
+        {
+            "summary" => track with { Summary = NormalizeOptional(change.NewValue, string.Empty, 2_000) },
+            "points" => track with { Points = ParseRevisionStringList(change.NewValue) },
+            _ => throw new ArgumentException("Unsupported revisable analysis track field.", nameof(change))
+        };
+        var previousValue = fieldName == "points"
+            ? JsonSerializer.Serialize(track.Points, JsonOptions)
+            : track.Summary;
+        var newValue = fieldName == "points"
+            ? JsonSerializer.Serialize(updated.Points, JsonOptions)
+            : updated.Summary;
+        AddRevisionRow(revisionRows, change.FieldPath, previousValue, newValue, origin, reason, invalidatedReviewId);
+        revised = SetAnalysisTrack(blueprint, trackName, updated);
+        return true;
+    }
+
+    private static bool TryGetAnalysisTrack(
+        ReferenceChapterBlueprintPayload blueprint,
+        string trackName,
+        out ReferenceChapterBlueprintAnalysisTrackPayload track)
+    {
+        switch (trackName)
+        {
+            case "logic_analysis":
+                track = blueprint.LogicAnalysis;
+                return true;
+            case "emotion_analysis":
+                track = blueprint.EmotionAnalysis;
+                return true;
+            case "narration_analysis":
+                track = blueprint.NarrationAnalysis;
+                return true;
+            case "character_analysis":
+                track = blueprint.CharacterAnalysis;
+                return true;
+            case "reference_analysis":
+                track = blueprint.ReferenceAnalysis;
+                return true;
+            case "transition_plan":
+                track = blueprint.TransitionPlan;
+                return true;
+            default:
+                track = new ReferenceChapterBlueprintAnalysisTrackPayload(string.Empty, string.Empty, []);
+                return false;
+        }
+    }
+
+    private static ReferenceChapterBlueprintPayload SetAnalysisTrack(
+        ReferenceChapterBlueprintPayload blueprint,
+        string trackName,
+        ReferenceChapterBlueprintAnalysisTrackPayload track)
+    {
+        return trackName switch
+        {
+            "logic_analysis" => blueprint with { LogicAnalysis = track },
+            "emotion_analysis" => blueprint with { EmotionAnalysis = track },
+            "narration_analysis" => blueprint with { NarrationAnalysis = track },
+            "character_analysis" => blueprint with { CharacterAnalysis = track },
+            "reference_analysis" => blueprint with { ReferenceAnalysis = track },
+            "transition_plan" => blueprint with { TransitionPlan = track },
+            _ => throw new ArgumentException("Unsupported analysis track.", nameof(trackName))
+        };
+    }
+
+    private static bool TryApplyExecutionContractRevision(
+        ReferenceChapterBlueprintPayload blueprint,
+        string fieldPath,
+        ReferenceBlueprintRevisionChangePayload change,
+        ICollection<BlueprintRevisionRow> revisionRows,
+        string origin,
+        string reason,
+        string? invalidatedReviewId,
+        out ReferenceChapterBlueprintPayload revised)
+    {
+        revised = blueprint;
+        const string prefix = "execution_contract.";
+        if (!fieldPath.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var fieldName = fieldPath[prefix.Length..];
+        var contract = blueprint.ExecutionContract;
+        var previousValue = GetExecutionContractField(contract, fieldName);
+        var updated = SetExecutionContractField(contract, fieldName, change.NewValue);
+        var newValue = GetExecutionContractField(updated, fieldName);
+        AddRevisionRow(revisionRows, change.FieldPath, previousValue, newValue, origin, reason, invalidatedReviewId);
+        revised = blueprint with { ExecutionContract = updated };
+        return true;
+    }
+
+    private static string GetExecutionContractField(
+        ReferenceChapterBlueprintExecutionTrackPayload contract,
+        string fieldName)
+    {
+        return fieldName switch
+        {
+            "summary" => contract.Summary,
+            "paragraph_intentions" => JsonSerializer.Serialize(contract.ParagraphIntentions, JsonOptions),
+            "execution_modes" => JsonSerializer.Serialize(contract.ExecutionModes, JsonOptions),
+            "anti_screenplay_duties" => JsonSerializer.Serialize(contract.AntiScreenplayDuties, JsonOptions),
+            "source_backed_detail_targets" => JsonSerializer.Serialize(contract.SourceBackedDetailTargets, JsonOptions),
+            "candidate_rejection_rules" => JsonSerializer.Serialize(contract.CandidateRejectionRules, JsonOptions),
+            _ => throw new ArgumentException("Unsupported revisable execution contract field.", nameof(fieldName))
+        };
+    }
+
+    private static ReferenceChapterBlueprintExecutionTrackPayload SetExecutionContractField(
+        ReferenceChapterBlueprintExecutionTrackPayload contract,
+        string fieldName,
+        string value)
+    {
+        return fieldName switch
+        {
+            "summary" => contract with { Summary = NormalizeOptional(value, string.Empty, 2_000) },
+            "paragraph_intentions" => contract with { ParagraphIntentions = ParseRevisionStringList(value) },
+            "execution_modes" => contract with { ExecutionModes = ParseRevisionStringList(value) },
+            "anti_screenplay_duties" => contract with { AntiScreenplayDuties = ParseRevisionStringList(value) },
+            "source_backed_detail_targets" => contract with { SourceBackedDetailTargets = ParseRevisionStringList(value) },
+            "candidate_rejection_rules" => contract with { CandidateRejectionRules = ParseRevisionStringList(value) },
+            _ => throw new ArgumentException("Unsupported revisable execution contract field.", nameof(fieldName))
+        };
+    }
+
+    private static void AddRevisionRow(
+        ICollection<BlueprintRevisionRow> revisionRows,
+        string fieldPath,
+        string previousValue,
+        string newValue,
+        string origin,
+        string reason,
+        string? invalidatedReviewId)
+    {
+        revisionRows.Add(new BlueprintRevisionRow(
+            "revision-" + Guid.NewGuid().ToString("N"),
+            fieldPath,
+            HashText(previousValue),
+            HashText(newValue),
+            origin,
+            reason,
+            invalidatedReviewId ?? string.Empty,
+            DateTimeOffset.UtcNow));
+    }
+
+    private static IReadOnlyList<string> ParseRevisionStringList(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            try
+            {
+                return NormalizeList(JsonSerializer.Deserialize<IReadOnlyList<string>>(trimmed, JsonOptions));
+            }
+            catch (JsonException exception)
+            {
+                throw new ArgumentException(
+                    "Revision list value must be a JSON string array or a newline-separated list.",
+                    nameof(value),
+                    exception);
+            }
+        }
+
+        return NormalizeList(trimmed.Split(
+            ['\r', '\n', ';', '；'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
     private static string GetRevisableBeatField(ReferenceChapterBlueprintBeatPayload beat, string fieldName)
     {
         return fieldName switch
         {
+            "narrative_function" => beat.NarrativeFunction,
+            "logic_premise" => beat.LogicPremise,
+            "conflict_pressure" => beat.ConflictPressure,
+            "causality_in" => beat.CausalityIn,
+            "causality_out" => beat.CausalityOut,
+            "transition_in" => beat.TransitionIn,
+            "transition_out" => beat.TransitionOut,
+            "pov_character" => beat.PovCharacter,
+            "narrative_distance" => beat.NarrativeDistance,
+            "viewpoint_allowed_knowledge" => JsonSerializer.Serialize(beat.ViewpointAllowedKnowledge, JsonOptions),
+            "viewpoint_forbidden_knowledge" => JsonSerializer.Serialize(beat.ViewpointForbiddenKnowledge, JsonOptions),
+            "character_states_before" => JsonSerializer.Serialize(beat.CharacterStatesBefore, JsonOptions),
+            "character_states_after" => JsonSerializer.Serialize(beat.CharacterStatesAfter, JsonOptions),
+            "character_goals" => JsonSerializer.Serialize(beat.CharacterGoals, JsonOptions),
+            "character_misbeliefs" => JsonSerializer.Serialize(beat.CharacterMisbeliefs, JsonOptions),
+            "relationship_pressure" => JsonSerializer.Serialize(beat.RelationshipPressure, JsonOptions),
+            "emotion_trigger" => beat.EmotionTrigger,
+            "emotion_before" => beat.EmotionBefore,
+            "emotion_after" => beat.EmotionAfter,
+            "suppressed_reaction" => beat.SuppressedReaction,
+            "external_evidence" => beat.ExternalEvidence,
+            "narration_strategy" => beat.NarrationStrategy,
+            "rhythm_strategy" => beat.RhythmStrategy,
             "paragraph_intention" => beat.ParagraphIntention,
             "execution_mode" => beat.ExecutionMode,
             "anti_screenplay_duty" => beat.AntiScreenplayDuty,
@@ -2431,6 +2434,20 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             "subtext_plan" => beat.SubtextPlan,
             "source_backed_detail_target" => beat.SourceBackedDetailTarget,
             "candidate_rejection_rule" => beat.CandidateRejectionRule,
+            "scene_facts" => JsonSerializer.Serialize(beat.SceneFacts, JsonOptions),
+            "forbidden_facts" => JsonSerializer.Serialize(beat.ForbiddenFacts, JsonOptions),
+            "required_material_types" => JsonSerializer.Serialize(beat.RequiredMaterialTypes, JsonOptions),
+            "max_rewrite_level" => beat.MaxRewriteLevel,
+            "locked_phrase_policy" => beat.LockedPhrasePolicy,
+            "no_reuse_reason" => beat.NoReuseReason,
+            "prose_duties" => JsonSerializer.Serialize(beat.ProseDuties, JsonOptions),
+            "reference_query.query" => beat.ReferenceQuery.Query,
+            "reference_query.material_types" => JsonSerializer.Serialize(beat.ReferenceQuery.MaterialTypes, JsonOptions),
+            "reference_query.emotion_tags" => JsonSerializer.Serialize(beat.ReferenceQuery.EmotionTags, JsonOptions),
+            "reference_query.function_tags" => JsonSerializer.Serialize(beat.ReferenceQuery.FunctionTags, JsonOptions),
+            "reference_query.pov_tags" => JsonSerializer.Serialize(beat.ReferenceQuery.PovTags, JsonOptions),
+            "reference_query.technique_tags" => JsonSerializer.Serialize(beat.ReferenceQuery.TechniqueTags, JsonOptions),
+            "reference_query.max_results" => beat.ReferenceQuery.MaxResults.ToString(CultureInfo.InvariantCulture),
             _ => throw new ArgumentException("Unsupported revisable beat field.", nameof(fieldName))
         };
     }
@@ -2440,23 +2457,65 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         string fieldName,
         string value)
     {
+        var normalized = NormalizeOptional(value, string.Empty, 2_000);
         return fieldName switch
         {
-            "paragraph_intention" => beat with { ParagraphIntention = value },
-            "execution_mode" => beat with { ExecutionMode = value },
-            "anti_screenplay_duty" => beat with { AntiScreenplayDuty = value },
-            "sensory_anchor_target" => beat with { SensoryAnchorTarget = value },
-            "subtext_plan" => beat with { SubtextPlan = value },
-            "source_backed_detail_target" => beat with { SourceBackedDetailTarget = value },
-            "candidate_rejection_rule" => beat with { CandidateRejectionRule = value },
+            "narrative_function" => beat with { NarrativeFunction = normalized },
+            "logic_premise" => beat with { LogicPremise = normalized },
+            "conflict_pressure" => beat with { ConflictPressure = normalized },
+            "causality_in" => beat with { CausalityIn = normalized },
+            "causality_out" => beat with { CausalityOut = normalized },
+            "transition_in" => beat with { TransitionIn = normalized },
+            "transition_out" => beat with { TransitionOut = normalized },
+            "pov_character" => beat with { PovCharacter = normalized },
+            "narrative_distance" => beat with { NarrativeDistance = normalized },
+            "viewpoint_allowed_knowledge" => beat with { ViewpointAllowedKnowledge = ParseRevisionStringList(value) },
+            "viewpoint_forbidden_knowledge" => beat with { ViewpointForbiddenKnowledge = ParseRevisionStringList(value) },
+            "character_states_before" => beat with { CharacterStatesBefore = ParseRevisionStringList(value) },
+            "character_states_after" => beat with { CharacterStatesAfter = ParseRevisionStringList(value) },
+            "character_goals" => beat with { CharacterGoals = ParseRevisionStringList(value) },
+            "character_misbeliefs" => beat with { CharacterMisbeliefs = ParseRevisionStringList(value) },
+            "relationship_pressure" => beat with { RelationshipPressure = ParseRevisionStringList(value) },
+            "emotion_trigger" => beat with { EmotionTrigger = normalized },
+            "emotion_before" => beat with { EmotionBefore = normalized },
+            "emotion_after" => beat with { EmotionAfter = normalized },
+            "suppressed_reaction" => beat with { SuppressedReaction = normalized },
+            "external_evidence" => beat with { ExternalEvidence = normalized },
+            "narration_strategy" => beat with { NarrationStrategy = normalized },
+            "rhythm_strategy" => beat with { RhythmStrategy = normalized },
+            "paragraph_intention" => beat with { ParagraphIntention = normalized },
+            "execution_mode" => beat with { ExecutionMode = normalized },
+            "anti_screenplay_duty" => beat with { AntiScreenplayDuty = normalized },
+            "sensory_anchor_target" => beat with { SensoryAnchorTarget = normalized },
+            "subtext_plan" => beat with { SubtextPlan = normalized },
+            "source_backed_detail_target" => beat with { SourceBackedDetailTarget = normalized },
+            "candidate_rejection_rule" => beat with { CandidateRejectionRule = normalized },
+            "scene_facts" => beat with { SceneFacts = ParseRevisionStringList(value) },
+            "forbidden_facts" => beat with { ForbiddenFacts = ParseRevisionStringList(value) },
+            "required_material_types" => beat with { RequiredMaterialTypes = ParseRevisionStringList(value) },
+            "max_rewrite_level" => beat with { MaxRewriteLevel = normalized },
+            "locked_phrase_policy" => beat with { LockedPhrasePolicy = normalized },
+            "no_reuse_reason" => beat with { NoReuseReason = normalized },
+            "prose_duties" => beat with { ProseDuties = ParseRevisionStringList(value) },
+            "reference_query.query" => beat with { ReferenceQuery = beat.ReferenceQuery with { Query = normalized } },
+            "reference_query.material_types" => beat with { ReferenceQuery = beat.ReferenceQuery with { MaterialTypes = ParseRevisionStringList(value) } },
+            "reference_query.emotion_tags" => beat with { ReferenceQuery = beat.ReferenceQuery with { EmotionTags = ParseRevisionStringList(value) } },
+            "reference_query.function_tags" => beat with { ReferenceQuery = beat.ReferenceQuery with { FunctionTags = ParseRevisionStringList(value) } },
+            "reference_query.pov_tags" => beat with { ReferenceQuery = beat.ReferenceQuery with { PovTags = ParseRevisionStringList(value) } },
+            "reference_query.technique_tags" => beat with { ReferenceQuery = beat.ReferenceQuery with { TechniqueTags = ParseRevisionStringList(value) } },
+            "reference_query.max_results" => beat with { ReferenceQuery = beat.ReferenceQuery with { MaxResults = ParseRevisionPositiveInt(value, 1, 50) } },
             _ => throw new ArgumentException("Unsupported revisable beat field.", nameof(fieldName))
         };
     }
 
-    private static bool ContainsForbidden(string value, string forbidden)
+    private static int ParseRevisionPositiveInt(string value, int minValue, int maxValue)
     {
-        return !string.IsNullOrWhiteSpace(value) &&
-            value.Contains(forbidden, StringComparison.OrdinalIgnoreCase);
+        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            throw new ArgumentException("Revision value must be an integer.", nameof(value));
+        }
+
+        return Math.Clamp(parsed, minValue, maxValue);
     }
 
     private static string BuildBeatId(long blueprintId, int beatIndex)
@@ -2560,6 +2619,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
     private sealed record ScoredMaterialLink(
         ReferenceBlueprintMaterialLinkPayload Link,
+        string AnalysisContractHash,
         IReadOnlyDictionary<string, double> ScoreComponents,
         bool HasFunctionalFit)
     {

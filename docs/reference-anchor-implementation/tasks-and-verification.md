@@ -135,9 +135,9 @@ Recommended implementation slices:
 
 1. Persist full blueprint records and beats with `context_hash`, `source_plan_hash`, `analysis_contract_hash`, `review_version`, and generator version.
 2. Build a deterministic context pack from chapter plan, previous state, world entities, known facts, forbidden facts, and selected anchors.
-3. Extract a `ReferenceChapterBlueprintNormalizer` so hashes and reviewed field sets are stable and reusable in service, tests, and future UI editing.
+3. [x] Extract a `ReferenceChapterBlueprintNormalizer` so hashes and reviewed field sets are stable and reusable in service, tests, and future UI editing.
 4. Add a constrained blueprint generator that returns structured payloads only.
-5. Extract a `ReferenceChapterBlueprintReviewer` and add deterministic review rules for logic, emotion, narration, character, reference-use, transition, execution, causality, POV, forbidden facts, prose duties, anti-screenplay duties, and final hook dependency.
+5. [x] Extract a `ReferenceChapterBlueprintReviewer` and add the current deterministic review rules for logic, emotion, narration, character, reference-use, transition, execution, causality, POV, forbidden facts, prose duties, anti-screenplay duties, and final hook dependency.
 6. Add an explicit approval gate that freezes the latest passing `analysis_contract_hash` and `review_version`.
 7. Add explicit revision and invalidation semantics for reviewed fields, approval rows, and material links.
 8. Add material binding only after approval, with score components and stale-link handling.
@@ -151,7 +151,7 @@ Recommended implementation slices:
 - [ ] Blueprint stores complete logic, emotion, narration, character, reference-use, transition, and execution tracks.
 - [ ] Each beat stores transition-in/out, character goal/knowledge/misbelief/state delta, suppressed reaction, external evidence, narration strategy, rhythm strategy, paragraph intention, execution mode, anti-screenplay duty, source-backed detail target, slot plan, locked phrase policy, and no-reuse reason.
 - [ ] Blueprint generator cannot persist final prose paragraphs as a substitute for beat duties.
-- [ ] Normalizer computes the same `analysis_contract_hash` for semantically identical payloads with equivalent whitespace/array defaults.
+- [x] Normalizer computes the same `analysis_contract_hash` for semantically identical payloads with equivalent whitespace/array defaults.
 - [ ] Reviewer is deterministic and idempotent for unchanged `blueprint_id`, `context_hash`, `source_plan_hash`, `analysis_contract_hash`, and `review_version`.
 - [ ] Review fails blueprints with missing analysis tracks, missing execution track, missing causality, unsupported emotional shifts, missing external evidence, POV knowledge leaks, missing transition reasons, forbidden facts, material mismatch, action/dialogue-only beats, or screenplay drift risks.
 - [ ] Review result separates logic, causality, emotion, narration, execution, character-state, POV, continuity, transition, forbidden-fact, reference-binding, material-fit, screenplay-drift, novelistic-narration, and AI-prose findings.
@@ -159,29 +159,31 @@ Recommended implementation slices:
 - [ ] Review stores `context_hash`, `source_plan_hash`, `analysis_contract_hash`, and `review_version` so approvals can be invalidated deterministically.
 - [ ] Approved status requires a passing review.
 - [ ] Approval records freeze `review_id`, `context_hash`, `source_plan_hash`, `analysis_contract_hash`, `review_version`, approver origin, and approval time.
-- [ ] A blueprint with `review_passed` but no explicit approval cannot bind materials or generate draft candidates.
+- [x] A blueprint with `review_passed` but no explicit approval cannot bind materials or generate draft candidates.
 - [ ] A blueprint with approval but no current material links cannot generate draft candidates unless every requested beat has an approved `no_reuse_reason`.
+- [x] Editing approved analysis tracks, execution contract, known/forbidden facts, and beat reference query invalidates approval and requires re-review.
+- [x] Editing approved beat POV, character-state, emotion-mechanic, scene-fact, prose-duty, and material-query tag fields invalidates approval and records revision paths.
 - [ ] Editing any approved blueprint beat, analysis track, execution track, known/forbidden fact, or reference query invalidates approval and requires re-review.
-- [ ] Blueprint revision records field paths, previous/new value hashes, origin, invalidated review id, and reason.
+- [x] Blueprint revision records field paths, previous/new value hashes, origin, invalidated review id, and reason.
 - [ ] Changing the source chapter plan hash marks existing blueprints stale.
 - [ ] Material binding links candidate reference materials to beats with max rewrite levels.
-- [ ] Material binding records score components: lexical, tag, function, emotion, POV, prose-duty, rewrite-budget, and user-verified boosts.
+- [x] Material binding records and exposes score components: lexical, tag, function, emotion, POV, prose-duty, and user-verified boosts.
 - [ ] Material binding rejects semantic-only matches when function, POV, emotion, or prose-duty fit is absent.
-- [ ] Material binding stores the `analysis_contract_hash` it was created against and is stale when that hash changes.
-- [ ] Stale material links are not used for draft generation.
+- [x] Material binding stores the `analysis_contract_hash` it was created against and is stale when that hash changes.
+- [x] Stale material links are not used for draft generation.
 
 **Verification:**
 
 - [ ] unit tests for blueprint payload serialization
 - [ ] unit tests for context-pack hashing and stale detection
-- [ ] unit tests for blueprint normalization and analysis-contract hashing
-- [ ] unit tests for deterministic blueprint review rules, including anti-screenplay and execution-track defects
+- [x] component tests for blueprint normalization and analysis-contract hashing
+- [x] component tests for deterministic blueprint review rules, including anti-screenplay and execution-track defects
 - [ ] fixture tests for fake emotion, hard transition, POV leak, missing prose duty, action/dialogue-only beat, and material mismatch
 - [ ] unit tests for explicit approval hash/version matching
-- [ ] unit tests for approval invalidation after beat/analysis edits
+- [x] integration tests for approval invalidation after beat, analysis, execution, known-fact, and reference-query edits
 - [ ] integration test for generate/review/approve/stale lifecycle
 - [ ] integration test for beat material binding and provenance joins
-- [ ] integration test proving review-passed-without-approval cannot bind or draft
+- [x] integration test proving review-passed-without-approval cannot bind or draft
 - [ ] bridge test for `BindReferenceBlueprintMaterials` after approval and for failure before approval
 
 **Files likely touched:**
@@ -202,7 +204,7 @@ Recommended implementation slices:
 
 1. Promote slot detection into first-class storage and make L1 adaptation depend on stored slot definitions.
 2. Extract rewrite-level classification into a separately testable component.
-3. Add a draft preflight component that loads blueprint, approval, review, and material links together and rejects stale hashes before any generation.
+3. [x] Add a draft preflight component that loads blueprint, approval, review, and material links together and rejects stale hashes before any generation.
 4. Implement beat-level candidate generation for one approved and material-bound beat at a time.
 5. Keep the candidate generator separate from the auditor. The generator may be model-assisted, but the auditor decides whether the candidate is usable.
 6. Audit every candidate against material provenance, rewrite level, known facts, forbidden facts, POV, emotion evidence, and prose duties.
@@ -216,7 +218,7 @@ Recommended implementation slices:
 - [ ] Draft generation rejects missing, failed, stale, or unapproved blueprints.
 - [ ] Draft generation rejects approved blueprints whose latest review hash/version no longer matches.
 - [ ] Draft generation rejects beats without fresh material links unless the beat has an explicit approved `no_reuse_reason`.
-- [ ] Draft generation rejects material links created against a different `analysis_contract_hash`.
+- [x] Draft generation rejects material links created against a different `analysis_contract_hash`.
 - [ ] Draft generation rejects candidates when the preflight cannot prove `blueprint -> approval -> material_link -> candidate` provenance.
 - [ ] Draft generation consumes only reviewed blueprint beat facts, duties, execution track, material links, slot plans, and allowed rewrite levels.
 - [ ] Draft generation rejects candidates that violate the beat's paragraph intention, execution mode, or candidate rejection rule.
@@ -228,11 +230,15 @@ Recommended implementation slices:
 - [ ] L4 cannot pass.
 - [ ] Missing provenance fails audit.
 - [ ] Unsupported new facts fail audit.
+- [x] Unsupported high-risk identity reveals fail audit unless the reveal is already present in approved known, scene, viewpoint, or slot facts.
 - [ ] Forbidden facts fail audit even when the prose is otherwise fluent.
 - [ ] Draft candidates preserve beat POV, narrative distance, scene facts, forbidden facts, and prose duties.
+- [x] Draft candidates fail when non-POV character hidden emotion or intention is named directly instead of shown through observable evidence.
+- [x] Draft candidates fail when declared novelistic prose duties have no detectable evidence in the text.
 - [ ] Draft candidates are audited for screenplay drift: dialogue/action-only paragraphs fail unless the beat explicitly allows a short exchange.
 - [ ] Action-only candidates fail when the approved beat requires interiority, external evidence, sensory pressure, transition work, subtext, or delayed reaction.
 - [ ] Draft candidates are audited for novelistic execution: paragraph intention, execution mode, anti-screenplay duty, sensory/subtext targets, and source-backed detail target.
+- [x] Draft candidates fail when a declared Chinese emotion change has no trigger, suppressed reaction, or external-evidence mechanic present in the text.
 - [ ] Draft candidates are audited against the beat's emotion trigger, suppressed reaction, external evidence, and after-state.
 - [ ] Draft candidates expose source material id, beat id, rewrite level, changed slots, non-slot edits, and audit result in the bridge payload.
 - [ ] Draft service returns candidates only and never mutates chapter content.
@@ -241,10 +247,11 @@ Recommended implementation slices:
 
 - [ ] unit tests for slot extraction and slot-only replacement
 - [ ] unit tests for rewrite-level classifier
-- [ ] unit tests for draft preflight hash/version/material-link validation
-- [ ] unit tests for unsupported fact detection
+- [x] component tests for draft preflight status, review-hash, target-beat, no-reuse, and material-link validation
+- [x] integration tests for draft preflight material-link hash validation
+- [x] component tests for unsupported fact detection covering key object/evidence terms, identity reveals, relationship reveals, and approved-fact allowance
 - [ ] unit tests for blueprint-to-draft audit rules
-- [ ] component tests for dialogue-only drift, action-only drift, missing emotion evidence, POV leakage, and missing required prose target
+- [x] component tests for dialogue-only drift, action-only drift, missing prose duty evidence, missing emotion evidence, POV leakage, and missing required prose target
 - [ ] integration test for `AdaptMaterialAsync`
 - [ ] integration test for `GenerateDraftFromBlueprintAsync`
 - [ ] integration test proving unapproved/stale blueprint generation is blocked
@@ -326,21 +333,22 @@ Recommended implementation slices:
 - [x] ActivityBar has a reference-anchor entry.
 - [x] WorkspaceView renders ReferenceAnchorView for the active novel.
 - [x] User can create/rebuild anchor and search materials.
-- [ ] Candidate preview shows source, adapted text, rewrite level, changed slots, audit warnings.
+- [x] Candidate preview shows source, adapted text, rewrite level, changed slots, audit warnings.
 - [x] User can generate and inspect a chapter blueprint for a chapter number.
 - [x] Blueprint view shows logic, emotion, narration, character, and reference tracks separately.
 - [x] Blueprint view shows execution track separately from analysis tracks.
+- [x] Blueprint detail has a compact field editor for facts, POV, emotion evidence, paragraph intention, prose duties, and reference query, using `ReviseReferenceChapterBlueprint`.
 - [ ] Beat editor exposes transition, POV knowledge boundary, character state delta, emotion trigger/evidence, narration strategy, paragraph intention, execution mode, anti-screenplay duty, prose duties, slot plan, and no-reuse reason.
-- [ ] Review panel shows logic, causality, emotion, narration, execution, character-state, POV, continuity, transition, forbidden-fact, reference-binding, material-fit, screenplay-drift, novelistic-narration, and AI-prose defects.
-- [ ] Editing approved blueprint content clearly invalidates approval and disables draft generation until re-review/re-approval.
+- [x] Review panel shows logic, causality, emotion, narration, execution, character-state, POV, continuity, transition, forbidden-fact, reference-binding, material-fit, screenplay-drift, novelistic-narration, and AI-prose defects.
+- [x] Editing exposed approved blueprint fields clearly invalidates approval and disables draft generation until re-review/re-approval.
 - [x] Draft generation button is disabled until blueprint review passes and approval exists.
 - [x] Draft preview shows source material, blueprint beat, rewrite level, changed slots, and audit warnings.
 - [x] No automatic chapter insertion.
 
 **Verification:**
 
-- [ ] `cd frontend && npm run build`
-- [ ] `cd frontend && npm run lint`
+- [x] `cd frontend && npm run build`
+- [x] `cd frontend && npm run lint`
 
 **Files likely touched:**
 
@@ -452,21 +460,19 @@ tests/Novelist.IntegrationTests/ReferenceAnchoredDraftBridgeTests.cs
 
 The initial foundation has already started. Do not restart from Phase 0 unless contracts have regressed.
 
+Latest verified scope: full `Novelist.IntegrationTests` passed after extracting normalizer, reviewer, draft preflight components, conservative prose-duty evidence auditing, non-POV hidden-state leakage detection, planned Chinese emotion-mechanic auditing, high-risk identity-reveal fact auditing, broader unsupported-fact auditing for relationship reveals and concealed scene evidence, expanded blueprint revision support for analysis/execution/known-fact/reference-query fields, core beat contract field revisions, material binding score-component exposure, frontend field-level blueprint revision UI, full review finding display, and draft audit/candidate provenance display. `frontend` lint/build also passed after adding score-component display, revision controls, review categories, audit categories, changed-slot chips, and non-slot edit display.
+
 Recommended next session:
 
-1. Rerun the full .NET integration suite after the latest reference-anchor changes.
-2. Extract `ReferenceChapterBlueprintNormalizer`, `ReferenceChapterBlueprintReviewer`, and draft preflight logic from `SqliteReferenceAnchoredDraftService` into focused internal components.
-3. Add approval-hash and material-link-hash tests proving that `review_passed` alone cannot bind or draft, and that stale material links cannot generate candidates.
-4. Add deterministic draft-audit checks for general missing prose duty, broader POV boundary inference beyond direct non-POV interior knowledge, non-explicit emotion-evidence inference, and broader unsupported-fact extraction beyond the current high-risk phrase rule.
-5. Add unit/component fixtures for every new blueprint-review and draft-audit rule before expanding service/MAF integration tests.
-6. Expand blueprint revision records beyond beat execution fields if UI editing needs analysis-track edits.
+1. Extend deterministic unsupported-fact extraction to conservative death/disappearance and past-event reveals, with approved-fact allowance tests.
+2. Add unit/component fixtures for every new blueprint-review and draft-audit rule before expanding service/MAF integration tests.
+3. Expand the beat editor to the remaining supported revision paths; leave complex object-list edits such as `slot_plan` for a focused schema slice.
 
 Recommended following session:
 
 1. Strengthen deterministic blueprint review fixtures for fake emotion, hard transitions, POV leaks, missing execution duties, material mismatch, and screenplay drift.
-2. Expose material binding score components in contracts/UI so users can see why a material was bound to a beat.
-3. Split `ReferenceAnchorView` into focused child components and add field-level blueprint editing with visible approval invalidation.
-4. Add a native file-picker bridge for source import so the first UI does not rely only on raw local paths.
+2. Split `ReferenceAnchorView` into focused child components and expand the beat editor to all supported revision fields.
+3. Add a native file-picker bridge for source import so the first UI does not rely only on raw local paths.
 
 Do not broaden frontend workflow beyond the review-first path until source corpus, material binding, blueprint review, and draft audit are reliable. The system's quality depends on immutable provenance, hard blueprint gates, and candidate audit before any manual insertion.
 

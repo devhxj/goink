@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Novelist.Contracts.App;
 using Novelist.Contracts.Bridge;
 using Novelist.Core.Bridge;
@@ -148,6 +149,223 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReviseApprovedBlueprintSupportsKnownFactsAndReferenceQueryEdits()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("蓝图事实修订测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var sourcePath = CreateSourceFile(
+            "revision-contract-anchor.md",
+            """
+            # 第一章
+
+            雨声压低了整条街的呼吸。
+            """);
+        var referenceAnchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await referenceAnchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "事实修订参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                15,
+                "第十五章蓝图",
+                "雨声压低了整条街的呼吸",
+                [anchor.AnchorId],
+                KnownFacts: ["雨声压低了整条街的呼吸"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+        var binding = await service.BindBlueprintMaterialsAsync(
+            new BindReferenceBlueprintMaterialsPayload(novel.Id, blueprint.BlueprintId, 2),
+            CancellationToken.None);
+        Assert.Contains(binding.Links, link => link.Selected);
+
+        var revised = await service.ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novel.Id,
+                blueprint.BlueprintId,
+                [
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "known_facts",
+                        JsonSerializer.Serialize(new[] { "雨声压低了整条街的呼吸", "周鸣是卧底" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + blueprint.Beats[0].BeatId + ":reference_query.query",
+                        "周鸣是卧底")
+                ],
+                "user",
+                "update factual boundary and material query"),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceBlueprintStates.Draft, revised.Status);
+        Assert.NotEqual(blueprint.AnalysisContractHash, revised.AnalysisContractHash);
+        Assert.Contains("周鸣是卧底", revised.KnownFacts);
+        Assert.Equal("周鸣是卧底", revised.Beats[0].ReferenceQuery.Query);
+        Assert.Null(revised.LatestReview);
+        var revisionFieldPaths = await ReadRevisionFieldPathsAsync(options, blueprint.BlueprintId);
+        Assert.Contains("known_facts", revisionFieldPaths);
+        Assert.Contains("beat:" + blueprint.Beats[0].BeatId + ":reference_query.query", revisionFieldPaths);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.BindBlueprintMaterialsAsync(
+                new BindReferenceBlueprintMaterialsPayload(novel.Id, blueprint.BlueprintId, 2),
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReviseApprovedBlueprintSupportsAnalysisAndExecutionTrackEdits()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("蓝图分析修订测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                16,
+                "第十六章蓝图",
+                "先评审再写正文",
+                AnchorIds: [],
+                KnownFacts: ["主角已经到场"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+
+        var revised = await service.ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novel.Id,
+                blueprint.BlueprintId,
+                [
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "logic_analysis.summary",
+                        "chapter logic must delay the reveal until the final pressure point"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "execution_contract.paragraph_intentions",
+                        JsonSerializer.Serialize(new[] { "hold interior pressure before action", "surface the consequence through external evidence" }))
+                ],
+                "user",
+                "tighten analysis contract"),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceBlueprintStates.Draft, revised.Status);
+        Assert.NotEqual(blueprint.AnalysisContractHash, revised.AnalysisContractHash);
+        Assert.Equal("chapter logic must delay the reveal until the final pressure point", revised.LogicAnalysis.Summary);
+        Assert.Equal(
+            ["hold interior pressure before action", "surface the consequence through external evidence"],
+            revised.ExecutionContract.ParagraphIntentions);
+        Assert.Null(revised.LatestReview);
+        var revisionFieldPaths = await ReadRevisionFieldPathsAsync(options, blueprint.BlueprintId);
+        Assert.Contains("logic_analysis.summary", revisionFieldPaths);
+        Assert.Contains("execution_contract.paragraph_intentions", revisionFieldPaths);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.ApproveChapterBlueprintAsync(
+                new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReviseApprovedBlueprintSupportsBeatContractFieldEdits()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("蓝图节拍字段修订测试", "", ""), CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(
+            options,
+            novels,
+            new FileSystemPlanningService(options, novels));
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                17,
+                "第十七章蓝图",
+                "修订节拍视角和情绪机制",
+                AnchorIds: [],
+                KnownFacts: ["主角已经到场"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+        var beatId = blueprint.Beats[0].BeatId;
+
+        var revised = await service.ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novel.Id,
+                blueprint.BlueprintId,
+                [
+                    new ReferenceBlueprintRevisionChangePayload("beat:" + beatId + ":pov_character", "周鸣"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + beatId + ":viewpoint_allowed_knowledge",
+                        JsonSerializer.Serialize(new[] { "周鸣看到门缝里的血迹" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + beatId + ":character_states_after",
+                        JsonSerializer.Serialize(new[] { "周鸣 exposed" })),
+                    new ReferenceBlueprintRevisionChangePayload("beat:" + beatId + ":emotion_trigger", "门缝里的血迹"),
+                    new ReferenceBlueprintRevisionChangePayload("beat:" + beatId + ":external_evidence", "指尖发紧"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + beatId + ":scene_facts",
+                        JsonSerializer.Serialize(new[] { "门缝里的血迹" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + beatId + ":prose_duties",
+                        JsonSerializer.Serialize(new[] { "interiority", "external_evidence", "transition" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + beatId + ":reference_query.function_tags",
+                        JsonSerializer.Serialize(new[] { "identity_reveal" }))
+                ],
+                "user",
+                "edit beat contract fields"),
+            CancellationToken.None);
+
+        var revisedBeat = revised.Beats[0];
+        Assert.Equal(ReferenceBlueprintStates.Draft, revised.Status);
+        Assert.NotEqual(blueprint.AnalysisContractHash, revised.AnalysisContractHash);
+        Assert.Equal("周鸣", revisedBeat.PovCharacter);
+        Assert.Equal(["周鸣看到门缝里的血迹"], revisedBeat.ViewpointAllowedKnowledge);
+        Assert.Equal(["周鸣 exposed"], revisedBeat.CharacterStatesAfter);
+        Assert.Equal("门缝里的血迹", revisedBeat.EmotionTrigger);
+        Assert.Equal("指尖发紧", revisedBeat.ExternalEvidence);
+        Assert.Equal(["门缝里的血迹"], revisedBeat.SceneFacts);
+        Assert.Equal(["interiority", "external_evidence", "transition"], revisedBeat.ProseDuties);
+        Assert.Equal(["identity_reveal"], revisedBeat.ReferenceQuery.FunctionTags);
+        Assert.Null(revised.LatestReview);
+
+        var revisionFieldPaths = await ReadRevisionFieldPathsAsync(options, blueprint.BlueprintId);
+        Assert.Contains("beat:" + beatId + ":pov_character", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":viewpoint_allowed_knowledge", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":character_states_after", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":emotion_trigger", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":external_evidence", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":scene_facts", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":prose_duties", revisionFieldPaths);
+        Assert.Contains("beat:" + beatId + ":reference_query.function_tags", revisionFieldPaths);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.ApproveChapterBlueprintAsync(
+                new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+                CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ApproveBlueprintRejectsFailedReview()
     {
         var options = CreateOptions();
@@ -234,6 +452,9 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.Equal(blueprint.Beats[0].MaxRewriteLevel, link.MaxRewriteLevel);
         Assert.True(link.Selected);
         Assert.True(link.Score > 0);
+        Assert.True(link.ScoreComponents.Count > 0);
+        Assert.Contains("function", link.ScoreComponents.Keys);
+        Assert.Contains("lexical", link.ScoreComponents.Keys);
 
         var afterBinding = await service.GetChapterBlueprintAsync(novel.Id, blueprint.BlueprintId, CancellationToken.None);
         Assert.NotNull(afterBinding);
@@ -412,6 +633,104 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReviewPassedBlueprintWithoutExplicitApprovalCannotBindOrDraft()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("显式批准门禁测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var sourcePath = CreateSourceFile(
+            "review-passed-without-approval-anchor.md",
+            """
+            # 第一章
+
+            雨声压低了整条街的呼吸。
+            """);
+        var referenceAnchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await referenceAnchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "未批准绑定参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                16,
+                "第十六章蓝图",
+                "雨声压低了整条街的呼吸",
+                [anchor.AnchorId],
+                KnownFacts: ["雨声压低了整条街的呼吸"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, review.Status);
+
+        var bindException = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.BindBlueprintMaterialsAsync(
+                new BindReferenceBlueprintMaterialsPayload(novel.Id, blueprint.BlueprintId, 2),
+                CancellationToken.None));
+        Assert.Contains("approved", bindException.Message, StringComparison.OrdinalIgnoreCase);
+
+        var draftException = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.GenerateDraftFromBlueprintAsync(
+                new GenerateReferenceAnchoredDraftPayload(novel.Id, blueprint.BlueprintId, BeatIds: []),
+                CancellationToken.None));
+        Assert.Contains("approved", draftException.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DraftGenerationRejectsMaterialLinksCreatedForDifferentAnalysisContract()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("材料哈希门禁测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var sourcePath = CreateSourceFile(
+            "material-link-hash-anchor.md",
+            """
+            # 第一章
+
+            雨声压低了整条街的呼吸。
+            """);
+        var referenceAnchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await referenceAnchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "材料哈希参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+        var blueprint = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                15,
+                "第十五章蓝图",
+                "雨声压低了整条街的呼吸",
+                [anchor.AnchorId],
+                KnownFacts: ["雨声压低了整条街的呼吸"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId),
+            CancellationToken.None);
+        await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, blueprint.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+        await service.BindBlueprintMaterialsAsync(
+            new BindReferenceBlueprintMaterialsPayload(novel.Id, blueprint.BlueprintId, 2),
+            CancellationToken.None);
+        await SetMaterialLinkAnalysisHashAsync(options, blueprint.BlueprintId, "old-analysis-contract-hash");
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.GenerateDraftFromBlueprintAsync(
+                new GenerateReferenceAnchoredDraftPayload(novel.Id, blueprint.BlueprintId, BeatIds: []),
+                CancellationToken.None));
+
+        Assert.Contains("current blueprint analysis contract", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task BridgeReferenceAnchoredDraftHandlersGenerateReviewAndApproveBlueprint()
     {
         var options = CreateOptions();
@@ -574,6 +893,10 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         var links = bound.RootElement.GetProperty("result").GetProperty("links").EnumerateArray().ToArray();
         Assert.NotEmpty(links);
         Assert.Contains(links, item => item.GetProperty("selected").GetBoolean());
+        var selectedLink = links.First(item => item.GetProperty("selected").GetBoolean());
+        var scoreComponents = selectedLink.GetProperty("score_components");
+        Assert.True(scoreComponents.TryGetProperty("function", out _));
+        Assert.True(scoreComponents.TryGetProperty("lexical", out _));
     }
 
     [Fact]
@@ -916,6 +1239,59 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         var path = Path.Combine(sourceDirectory, fileName);
         File.WriteAllText(path, content);
         return path;
+    }
+
+    private static async ValueTask SetMaterialLinkAnalysisHashAsync(
+        AppInitializationOptions options,
+        long blueprintId,
+        string analysisContractHash)
+    {
+        var databasePath = Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE reference_blueprint_material_links
+            SET analysis_contract_hash = $analysis_contract_hash
+            WHERE blueprint_id = $blueprint_id;
+            """;
+        command.Parameters.AddWithValue("$analysis_contract_hash", analysisContractHash);
+        command.Parameters.AddWithValue("$blueprint_id", blueprintId);
+        var updated = await command.ExecuteNonQueryAsync();
+        Assert.True(updated > 0);
+    }
+
+    private static async ValueTask<IReadOnlyList<string>> ReadRevisionFieldPathsAsync(
+        AppInitializationOptions options,
+        long blueprintId)
+    {
+        var databasePath = Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT changed_field_path
+            FROM reference_chapter_blueprint_revisions
+            WHERE blueprint_id = $blueprint_id
+            ORDER BY created_at ASC;
+            """;
+        command.Parameters.AddWithValue("$blueprint_id", blueprintId);
+        var fieldPaths = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            fieldPaths.Add(reader.GetString(0));
+        }
+
+        return fieldPaths;
     }
 
     private static async ValueTask InitializeAsync(AppInitializationOptions options)

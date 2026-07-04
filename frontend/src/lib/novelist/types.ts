@@ -721,6 +721,7 @@ export namespace reference {
     max_rewrite_level: string
     selected: boolean
     score: number
+    score_components: Record<string, number>
     created_at: Timestamp
   }
 

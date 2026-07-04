@@ -58,6 +58,150 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnapprovedIdentityReveal()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣其实是卧底。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("周鸣是卧底", StringComparison.Ordinal));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("approved scene facts", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsIdentityRevealWhenItIsKnownFact()
+    {
+        var blueprint = Blueprint(
+            beat => beat,
+            knownFacts: ["周鸣是卧底"]);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣其实是卧底。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("周鸣是卧底", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnapprovedRelationshipReveal()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣其实是林岚的哥哥。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("周鸣是林岚的哥哥", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsRelationshipRevealWhenItIsKnownFact()
+    {
+        var blueprint = Blueprint(
+            beat => beat,
+            knownFacts: ["周鸣是林岚的哥哥"]);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣其实是林岚的哥哥。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("周鸣是林岚的哥哥", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnapprovedDeathReveal()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，赵启其实早就死了。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("赵启死了", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsDeathRevealWhenItIsKnownFact()
+    {
+        var blueprint = Blueprint(
+            beat => beat,
+            knownFacts: ["赵启死了"]);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，赵启其实早就死了。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("赵启死了", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnapprovedDisappearanceReveal()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，陈砚三年前失踪。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("陈砚失踪", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnapprovedPastEventReveal()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣三年前杀了赵启。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("周鸣三年前杀了赵启", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsPastEventRevealWhenItIsKnownFact()
+    {
+        var blueprint = Blueprint(
+            beat => beat,
+            knownFacts: ["周鸣三年前杀了赵启"]);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣三年前杀了赵启。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("周鸣三年前杀了赵启", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildDraftAuditFailsWhenCandidateLeaksNonPovCharacterInteriorKnowledge()
     {
         var blueprint = Blueprint(beat => beat with
@@ -75,6 +219,26 @@ public sealed class ReferenceAnchoredDraftAuditorTests
         Assert.Equal("failed", audit.Status);
         Assert.Contains(audit.PovErrors, item => item.Contains("周鸣", StringComparison.Ordinal));
         Assert.Contains(audit.RequiredFixes, item => item.Contains("POV", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildDraftAuditFailsWhenCandidateNamesNonPovCharacterHiddenEmotion()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            PovCharacter = "林岚",
+            CharacterStatesBefore = ["林岚 controlled", "周鸣 guarded"]
+        });
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，周鸣的恐惧终于从眼底漫了上来。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.PovErrors, item => item.Contains("周鸣", StringComparison.Ordinal));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("external evidence", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -157,6 +321,26 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenCandidateHasNoEvidenceForDeclaredProseDuties()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            ProseDuties = ["interiority", "external_evidence", "transition"],
+            AntiScreenplayDuty = "show pressure through prose duties"
+        });
+        var candidate = Candidate(blueprint, "门开着，灯亮着，桌边有一只杯子。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.BlueprintErrors, item => item.Contains("prose duty evidence", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("interiority", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildDraftAuditFailsWhenRequiredEmotionEvidenceIsMissing()
     {
         var blueprint = Blueprint(beat => beat with
@@ -172,6 +356,29 @@ public sealed class ReferenceAnchoredDraftAuditorTests
 
         Assert.Equal("failed", audit.Status);
         Assert.Contains(audit.BlueprintErrors, item => item.Contains("emotion evidence", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("指尖发紧", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditFailsWhenEmotionChangesWithoutPlannedMechanicEvidence()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            EmotionBefore = "克制",
+            EmotionAfter = "紧张",
+            EmotionTrigger = "门缝里的血迹",
+            SuppressedReaction = "咽下回答",
+            ExternalEvidence = "指尖发紧"
+        });
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，他在门口停了一会儿。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.BlueprintErrors, item => item.Contains("emotion mechanic", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(audit.RequiredFixes, item => item.Contains("指尖发紧", StringComparison.Ordinal));
     }
 
@@ -204,9 +411,40 @@ public sealed class ReferenceAnchoredDraftAuditorTests
         Assert.Equal(["指尖发紧"], evidence);
     }
 
+    [Fact]
+    public void ExtractAuditableFactPhrasesReadsRelationshipReveal()
+    {
+        var facts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(
+            "雨声压低了整条街的呼吸，周鸣其实是林岚的哥哥。");
+
+        Assert.Contains("周鸣是林岚的哥哥", facts);
+    }
+
+    [Fact]
+    public void ExtractAuditableFactPhrasesReadsConcealedSceneEvidence()
+    {
+        var facts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(
+            "雨声压低了整条街的呼吸，旧宅暗门后面有一只药瓶。");
+
+        Assert.Contains("旧宅暗门", facts);
+        Assert.Contains("一只药瓶", facts);
+    }
+
+    [Fact]
+    public void ExtractAuditableFactPhrasesReadsDeathDisappearanceAndPastEventReveals()
+    {
+        var facts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(
+            "雨声压低了整条街的呼吸，赵启其实早就死了，陈砚三年前失踪，周鸣三年前杀了赵启。");
+
+        Assert.Contains("赵启死了", facts);
+        Assert.Contains("陈砚失踪", facts);
+        Assert.Contains("周鸣三年前杀了赵启", facts);
+    }
+
     private static ReferenceChapterBlueprintPayload Blueprint(
         Func<ReferenceChapterBlueprintBeatPayload, ReferenceChapterBlueprintBeatPayload> configureBeat,
-        IReadOnlyList<string>? forbiddenFacts = null)
+        IReadOnlyList<string>? forbiddenFacts = null,
+        IReadOnlyList<string>? knownFacts = null)
     {
         var beat = configureBeat(Beat("1:beat:1"));
         return new ReferenceChapterBlueprintPayload(
@@ -242,7 +480,7 @@ public sealed class ReferenceAnchoredDraftAuditorTests
             "hook",
             "林岚",
             "close",
-            ["雨声压低了整条街的呼吸"],
+            knownFacts ?? ["雨声压低了整条街的呼吸"],
             forbiddenFacts ?? [],
             [],
             [beat],

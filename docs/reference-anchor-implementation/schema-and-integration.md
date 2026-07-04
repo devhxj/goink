@@ -201,6 +201,7 @@ reference_chapter_blueprint_revisions
 reference_blueprint_material_links
 - link_id TEXT PRIMARY KEY
 - blueprint_id INTEGER NOT NULL
+- analysis_contract_hash TEXT NOT NULL
 - beat_id TEXT NOT NULL
 - material_id TEXT NOT NULL
 - intended_use TEXT NOT NULL

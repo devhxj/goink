@@ -78,7 +78,7 @@ internal static class ReferenceAnchoredDraftAuditor
                 }
             }
 
-            foreach (var unsupportedFact in FindUnsupportedHighRiskFacts(blueprint, beat, candidate))
+            foreach (var unsupportedFact in FindUnsupportedFacts(blueprint, beat, candidate))
             {
                 unsupportedFactErrors.Add($"Candidate {candidate.CandidateId} introduces unsupported fact: {unsupportedFact}");
                 requiredFixes.Add($"Remove unsupported fact from candidate {candidate.CandidateId} or add it to approved scene facts: {unsupportedFact}");
@@ -100,6 +100,23 @@ internal static class ReferenceAnchoredDraftAuditor
                     blueprintErrors.Add($"Candidate {candidate.CandidateId} misses required emotion evidence: {requiredEvidence}");
                     requiredFixes.Add($"Add required emotion evidence to candidate {candidate.CandidateId}: {requiredEvidence}");
                 }
+            }
+
+            var emotionMechanics = ExtractPlannedEmotionMechanics(beat);
+            if (emotionMechanics.Count > 0 &&
+                !emotionMechanics.Any(mechanic => candidate.Text.Contains(mechanic, StringComparison.OrdinalIgnoreCase)))
+            {
+                var requiredMechanics = string.Join(", ", emotionMechanics);
+                blueprintErrors.Add($"Candidate {candidate.CandidateId} misses planned emotion mechanic evidence: {requiredMechanics}");
+                requiredFixes.Add($"Ground candidate {candidate.CandidateId} in at least one approved emotion mechanic: {requiredMechanics}");
+            }
+
+            var missingProseDuties = FindMissingProseDutyEvidence(beat, candidate.Text);
+            if (missingProseDuties.Count > 0)
+            {
+                var duties = string.Join(", ", missingProseDuties);
+                blueprintErrors.Add($"Candidate {candidate.CandidateId} misses prose duty evidence for: {duties}");
+                requiredFixes.Add($"Add observable prose duty evidence to candidate {candidate.CandidateId}: {duties}");
             }
 
             if (RequiresNovelisticExecution(beat) && IsDialogueOnly(candidate.Text))
@@ -166,7 +183,8 @@ internal static class ReferenceAnchoredDraftAuditor
         var povCharacter = beat.PovCharacter.Trim();
         return ExtractCandidateCharacterNames(beat)
             .Where(character => !string.Equals(character, povCharacter, StringComparison.OrdinalIgnoreCase))
-            .Where(character => ContainsDirectInteriorKnowledge(candidateText, character))
+            .Where(character => ContainsDirectInteriorKnowledge(candidateText, character) ||
+                ContainsNamedHiddenState(candidateText, character))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -215,7 +233,16 @@ internal static class ReferenceAnchoredDraftAuditor
             RegexOptions.IgnoreCase);
     }
 
-    private static IReadOnlyList<string> FindUnsupportedHighRiskFacts(
+    private static bool ContainsNamedHiddenState(string text, string character)
+    {
+        var escaped = Regex.Escape(character);
+        return Regex.IsMatch(
+            text,
+            escaped + @"的(恐惧|害怕|惧意|歉意|愧疚|后悔|悔意|怒意|愤怒|嫉妒|犹豫|迟疑|怀疑|算计|念头|想法|决心|恶意|杀意|贪念|不甘|绝望|希望|得意|慌乱)",
+            RegexOptions.IgnoreCase);
+    }
+
+    private static IReadOnlyList<string> FindUnsupportedFacts(
         ReferenceChapterBlueprintPayload blueprint,
         ReferenceChapterBlueprintBeatPayload beat,
         ReferenceDraftParagraphCandidatePayload candidate)
@@ -228,7 +255,7 @@ internal static class ReferenceAnchoredDraftAuditor
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var unsupported = new List<string>();
-        foreach (var fact in ExtractHighRiskFactPhrases(candidate.Text))
+        foreach (var fact in ExtractAuditableFactPhrases(candidate.Text))
         {
             if (allowedFacts.Any(allowed => allowed.Contains(fact, StringComparison.OrdinalIgnoreCase) ||
                     fact.Contains(allowed, StringComparison.OrdinalIgnoreCase)))
@@ -242,19 +269,161 @@ internal static class ReferenceAnchoredDraftAuditor
         return unsupported.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    private static IReadOnlyList<string> ExtractHighRiskFactPhrases(string text)
+    internal static IReadOnlyList<string> ExtractAuditableFactPhrases(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             return [];
         }
 
-        const string pattern = @"[\u4e00-\u9fff]{1,8}(钥匙|身份|编号|名单|坐标|密码|证据|真相|实验|档案|密令|血样|账本|芯片|令牌|地图|遗书|录音|录像|照片|报告|坐标点)";
-        return Regex.Matches(text, pattern)
-            .Select(match => match.Value)
-            .Where(value => value.Length >= 2)
+        var facts = new List<string>();
+        const string pattern = @"[\u4e00-\u9fff]{1,8}(钥匙|身份|编号|名单|坐标|密码|证据|真相|实验|档案|密令|血样|账本|芯片|令牌|地图|遗书|录音|录像|照片|报告|坐标点|尸体|血迹|密道|暗门|标记|信件|纸条|伤口|弹孔|药瓶|匕首)";
+        facts.AddRange(Regex.Matches(text, pattern)
+            .Select(match => NormalizeAuditableFactPhrase(match.Value))
+            .Where(value => value.Length >= 2));
+        facts.AddRange(ExtractIdentityRevealFacts(text));
+        facts.AddRange(ExtractRelationshipRevealFacts(text));
+        facts.AddRange(ExtractDeathOrDisappearanceRevealFacts(text));
+        facts.AddRange(ExtractPastEventRevealFacts(text));
+        return facts
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static string NormalizeAuditableFactPhrase(string value)
+    {
+        var normalized = value.Trim(' ', '\t', '\r', '\n', '，', ',', '。', '.', '；', ';', '：', ':');
+        foreach (var marker in new[] { "后面有", "里面有", "里有", "藏着", "放着", "压着", "写着", "记录着", "发现了", "发现", "看到", "看见" })
+        {
+            var index = normalized.LastIndexOf(marker, StringComparison.Ordinal);
+            if (index >= 0)
+            {
+                normalized = normalized[(index + marker.Length)..].Trim();
+            }
+        }
+
+        return normalized;
+    }
+
+    private static IEnumerable<string> ExtractIdentityRevealFacts(string text)
+    {
+        const string identityRoles = "卧底|内鬼|凶手|叛徒|实验体|继承人|线人|替身|死者|嫌疑人|共犯|主谋";
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?<name>[\u4e00-\u9fff]{2,4}?)(?:其实|原来|竟然|真正|真实)是(?<role>" + identityRoles + ")"))
+        {
+            var name = match.Groups["name"].Value;
+            if (IsValidIdentitySubject(name))
+            {
+                yield return name + "是" + match.Groups["role"].Value;
+            }
+        }
+
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?<name>[\u4e00-\u9fff]{2,4})是(?<role>" + identityRoles + ")"))
+        {
+            var name = match.Groups["name"].Value;
+            if (IsValidIdentitySubject(name))
+            {
+                yield return name + "是" + match.Groups["role"].Value;
+            }
+        }
+
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?<name>[\u4e00-\u9fff]{2,4})(?:的)?(?:真实身份|真正身份|身份)(?:是|为)(?<role>" + identityRoles + ")"))
+        {
+            var name = match.Groups["name"].Value;
+            if (IsValidIdentitySubject(name))
+            {
+                yield return name + "是" + match.Groups["role"].Value;
+            }
+        }
+    }
+
+    private static bool IsValidIdentitySubject(string name)
+    {
+        return !string.IsNullOrWhiteSpace(name) &&
+            !ContainsAny(name, ["其实", "原来", "竟然", "真正", "真实"]);
+    }
+
+    private static IEnumerable<string> ExtractRelationshipRevealFacts(string text)
+    {
+        const string relationshipRoles = "父亲|母亲|哥哥|姐姐|弟弟|妹妹|儿子|女儿|师父|老师|学生|徒弟|未婚夫|未婚妻|丈夫|妻子|恋人|旧友|仇人|上司|下属|同伴|盟友";
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?<name>[\u4e00-\u9fff]{2,4}?)(?:其实|原来|竟然|真正|真实)?是(?<target>[\u4e00-\u9fff]{2,4}?)的(?<role>" + relationshipRoles + ")"))
+        {
+            var name = match.Groups["name"].Value;
+            var target = match.Groups["target"].Value;
+            if (IsValidRelationshipSubject(name, target))
+            {
+                yield return name + "是" + target + "的" + match.Groups["role"].Value;
+            }
+        }
+
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?<target>[\u4e00-\u9fff]{2,4}?)的(?<role>" + relationshipRoles + @")(?:其实|原来|竟然|真正|真实)?是(?<name>[\u4e00-\u9fff]{2,4}?)"))
+        {
+            var name = match.Groups["name"].Value;
+            var target = match.Groups["target"].Value;
+            if (IsValidRelationshipSubject(name, target))
+            {
+                yield return name + "是" + target + "的" + match.Groups["role"].Value;
+            }
+        }
+    }
+
+    private static bool IsValidRelationshipSubject(string name, string target)
+    {
+        return IsValidIdentitySubject(name) &&
+            IsValidIdentitySubject(target) &&
+            !string.Equals(name, target, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> ExtractDeathOrDisappearanceRevealFacts(string text)
+    {
+        const string revealMarkers = @"(?:其实|原来|竟然|早就|已经|早已|三年前|两年前|一年前|多年前|多年以前|当年|那年|昨夜|昨晚|当晚|此前|过去|曾经|曾)";
+        const string states = "死了|死亡|遇害|被杀|失踪|消失";
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?:^|[，。！？；;,\s])(?<name>[\u4e00-\u9fff]{2,4}?)(?:" + revealMarkers + @"){0,3}(?<state>" + states + ")"))
+        {
+            var name = match.Groups["name"].Value;
+            if (!IsValidIdentitySubject(name))
+            {
+                continue;
+            }
+
+            var state = match.Groups["state"].Value switch
+            {
+                "死亡" or "遇害" or "被杀" => "死了",
+                "消失" => "失踪",
+                var value => value
+            };
+            yield return name + state;
+        }
+    }
+
+    private static IEnumerable<string> ExtractPastEventRevealFacts(string text)
+    {
+        const string timeMarkers = "三年前|两年前|一年前|十年前|多年前|多年以前|当年|那年|昨夜|昨晚|当晚|此前|过去|曾经|曾|早年";
+        const string actions = "放火烧了|杀死|害死|杀了|绑架|袭击|刺伤|烧毁|烧了|偷走|盗走|藏起|出卖|背叛|救过|见过|带走|送走|伪造";
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?:^|[，。！？；;,\s])(?<subject>[\u4e00-\u9fff]{2,4})(?<time>" + timeMarkers + ")(?<action>" + actions + @")(?<object>[\u4e00-\u9fff]{2,8})"))
+        {
+            var subject = match.Groups["subject"].Value;
+            var target = match.Groups["object"].Value.Trim('，', ',', '。', '.', '；', ';', '！', '!', '？', '?');
+            if (IsValidIdentitySubject(subject) &&
+                target.Length is >= 2 and <= 8 &&
+                !string.Equals(subject, target, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return subject + match.Groups["time"].Value + match.Groups["action"].Value + target;
+            }
+        }
     }
 
     internal static IReadOnlyList<string> ExtractRequiredEmotionEvidence(ReferenceChapterBlueprintBeatPayload beat)
@@ -264,6 +433,163 @@ internal static class ReferenceAnchoredDraftAuditor
             ["required external evidence:", "required emotion evidence:"])
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    internal static IReadOnlyList<string> ExtractPlannedEmotionMechanics(ReferenceChapterBlueprintBeatPayload beat)
+    {
+        if (string.Equals(beat.EmotionBefore, beat.EmotionAfter, StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+
+        return new[] { beat.EmotionTrigger, beat.SuppressedReaction, beat.ExternalEvidence }
+            .SelectMany(ExtractChineseMechanicPhrases)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> ExtractChineseMechanicPhrases(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Contains("required", StringComparison.OrdinalIgnoreCase))
+        {
+            yield break;
+        }
+
+        foreach (Match match in Regex.Matches(value, @"[\u4e00-\u9fff]{2,12}"))
+        {
+            var phrase = match.Value.Trim();
+            if (phrase.Length >= 2 && !IsGenericEmotionMechanicPhrase(phrase))
+            {
+                yield return phrase;
+            }
+        }
+    }
+
+    private static bool IsGenericEmotionMechanicPhrase(string phrase)
+    {
+        return phrase is "情绪" or "反应" or "外部证据" or "触发" or "压抑反应" or "可见证据" or "变化";
+    }
+
+    private static IReadOnlyList<string> FindMissingProseDutyEvidence(
+        ReferenceChapterBlueprintBeatPayload beat,
+        string candidateText)
+    {
+        var duties = beat.ProseDuties
+            .Select(NormalizeProseDuty)
+            .Where(IsAuditableProseDuty)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (duties.Length == 0 || string.IsNullOrWhiteSpace(candidateText))
+        {
+            return [];
+        }
+
+        return duties.Any(duty => HasProseDutyEvidence(duty, beat, candidateText))
+            ? []
+            : duties;
+    }
+
+    private static string NormalizeProseDuty(string duty)
+    {
+        return string.IsNullOrWhiteSpace(duty)
+            ? string.Empty
+            : duty.Trim().Replace('-', '_').ToLowerInvariant();
+    }
+
+    private static bool IsAuditableProseDuty(string duty)
+    {
+        return duty is "interiority" or "external_evidence" or "transition" or "causality" or
+            "sensory" or "sensory_anchor" or "subtext" or "source_detail" or "source_backed_detail";
+    }
+
+    private static bool HasProseDutyEvidence(
+        string duty,
+        ReferenceChapterBlueprintBeatPayload beat,
+        string candidateText)
+    {
+        return duty switch
+        {
+            "interiority" => HasInteriorityEvidence(candidateText),
+            "external_evidence" => HasExternalEvidence(beat, candidateText),
+            "transition" or "causality" => HasTransitionEvidence(candidateText),
+            "sensory" or "sensory_anchor" => HasSensoryEvidence(candidateText),
+            "subtext" => HasSubtextEvidence(candidateText),
+            "source_detail" or "source_backed_detail" => HasSourceDetailEvidence(beat, candidateText),
+            _ => false
+        };
+    }
+
+    private static bool HasInteriorityEvidence(string text)
+    {
+        return ContainsAny(text,
+        [
+            "心里", "心中", "心口", "心头", "想到", "想起", "觉得", "意识到", "明白",
+            "知道", "记得", "以为", "怀疑", "确信", "后悔", "害怕", "担心", "不敢", "忍住"
+        ]);
+    }
+
+    private static bool HasExternalEvidence(ReferenceChapterBlueprintBeatPayload beat, string text)
+    {
+        return ContainsNonMarkerTarget(text, beat.ExternalEvidence) ||
+            ContainsAny(text,
+            [
+                "指尖", "手指", "掌心", "喉咙", "胸口", "肩", "背脊", "呼吸", "气息",
+                "目光", "眼神", "声音", "唇", "停顿", "沉默", "发紧", "发涩", "发凉",
+                "颤", "抖", "僵", "避开", "咽下", "攥", "雨声", "风声", "冷意", "压低", "压住"
+            ]);
+    }
+
+    private static bool HasTransitionEvidence(string text)
+    {
+        return ContainsAny(text,
+        [
+            "因为", "所以", "于是", "但", "但是", "可", "可是", "却", "只是", "仍然",
+            "直到", "这才", "下一刻", "先前", "刚才", "后来", "随即", "转而"
+        ]);
+    }
+
+    private static bool HasSensoryEvidence(string text)
+    {
+        return ContainsAny(text,
+        [
+            "雨声", "风声", "脚步声", "气味", "光", "影", "阴影", "冷意", "热意",
+            "疼", "刺痛", "发凉", "发烫", "潮", "湿", "灰尘", "血腥", "灯", "门缝"
+        ]);
+    }
+
+    private static bool HasSubtextEvidence(string text)
+    {
+        return ContainsAny(text,
+        [
+            "没说", "没有说", "不说", "沉默", "停顿", "避开", "咽下", "忍住",
+            "压下", "装作", "像没听见", "没有回答"
+        ]);
+    }
+
+    private static bool HasSourceDetailEvidence(ReferenceChapterBlueprintBeatPayload beat, string text)
+    {
+        return ContainsNonMarkerTarget(text, beat.SourceBackedDetailTarget) ||
+            ContainsNonMarkerTarget(text, beat.SensoryAnchorTarget);
+    }
+
+    private static bool ContainsNonMarkerTarget(string text, string target)
+    {
+        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(target))
+        {
+            return false;
+        }
+
+        var normalizedTarget = target.Trim();
+        if (normalizedTarget.Contains("required", StringComparison.OrdinalIgnoreCase) ||
+            normalizedTarget.Contains(":", StringComparison.Ordinal) ||
+            normalizedTarget.Contains("：", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return normalizedTarget.Length >= 2 &&
+            text.Contains(normalizedTarget, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool RequiresNovelisticExecution(ReferenceChapterBlueprintBeatPayload beat)

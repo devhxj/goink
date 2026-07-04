@@ -232,6 +232,7 @@ public sealed record ReferenceBlueprintMaterialLinkPayload(
     [property: JsonPropertyName("max_rewrite_level")] string MaxRewriteLevel,
     [property: JsonPropertyName("selected")] bool Selected,
     [property: JsonPropertyName("score")] double Score,
+    [property: JsonPropertyName("score_components")] IReadOnlyDictionary<string, double> ScoreComponents,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
 
 public sealed record ReferenceBlueprintMaterialBindingResultPayload(
