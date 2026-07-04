@@ -95,6 +95,10 @@ public sealed class ReferenceRegressionFixtureTests
                 CharacterStatesBefore = ["controlled"],
                 CharacterStatesAfter = ["controlled"]
             },
+            "generic_paragraph_intention" => beat with
+            {
+                ParagraphIntention = "写得更好，更有代入感"
+            },
             "material_mismatch" => beat with
             {
                 ReferenceQuery = beat.ReferenceQuery with

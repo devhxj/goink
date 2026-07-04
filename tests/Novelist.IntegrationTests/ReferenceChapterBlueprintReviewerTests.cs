@@ -193,6 +193,24 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsGenericParagraphIntention()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            ParagraphIntention = "写得更好，更有代入感"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ExecutionErrors, item => item.Contains("generic paragraph intention", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "execution" &&
+                defect.FieldPath.Contains("paragraph_intention", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsHardTransitionWithoutNarrativePressure()
     {
         var blueprint = Blueprint(beat => beat with

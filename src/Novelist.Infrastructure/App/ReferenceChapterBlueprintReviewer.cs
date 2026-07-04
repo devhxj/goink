@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 3;
+    public const int CurrentReviewVersion = 4;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -253,6 +253,16 @@ internal static class ReferenceChapterBlueprintReviewer
                     $"Beat {beat.BeatIndex} is missing paragraph intention, execution mode, anti-screenplay duty, or rejection rule.",
                     "Fill paragraph_intention, execution_mode, anti_screenplay_duty, and candidate_rejection_rule.");
             }
+            else if (UsesGenericParagraphIntention(beat.ParagraphIntention))
+            {
+                AddBeatDefect(
+                    executionErrors,
+                    "execution",
+                    beat,
+                    "paragraph_intention",
+                    $"Beat {beat.BeatIndex} uses generic paragraph intention.",
+                    "Rewrite paragraph_intention as a concrete prose job, such as dwell, withhold, reveal, contrast, linger, or turn tied to this beat.");
+            }
 
             if ((string.Equals(beat.BeatType, ReferenceBlueprintBeatTypes.Action, StringComparison.Ordinal) ||
                     string.Equals(beat.BeatType, ReferenceBlueprintBeatTypes.DialogueExchange, StringComparison.Ordinal)) &&
@@ -473,6 +483,17 @@ internal static class ReferenceChapterBlueprintReviewer
         var after = NormalizeStateValues(statesAfter).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return before.Count > 0 && after.Count > 0 && before.SetEquals(after);
+    }
+
+    private static bool UsesGenericParagraphIntention(string value)
+    {
+        return ContainsAny(
+            value,
+            [
+                "make it better", "make it emotional", "more emotional", "more moving",
+                "写得更好", "写得好看", "更有代入感", "更有感染力", "更感人",
+                "加强情绪", "增强感染力", "润色一下", "优化一下", "情绪拉满", "氛围拉满"
+            ]);
     }
 
     private static bool HasReferenceQueryBeatFit(ReferenceChapterBlueprintBeatPayload beat)
