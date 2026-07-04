@@ -316,6 +316,25 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenRequiredSubtextTargetIsMissing()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            SubtextPlan = "required: 没有回答"
+        });
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，林岚心里一紧，指尖停住。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.BlueprintErrors, item => item.Contains("required prose target", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("没有回答", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildDraftAuditFailsWhenCandidateIsDialogueOnlyDespiteAntiScreenplayDuty()
     {
         var blueprint = Blueprint(beat => beat);
@@ -527,13 +546,14 @@ public sealed class ReferenceAnchoredDraftAuditorTests
         {
             ExternalEvidence = "visible pause without hard target",
             SensoryAnchorTarget = "required: 雨声",
+            SubtextPlan = "required: 没有回答",
             SourceBackedDetailTarget = "required phrase: 门口停住；then keep cadence",
             CandidateRejectionRule = "reject action only"
         };
 
         var phrases = ReferenceAnchoredDraftAuditor.ExtractRequiredProsePhrases(beat);
 
-        Assert.Equal(["雨声", "门口停住"], phrases);
+        Assert.Equal(["雨声", "没有回答", "门口停住"], phrases);
     }
 
     [Fact]

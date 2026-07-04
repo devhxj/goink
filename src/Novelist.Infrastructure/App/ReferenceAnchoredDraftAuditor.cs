@@ -178,6 +178,7 @@ internal static class ReferenceAnchoredDraftAuditor
             {
                 beat.ExternalEvidence,
                 beat.SensoryAnchorTarget,
+                beat.SubtextPlan,
                 beat.SourceBackedDetailTarget,
                 beat.CandidateRejectionRule
             }

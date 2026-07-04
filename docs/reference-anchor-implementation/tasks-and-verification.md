@@ -242,7 +242,7 @@ Recommended implementation slices:
 - [x] Draft candidates fail when declared novelistic prose duties have no detectable evidence in the text.
 - [x] Draft candidates are audited for screenplay drift: dialogue/action-only paragraphs fail unless the beat explicitly allows a short exchange.
 - [x] Action-only candidates fail when the approved beat requires interiority, external evidence, sensory pressure, transition work, subtext, or delayed reaction.
-- [ ] Draft candidates are audited for novelistic execution: paragraph intention, execution mode, anti-screenplay duty, sensory/subtext targets, and source-backed detail target.
+- [x] Draft candidates are audited for novelistic execution: paragraph intention, execution mode, anti-screenplay duty, sensory/subtext targets, and source-backed detail target.
 - [x] Draft candidates fail when a declared Chinese emotion change has no trigger, suppressed reaction, or external-evidence mechanic present in the text.
 - [x] Draft candidates are audited against the beat's emotion trigger, suppressed reaction, external evidence, and after-state.
 - [x] Draft candidates expose source material id, beat id, rewrite level, changed slots, non-slot edits, and audit result in the bridge payload.
@@ -256,7 +256,7 @@ Recommended implementation slices:
 - [x] component tests for draft preflight status, review-hash, target-beat, no-reuse, and material-link validation
 - [x] integration tests for draft preflight material-link hash validation
 - [x] component tests for missing material provenance and unsupported fact detection covering key object/evidence terms, identity reveals, relationship reveals, and approved-fact allowance
-- [ ] unit tests for blueprint-to-draft audit rules
+- [x] unit tests for blueprint-to-draft audit rules
 - [x] component tests for dialogue-only drift, action-only drift, missing prose duty evidence, missing emotion evidence, POV leakage, and missing required prose target
 - [x] integration test for persisted draft audit forbidden-fact rejection
 - [x] integration test for `AdaptMaterialAsync`
