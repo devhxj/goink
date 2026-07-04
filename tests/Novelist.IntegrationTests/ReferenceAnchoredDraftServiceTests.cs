@@ -38,6 +38,8 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
             CancellationToken.None);
 
         Assert.Equal(ReferenceBlueprintStates.Draft, blueprint.Status);
+        Assert.Equal(novel.Id, blueprint.NovelId);
+        Assert.Equal(3, blueprint.ChapterNumber);
         Assert.Equal("logic", blueprint.LogicAnalysis.Track);
         Assert.Equal("emotion", blueprint.EmotionAnalysis.Track);
         Assert.Equal("narration", blueprint.NarrationAnalysis.Track);

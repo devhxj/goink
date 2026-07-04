@@ -150,10 +150,10 @@ Recommended implementation slices:
 
 **Acceptance criteria:**
 
-- [ ] Blueprint generation targets `novel_id` and `chapter_number`.
+- [x] Blueprint generation targets `novel_id` and `chapter_number`.
 - [ ] Blueprint generation builds and hashes a normalized context pack before persistence.
 - [ ] Blueprint stores chapter function, causality chain, emotion trajectory, POV constraints, scene facts, forbidden facts, prose duties, and beat-level reference queries.
-- [ ] Blueprint stores complete logic, emotion, narration, character, reference-use, transition, and execution tracks.
+- [x] Blueprint stores complete logic, emotion, narration, character, reference-use, transition, and execution tracks.
 - [ ] Each beat stores transition-in/out, character goal/knowledge/misbelief/state delta, suppressed reaction, external evidence, narration strategy, rhythm strategy, paragraph intention, execution mode, anti-screenplay duty, source-backed detail target, slot plan, locked phrase policy, and no-reuse reason.
 - [ ] Blueprint generator cannot persist final prose paragraphs as a substitute for beat duties.
 - [x] Normalizer computes the same `analysis_contract_hash` for semantically identical payloads with equivalent whitespace/array defaults.
@@ -162,7 +162,7 @@ Recommended implementation slices:
 - [ ] Review result separates logic, causality, emotion, narration, execution, character-state, POV, continuity, transition, forbidden-fact, reference-binding, material-fit, screenplay-drift, novelistic-narration, and AI-prose findings.
 - [ ] Review defects include field path or beat id, severity, reason, and required fix in a form the UI can render without parsing prose.
 - [ ] Review stores `context_hash`, `source_plan_hash`, `analysis_contract_hash`, and `review_version` so approvals can be invalidated deterministically.
-- [ ] Approved status requires a passing review.
+- [x] Approved status requires a passing review.
 - [ ] Approval records freeze `review_id`, `context_hash`, `source_plan_hash`, `analysis_contract_hash`, `review_version`, approver origin, and approval time.
 - [x] A blueprint with `review_passed` but no explicit approval cannot bind materials or generate draft candidates.
 - [x] A blueprint with approval but no current material links cannot generate draft candidates unless every requested beat has an approved `no_reuse_reason`.
@@ -170,7 +170,7 @@ Recommended implementation slices:
 - [x] Editing approved beat POV, character-state, emotion-mechanic, scene-fact, prose-duty, and material-query tag fields invalidates approval and records revision paths.
 - [ ] Editing any approved blueprint beat, analysis track, execution track, known/forbidden fact, or reference query invalidates approval and requires re-review.
 - [x] Blueprint revision records field paths, previous/new value hashes, origin, invalidated review id, and reason.
-- [ ] Changing the source chapter plan hash marks existing blueprints stale.
+- [x] Changing the source chapter plan hash marks existing blueprints stale.
 - [ ] Material binding links candidate reference materials to beats with max rewrite levels.
 - [x] Material binding records and exposes score components: lexical, tag, function, emotion, POV, prose-duty, and user-verified boosts.
 - [x] Material binding rejects semantic-only matches when function, POV, emotion, or prose-duty fit is absent.
@@ -179,14 +179,14 @@ Recommended implementation slices:
 
 **Verification:**
 
-- [ ] unit tests for blueprint payload serialization
+- [x] unit tests for blueprint payload serialization
 - [ ] unit tests for context-pack hashing and stale detection
 - [x] component tests for blueprint normalization and analysis-contract hashing
 - [x] component tests for deterministic blueprint review rules, including anti-screenplay and execution-track defects
 - [x] fixture tests for fake emotion, hard transition, POV leak, missing prose duty, action/dialogue-only beat, and material mismatch
 - [ ] unit tests for explicit approval hash/version matching
 - [x] integration tests for approval invalidation after beat, analysis, execution, known-fact, and reference-query edits
-- [ ] integration test for generate/review/approve/stale lifecycle
+- [x] integration test for generate/review/approve/stale lifecycle
 - [x] integration test for beat material binding and provenance joins
 - [x] integration test proving review-passed-without-approval cannot bind or draft
 - [x] bridge test for `BindReferenceBlueprintMaterials` after approval and for failure before approval
