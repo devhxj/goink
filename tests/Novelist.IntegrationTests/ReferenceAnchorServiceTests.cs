@@ -334,7 +334,10 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
 
         Assert.Equal(ReferenceRewriteLevels.L1, adapted.RewriteLevel);
         Assert.Equal("他握住门把手，没有立刻说话。", adapted.Text);
-        Assert.Single(adapted.ChangedSlots);
+        var changedSlot = Assert.Single(adapted.ChangedSlots);
+        Assert.Equal("object", changedSlot.SlotName);
+        Assert.Equal("门把手", changedSlot.Value);
+        Assert.Empty(adapted.NonSlotEdits);
         Assert.Equal("passed", adapted.Audit.Status);
         Assert.Empty(adapted.Audit.RequiredFixes);
 
@@ -351,6 +354,55 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
                     ReferenceRewriteLevels.L1,
                     SceneFacts: ["钥匙"]),
                 CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AdaptMaterialL1PreservesNonSlotPhrasesAndSourceOrder()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("多槽位改写测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "anchor.md",
+            "他先握住{{object}}，旧誓言没有变，又把{{evidence}}压在掌心。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "多槽位参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var materials = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "旧誓言",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        var material = Assert.Single(materials.Items);
+
+        var adapted = await service.AdaptMaterialAsync(
+            new AdaptReferenceMaterialPayload(
+                novel.Id,
+                material.MaterialId,
+                [
+                    new ReferenceSlotValuePayload("evidence", "线索纸"),
+                    new ReferenceSlotValuePayload("object", "门把手")
+                ],
+                ReferenceRewriteLevels.L1,
+                SceneFacts: ["门把手", "线索纸"]),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceRewriteLevels.L1, adapted.RewriteLevel);
+        Assert.Equal("他先握住门把手，旧誓言没有变，又把线索纸压在掌心。", adapted.Text);
+        Assert.Contains("旧誓言没有变", adapted.Text, StringComparison.Ordinal);
+        Assert.True(adapted.Text.IndexOf("门把手", StringComparison.Ordinal) < adapted.Text.IndexOf("线索纸", StringComparison.Ordinal));
+        Assert.Empty(adapted.NonSlotEdits);
+        Assert.Equal("passed", adapted.Audit.Status);
     }
 
     [Fact]

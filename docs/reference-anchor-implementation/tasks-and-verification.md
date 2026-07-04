@@ -223,8 +223,8 @@ Recommended implementation slices:
 - [ ] Draft generation consumes only reviewed blueprint beat facts, duties, execution track, material links, slot plans, and allowed rewrite levels.
 - [ ] Draft generation rejects candidates that violate the beat's paragraph intention, execution mode, or candidate rejection rule.
 - [ ] Draft generation never calls a model with unbounded "write this chapter" instructions; prompts must be beat-scoped and grounded in approved fields.
-- [ ] L1 changes only declared slots.
-- [ ] L1 slot replacement preserves locked phrases and source order where applicable.
+- [x] L1 changes only declared slots.
+- [x] L1 slot replacement preserves locked phrases and source order where applicable.
 - [x] L2 reports non-slot edits.
 - [ ] L3 is classified and blocked unless requested.
 - [ ] L4 cannot pass.
@@ -245,7 +245,7 @@ Recommended implementation slices:
 
 **Verification:**
 
-- [x] component/integration tests for slot extraction and slot-only replacement, covering brace styles, repeated slots, malformed placeholders, stable ids, offsets, and undeclared-slot rejection
+- [x] component/integration tests for slot extraction and slot-only replacement, covering brace styles, repeated slots, malformed placeholders, stable ids, offsets, undeclared-slot rejection, non-slot phrase preservation, and source order
 - [x] component tests for rewrite-level classifier covering L0, slot-only L1, light L2, loose L3, and unrelated L4
 - [x] component tests for draft preflight status, review-hash, target-beat, no-reuse, and material-link validation
 - [x] integration tests for draft preflight material-link hash validation
