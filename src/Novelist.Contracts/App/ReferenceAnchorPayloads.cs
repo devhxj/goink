@@ -182,7 +182,13 @@ public sealed record SearchReferenceMaterialsPayload(
     [property: JsonPropertyName("pov_tags")] IReadOnlyList<string> PovTags,
     [property: JsonPropertyName("technique_tags")] IReadOnlyList<string> TechniqueTags,
     [property: JsonPropertyName("page")] int Page,
-    [property: JsonPropertyName("size")] int Size);
+    [property: JsonPropertyName("size")] int Size,
+    [property: JsonPropertyName("narrative_duties")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? NarrativeDuties = null,
+    [property: JsonPropertyName("emotion_transitions")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? EmotionTransitions = null);
 
 public sealed record ReferenceSlotValuePayload(
     [property: JsonPropertyName("slot_name")] string SlotName,

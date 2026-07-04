@@ -90,6 +90,10 @@ public sealed partial class NovelistMafToolRegistry
             string[]? pov_tags = null,
             [Description("写作手法标签过滤")]
             string[]? technique_tags = null,
+            [Description("叙事职责过滤，例如 interiority / external_evidence / transition / sensory")]
+            string[]? narrative_duties = null,
+            [Description("情绪转变过滤，例如 controlled->heightened；匹配材料 emotion_tag")]
+            string[]? emotion_transitions = null,
             [Description("页码，默认 1")]
             int page = 0,
             [Description("每页数量，默认 10，最大 20")]
@@ -107,7 +111,9 @@ public sealed partial class NovelistMafToolRegistry
                     pov_tags ?? [],
                     technique_tags ?? [],
                     page <= 0 ? 1 : page,
-                    Math.Clamp(size <= 0 ? 10 : size, 1, 20)),
+                    Math.Clamp(size <= 0 ? 10 : size, 1, 20),
+                    narrative_duties,
+                    emotion_transitions),
                 cancellationToken);
         }
 

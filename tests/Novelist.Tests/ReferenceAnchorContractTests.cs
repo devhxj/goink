@@ -69,6 +69,32 @@ public sealed class ReferenceAnchorContractTests
     }
 
     [Fact]
+    public void SearchReferenceMaterialsPayloadUsesStableNarrativeFilterJsonNames()
+    {
+        var payload = new SearchReferenceMaterialsPayload(
+            NovelId: 42,
+            AnchorIds: [7],
+            Query: "rain pressure",
+            MaterialTypes: [ReferenceMaterialTypes.Sentence],
+            EmotionTags: ["heightened"],
+            FunctionTags: ["environment"],
+            PovTags: ["unknown"],
+            TechniqueTags: ["sensory_detail"],
+            Page: 1,
+            Size: 10,
+            NarrativeDuties: ["external_evidence"],
+            EmotionTransitions: ["neutral->heightened"]);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(payload, BridgeJson.SerializerOptions));
+        var root = json.RootElement;
+
+        Assert.Equal("external_evidence", root.GetProperty("narrative_duties")[0].GetString());
+        Assert.Equal("neutral->heightened", root.GetProperty("emotion_transitions")[0].GetString());
+        Assert.False(root.TryGetProperty("NarrativeDuties", out _));
+        Assert.False(root.TryGetProperty("EmotionTransitions", out _));
+    }
+
+    [Fact]
     public void ReferenceChapterBlueprintPayloadsUseStableSnakeCaseJsonNames()
     {
         var beat = new ReferenceChapterBlueprintBeatPayload(

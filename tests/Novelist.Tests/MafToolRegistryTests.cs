@@ -272,7 +272,7 @@ public sealed class MafToolRegistryTests
             new ChatToolCall(
                 "call_reference_search",
                 "search_reference_materials",
-                """{"query":"雨夜压迫感","anchor_ids":[7],"material_types":["sentence"],"page":1,"size":5}"""),
+                """{"query":"雨夜压迫感","anchor_ids":[7],"material_types":["sentence"],"narrative_duties":["external_evidence"],"emotion_transitions":["neutral->pressure"],"page":1,"size":5}"""),
             CancellationToken.None);
 
         Assert.True(result.Success, result.Error);
@@ -281,6 +281,8 @@ public sealed class MafToolRegistryTests
         Assert.Equal("雨夜压迫感", anchors.LastSearch.Query);
         Assert.Equal([7], anchors.LastSearch.AnchorIds);
         Assert.Equal(["sentence"], anchors.LastSearch.MaterialTypes);
+        Assert.Equal(["external_evidence"], anchors.LastSearch.NarrativeDuties);
+        Assert.Equal(["neutral->pressure"], anchors.LastSearch.EmotionTransitions);
         Assert.Equal("mat-1", result.Data!.Value.GetProperty("items")[0].GetProperty("material_id").GetString());
     }
 

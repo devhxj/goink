@@ -506,6 +506,8 @@ export namespace reference {
     technique_tags: string[]
     page: number
     size: number
+    narrative_duties?: string[] | null
+    emotion_transitions?: string[] | null
   }
 
   export interface SlotValue {

@@ -322,6 +322,56 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchMaterialsFiltersByNarrativeDutyEmotionTransitionPovTechniqueAndType()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("职责搜索过滤测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "search-duty-filters.md",
+            """
+            # 第一章
+
+            雨声压低了街面！
+
+            他心里记得那枚钥匙。
+
+            她说：别回头。
+            """);
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "职责搜索参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+
+        var result = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                ["unknown"],
+                ["sensory_detail"],
+                Page: 1,
+                Size: 10,
+                NarrativeDuties: ["external_evidence"],
+                EmotionTransitions: ["neutral->heightened"]),
+            CancellationToken.None);
+
+        var material = Assert.Single(result.Items);
+        Assert.Equal("雨声压低了街面！", material.Text);
+        Assert.Equal("environment", material.FunctionTag);
+        Assert.Equal("heightened", material.EmotionTag);
+        Assert.Equal("unknown", material.PovTag);
+        Assert.Equal("sensory_detail", material.TechniqueTag);
+        Assert.NotNull(material.ScoreComponents);
+        Assert.True(material.ScoreComponents["narrative_duty"] > 0);
+        Assert.True(material.ScoreComponents["emotion_transition"] > 0);
+    }
+
+    [Fact]
     public async Task CreateAnchorPersistsMaterialProvenanceTagsAndSlots()
     {
         var options = CreateOptions();

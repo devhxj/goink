@@ -311,7 +311,7 @@ GenerateReferenceAnchoredDraft
 AuditReferenceAnchoredDraft
 ```
 
-`SearchReferenceMaterials` returns paged `ReferenceMaterialPayload` items. Search responses attach optional `score_components` to each returned material for ranking explainability; stored material rows do not persist those transient components.
+`SearchReferenceMaterials` returns paged `ReferenceMaterialPayload` items. Search requests accept optional `narrative_duties` and `emotion_transitions` filters in addition to material type, function, emotion, POV, and technique filters. Search responses attach optional `score_components` to each returned material for ranking explainability; stored material rows do not persist those transient components.
 
 Implementation files:
 
@@ -431,6 +431,7 @@ Current status:
 Tool limits:
 
 - `search_reference_materials`: max page size 20
+- `search_reference_materials`: supports optional narrative-duty and emotion-transition filters
 - `search_reference_materials`: returned materials include optional `score_components` when produced by ranked search
 - `adapt_reference_material`: requires `material_id`, `slot_values`, `max_rewrite_level`
 - `audit_reference_reuse`: pure check only

@@ -1796,7 +1796,9 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             MatchesAnyFilter(material.EmotionTag, input.EmotionTags) &&
             MatchesAnyFilter(material.FunctionTag, input.FunctionTags) &&
             MatchesAnyFilter(material.PovTag, input.PovTags) &&
-            MatchesAnyFilter(material.TechniqueTag, input.TechniqueTags);
+            MatchesAnyFilter(material.TechniqueTag, input.TechniqueTags) &&
+            MatchesNarrativeDutyFilters(material, input.NarrativeDuties) &&
+            MatchesEmotionTransitionFilters(material, input.EmotionTransitions);
     }
 
     private static bool MatchesAnyFilter(string value, IReadOnlyList<string>? filters)
@@ -1823,6 +1825,8 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
 
         AddScore(components, "material_type", material.MaterialType == ReferenceMaterialTypes.Sentence ? 1.5 : 0.8);
         AddScore(components, "tag", SearchTagScore(material, input));
+        AddScore(components, "narrative_duty", NarrativeDutyScore(material, input.NarrativeDuties));
+        AddScore(components, "emotion_transition", EmotionTransitionScore(material, input.EmotionTransitions));
         AddScore(components, "confidence", material.FunctionConfidence + material.EmotionConfidence * 0.2 + material.PovConfidence * 0.1);
         AddScore(components, "length", Math.Max(0, 1.0 - material.Text.Length / 500.0));
         return components;
@@ -1841,11 +1845,85 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         return score;
     }
 
+    private static bool MatchesNarrativeDutyFilters(
+        ReferenceMaterialPayload material,
+        IReadOnlyList<string>? narrativeDuties)
+    {
+        return narrativeDuties is null ||
+            narrativeDuties.Count == 0 ||
+            narrativeDuties.Any(duty => MatchesNarrativeDuty(material, duty));
+    }
+
+    private static double NarrativeDutyScore(
+        ReferenceMaterialPayload material,
+        IReadOnlyList<string>? narrativeDuties)
+    {
+        return narrativeDuties is null
+            ? 0
+            : narrativeDuties.Count(duty => MatchesNarrativeDuty(material, duty));
+    }
+
+    private static bool MatchesNarrativeDuty(ReferenceMaterialPayload material, string duty)
+    {
+        return NormalizeFilterToken(duty) switch
+        {
+            "" => false,
+            "interiority" => IsTag(material.FunctionTag, "interiority"),
+            "external_evidence" => IsTag(material.FunctionTag, "action") || IsTag(material.FunctionTag, "environment"),
+            "transition" => IsTag(material.FunctionTag, "transition"),
+            "sensory" or "sensory_anchor" => IsTag(material.TechniqueTag, "sensory_detail"),
+            "causality" => !IsTag(material.FunctionTag, "dialogue"),
+            "subtext" => IsTag(material.FunctionTag, "dialogue") || IsTag(material.FunctionTag, "interiority"),
+            "source_detail" or "source_backed_detail" => IsTag(material.FunctionTag, "environment") || IsTag(material.TechniqueTag, "sensory_detail"),
+            "physical_afterbeat" or "afterbeat" => IsTag(material.TechniqueTag, "afterbeat") || IsTag(material.FunctionTag, "action"),
+            var normalized => IsTag(material.FunctionTag, normalized) ||
+                IsTag(material.TechniqueTag, normalized) ||
+                IsTag(material.SceneTag, normalized)
+        };
+    }
+
+    private static bool MatchesEmotionTransitionFilters(
+        ReferenceMaterialPayload material,
+        IReadOnlyList<string>? emotionTransitions)
+    {
+        return emotionTransitions is null ||
+            emotionTransitions.Count == 0 ||
+            emotionTransitions.Any(transition => MatchesEmotionTransition(material, transition));
+    }
+
+    private static double EmotionTransitionScore(
+        ReferenceMaterialPayload material,
+        IReadOnlyList<string>? emotionTransitions)
+    {
+        return emotionTransitions is null
+            ? 0
+            : emotionTransitions.Count(transition => MatchesEmotionTransition(material, transition));
+    }
+
+    private static bool MatchesEmotionTransition(ReferenceMaterialPayload material, string transition)
+    {
+        var emotionTag = NormalizeFilterToken(material.EmotionTag);
+        var normalizedTransition = NormalizeFilterToken(transition);
+        return emotionTag.Length > 0 &&
+            normalizedTransition.Length > 0 &&
+            normalizedTransition.Contains(emotionTag, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool MatchesNonEmptyFilter(string value, IReadOnlyList<string>? filters)
     {
         return filters is not null &&
             filters.Count > 0 &&
             filters.Any(filter => string.Equals(value, filter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsTag(string value, string tag)
+    {
+        return string.Equals(value, tag, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeFilterToken(string? value)
+    {
+        return (value ?? string.Empty).Trim().ToLowerInvariant();
     }
 
     private static void AddScore(IDictionary<string, double> components, string name, double value)
