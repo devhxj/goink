@@ -171,7 +171,7 @@ Recommended implementation slices:
 - [ ] Editing any approved blueprint beat, analysis track, execution track, known/forbidden fact, or reference query invalidates approval and requires re-review.
 - [x] Blueprint revision records field paths, previous/new value hashes, origin, invalidated review id, and reason.
 - [x] Changing the source chapter plan hash marks existing blueprints stale.
-- [ ] Material binding links candidate reference materials to beats with max rewrite levels.
+- [x] Material binding links candidate reference materials to beats with max rewrite levels.
 - [x] Material binding records and exposes score components: lexical, tag, function, emotion, POV, prose-duty, and user-verified boosts.
 - [x] Material binding rejects semantic-only matches when function, POV, emotion, or prose-duty fit is absent.
 - [x] Material binding stores the `analysis_contract_hash` it was created against and is stale when that hash changes.
