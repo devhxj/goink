@@ -157,6 +157,48 @@ public sealed class MafToolRegistryTests
             tool => tool.Name.StartsWith("search_reference", StringComparison.Ordinal) ||
                 tool.Name.StartsWith("generate_reference", StringComparison.Ordinal));
 
+        var withOnlyReferenceAnchors = new NovelistMafToolRegistry(
+            new RecordingStoryMemorySearchService(),
+            chapterContent: null,
+            approvals: null,
+            events: null,
+            subagents: null,
+            preferences: null,
+            world: null,
+            planning: null,
+            webFetch: null,
+            webSearch: null,
+            referenceAnchors: new RecordingReferenceAnchorService());
+        var materialToolNames = withOnlyReferenceAnchors.CreateTools(new NovelistMafToolContext(17))
+            .Select(tool => tool.Name)
+            .ToArray();
+        Assert.Contains("get_reference_anchors", materialToolNames);
+        Assert.Contains("search_reference_materials", materialToolNames);
+        Assert.Contains("adapt_reference_material", materialToolNames);
+        Assert.Contains("audit_reference_reuse", materialToolNames);
+        Assert.DoesNotContain("generate_reference_chapter_blueprint", materialToolNames);
+        Assert.DoesNotContain("generate_reference_anchored_draft", materialToolNames);
+
+        var withOnlyReferenceDrafts = new NovelistMafToolRegistry(
+            new RecordingStoryMemorySearchService(),
+            chapterContent: null,
+            approvals: null,
+            events: null,
+            subagents: null,
+            preferences: null,
+            world: null,
+            planning: null,
+            webFetch: null,
+            webSearch: null,
+            referenceDrafts: new RecordingReferenceAnchoredDraftService());
+        var draftToolNames = withOnlyReferenceDrafts.CreateTools(new NovelistMafToolContext(17))
+            .Select(tool => tool.Name)
+            .ToArray();
+        Assert.DoesNotContain("get_reference_anchors", draftToolNames);
+        Assert.DoesNotContain("search_reference_materials", draftToolNames);
+        Assert.Contains("generate_reference_chapter_blueprint", draftToolNames);
+        Assert.Contains("generate_reference_anchored_draft", draftToolNames);
+
         var registry = new NovelistMafToolRegistry(
             new RecordingStoryMemorySearchService(),
             chapterContent: null,
@@ -198,6 +240,14 @@ public sealed class MafToolRegistryTests
         var generateDraft = tools.Single(tool => tool.Name == "generate_reference_anchored_draft");
         Assert.Contains("approved", generateDraft.Description, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SaveContent", generateDraft.Description, StringComparison.Ordinal);
+        Assert.True(generateDraft.JsonSchema.TryGetProperty("properties", out var generateDraftProperties));
+        Assert.True(generateDraftProperties.TryGetProperty("blueprint_id", out _));
+        Assert.True(generateDraftProperties.TryGetProperty("beat_ids", out _));
+        Assert.False(generateDraftProperties.TryGetProperty("content", out _));
+        Assert.False(generateDraftProperties.TryGetProperty("text", out _));
+        Assert.False(generateDraftProperties.TryGetProperty("path", out _));
+        Assert.False(generateDraftProperties.TryGetProperty("chapter_path", out _));
+        Assert.DoesNotContain("SaveContent", generateDraftProperties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
     }
 
     [Fact]

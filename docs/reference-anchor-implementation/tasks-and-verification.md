@@ -310,14 +310,15 @@ Recommended implementation slices:
 - [ ] Reference-anchor and anchored-draft services are created in `PhotinoWindowFactory.cs` or equivalent desktop composition, not ASP.NET Core DI.
 - [ ] Existing constructor tests still pass.
 - [ ] No existing tool disappears.
-- [ ] Reference material tools are absent when service is null and present when configured.
-- [ ] Reference draft tools are absent when draft service is null and present when configured.
-- [ ] Agent tools enforce blueprint workflow order and cannot call `SaveContent`.
+- [x] Reference material tools are absent when service is null and present when configured.
+- [x] Reference draft tools are absent when draft service is null and present when configured.
+- [x] Agent tools enforce blueprint workflow order and cannot call `SaveContent`.
 - [ ] `make dev` or documented dev workflow clearly requires built frontend assets or a Vite `--start-url`; missing `frontend/dist/index.html` reports a direct asset-build error.
 
 **Verification:**
 
-- [ ] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter MafToolRegistry`
+- [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter MafToolRegistry`
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter ReferenceDraftTools`
 - [ ] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter Photino`
 
 **Files likely touched:**
