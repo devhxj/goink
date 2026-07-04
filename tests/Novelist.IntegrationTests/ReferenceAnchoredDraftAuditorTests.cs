@@ -434,6 +434,29 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenCandidateViolatesParagraphExecutionContract()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            ParagraphIntention = "linger on the threshold before action",
+            ExecutionMode = "dwell",
+            CandidateRejectionRule = "reject movement-only prose",
+            ProseDuties = ["interiority", "external_evidence", "transition"]
+        });
+        var candidate = Candidate(blueprint, "他推门进去。她转身。两人走开。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.BlueprintErrors, item => item.Contains("paragraph intention", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.BlueprintErrors, item => item.Contains("rejection rule", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("execution mode", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildDraftAuditFailsWhenRequiredEmotionEvidenceIsMissing()
     {
         var blueprint = Blueprint(beat => beat with

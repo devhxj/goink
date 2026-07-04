@@ -226,7 +226,7 @@ Recommended implementation slices:
 - [x] Draft generation rejects material links created against a different `analysis_contract_hash`.
 - [x] Draft generation rejects candidates when the preflight cannot prove `blueprint -> approval -> material_link -> candidate` provenance.
 - [ ] Draft generation consumes only reviewed blueprint beat facts, duties, execution track, material links, slot plans, and allowed rewrite levels.
-- [ ] Draft generation rejects candidates that violate the beat's paragraph intention, execution mode, or candidate rejection rule.
+- [x] Draft generation rejects candidates that violate the beat's paragraph intention, execution mode, or candidate rejection rule.
 - [ ] Draft generation never calls a model with unbounded "write this chapter" instructions; prompts must be beat-scoped and grounded in approved fields.
 - [x] L1 changes only declared slots.
 - [x] L1 slot replacement preserves locked phrases and source order where applicable.

@@ -126,6 +126,12 @@ internal static class ReferenceAnchoredDraftAuditor
                 requiredFixes.Add($"Add observable prose duty evidence to candidate {candidate.CandidateId}: {duties}");
             }
 
+            foreach (var violation in FindExecutionContractViolations(beat, candidate.Text))
+            {
+                blueprintErrors.Add($"Candidate {candidate.CandidateId} violates blueprint execution contract: {violation}");
+                requiredFixes.Add($"Revise candidate {candidate.CandidateId} to satisfy paragraph intention, execution mode, and rejection rule: {violation}");
+            }
+
             if (RequiresNovelisticExecution(beat) &&
                 IsDialogueOnly(candidate.Text) &&
                 !allowsShortDialogueExchange)
@@ -527,6 +533,71 @@ internal static class ReferenceAnchoredDraftAuditor
             "source_detail" or "source_backed_detail" => HasSourceDetailEvidence(beat, candidateText),
             _ => false
         };
+    }
+
+    private static IReadOnlyList<string> FindExecutionContractViolations(
+        ReferenceChapterBlueprintBeatPayload beat,
+        string candidateText)
+    {
+        var violations = new List<string>();
+        if (RequiresDwellExecutionEvidence(beat) && !HasDwellExecutionEvidence(beat, candidateText))
+        {
+            violations.Add("paragraph intention or execution mode requires dwell/linger evidence before action.");
+        }
+
+        if (ViolatesCandidateRejectionRule(beat.CandidateRejectionRule, candidateText))
+        {
+            violations.Add("candidate matches the beat candidate rejection rule.");
+        }
+
+        return violations;
+    }
+
+    private static bool RequiresDwellExecutionEvidence(ReferenceChapterBlueprintBeatPayload beat)
+    {
+        return ContainsAny(
+                beat.ParagraphIntention,
+                ["dwell", "linger", "hold", "slow", "threshold", "停留", "放慢", "迟疑", "犹豫", "门槛"]) ||
+            ContainsAny(
+                beat.ExecutionMode,
+                ["dwell", "linger", "hold", "slow", "停留", "放慢", "迟疑", "犹豫"]);
+    }
+
+    private static bool HasDwellExecutionEvidence(ReferenceChapterBlueprintBeatPayload beat, string candidateText)
+    {
+        return HasInteriorityEvidence(candidateText) ||
+            HasExternalEvidence(beat, candidateText) ||
+            HasSensoryEvidence(candidateText) ||
+            HasSubtextEvidence(candidateText) ||
+            HasTransitionEvidence(candidateText);
+    }
+
+    private static bool ViolatesCandidateRejectionRule(string rejectionRule, string candidateText)
+    {
+        if (string.IsNullOrWhiteSpace(rejectionRule))
+        {
+            return false;
+        }
+
+        var normalized = rejectionRule.Trim()
+            .Replace("-", "_", StringComparison.Ordinal)
+            .Replace(" ", "_", StringComparison.Ordinal)
+            .ToLowerInvariant();
+        if ((ContainsAny(normalized, ["action_only", "movement_only"]) ||
+                ContainsAny(rejectionRule, ["纯动作", "只有动作", "只有走位", "动作流水"])) &&
+            IsActionOnly(candidateText))
+        {
+            return true;
+        }
+
+        if ((ContainsAny(normalized, ["dialogue_only"]) ||
+                ContainsAny(rejectionRule, ["纯对话", "只有对话"])) &&
+            IsDialogueOnly(candidateText))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasInteriorityEvidence(string text)
