@@ -1108,6 +1108,113 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateDraftFromBlueprintSendsOnlyBeatScopedReviewedInputsToAdapter()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("草稿输入边界测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var material = new ReferenceMaterialPayload(
+            MaterialId: "bounded-material",
+            AnchorId: 1,
+            SourceSegmentId: "segment-1",
+            MaterialType: ReferenceMaterialTypes.Sentence,
+            FunctionTag: "environment",
+            EmotionTag: "reflective",
+            SceneTag: "threshold",
+            PovTag: "close",
+            TechniqueTag: "sensory_detail",
+            FunctionConfidence: 0.9,
+            EmotionConfidence: 0.8,
+            PovConfidence: 0.8,
+            Text: "雨声压低了街的呼吸，周鸣心里一紧，指尖在门缝血迹前发紧。",
+            SourceHash: "source-hash",
+            ExtractorVersion: "test",
+            UserVerified: true,
+            CreatedAt: DateTimeOffset.UtcNow);
+        var referenceAnchors = new FixedReferenceAnchorService(material, applySearchFilters: true);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+        var generated = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                43,
+                "草稿输入边界蓝图",
+                "雨声压低",
+                [1],
+                KnownFacts: ["雨声压低了街的呼吸"],
+                ForbiddenFacts: ["凶手身份"]),
+            CancellationToken.None);
+        var beatPath = "beat:" + generated.Beats[0].BeatId + ":";
+        var slotPlan = new[]
+        {
+            new ReferenceSlotValuePayload("clue", "门缝血迹"),
+            new ReferenceSlotValuePayload("reaction", "指尖发紧")
+        };
+        var revised = await service.ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novel.Id,
+                generated.BlueprintId,
+                [
+                    new ReferenceBlueprintRevisionChangePayload(beatPath + "reference_query.query", "雨声压低"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "reference_query.material_types",
+                        JsonSerializer.Serialize(new[] { ReferenceMaterialTypes.Sentence })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "reference_query.function_tags",
+                        JsonSerializer.Serialize(new[] { "environment" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "reference_query.pov_tags",
+                        JsonSerializer.Serialize(new[] { "close" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "reference_query.technique_tags",
+                        JsonSerializer.Serialize(new[] { "sensory_detail" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "required_material_types",
+                        JsonSerializer.Serialize(new[] { ReferenceMaterialTypes.Sentence })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "slot_plan",
+                        JsonSerializer.Serialize(slotPlan)),
+                    new ReferenceBlueprintRevisionChangePayload(beatPath + "max_rewrite_level", ReferenceRewriteLevels.L1),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "scene_facts",
+                        JsonSerializer.Serialize(new[] { "门缝血迹" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "viewpoint_allowed_knowledge",
+                        JsonSerializer.Serialize(new[] { "周鸣看到门缝血迹" })),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        beatPath + "prose_duties",
+                        JsonSerializer.Serialize(new[] { "interiority", "external_evidence", "sensory" }))
+                ],
+                "user",
+                "bound draft adapter inputs"),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, revised.BlueprintId),
+            CancellationToken.None);
+        var approved = await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, revised.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+        var binding = await service.BindBlueprintMaterialsAsync(
+            new BindReferenceBlueprintMaterialsPayload(novel.Id, approved.BlueprintId, MaxResultsPerBeat: 3, SelectTopCandidate: true),
+            CancellationToken.None);
+        var selected = Assert.Single(binding.Links, link => link.Selected);
+
+        var draft = await service.GenerateDraftFromBlueprintAsync(
+            new GenerateReferenceAnchoredDraftPayload(novel.Id, approved.BlueprintId, [revised.Beats[0].BeatId]),
+            CancellationToken.None);
+
+        Assert.Equal("passed", draft.Audit?.Status);
+        var adaptInput = Assert.Single(referenceAnchors.AdaptInputs);
+        Assert.Equal(selected.MaterialId, adaptInput.MaterialId);
+        Assert.Equal(ReferenceRewriteLevels.L1, adaptInput.MaxRewriteLevel);
+        Assert.Equal(slotPlan, adaptInput.SlotValues);
+        Assert.Contains("门缝血迹", adaptInput.SceneFacts);
+        Assert.Contains("周鸣看到门缝血迹", adaptInput.SceneFacts);
+        Assert.DoesNotContain("凶手身份", adaptInput.SceneFacts);
+    }
+
+    [Fact]
     public async Task MaterialBoundBlueprintStillRejectsDraftWithoutCurrentPassingReview()
     {
         var options = CreateOptions();
@@ -2463,8 +2570,10 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         private readonly IReadOnlyList<ReferenceMaterialPayload> _materials;
         private readonly bool _applySearchFilters;
         private readonly List<SearchReferenceMaterialsPayload> _searchInputs = [];
+        private readonly List<AdaptReferenceMaterialPayload> _adaptInputs = [];
 
         public IReadOnlyList<SearchReferenceMaterialsPayload> SearchInputs => _searchInputs;
+        public IReadOnlyList<AdaptReferenceMaterialPayload> AdaptInputs => _adaptInputs;
 
         public FixedReferenceAnchorService(
             ReferenceMaterialPayload material,
@@ -2545,8 +2654,28 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
 
         public ValueTask<AdaptReferenceMaterialResultPayload> AdaptMaterialAsync(
             AdaptReferenceMaterialPayload input,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken)
+        {
+            _adaptInputs.Add(input);
+            var material = _materials.First(item => string.Equals(item.MaterialId, input.MaterialId, StringComparison.Ordinal));
+            return ValueTask.FromResult(new AdaptReferenceMaterialResultPayload(
+                "fixed-candidate-" + input.MaterialId,
+                input.MaterialId,
+                input.MaxRewriteLevel,
+                material.Text,
+                input.SlotValues,
+                NonSlotEdits: [],
+                new ReferenceReuseAuditPayload(
+                    "fixed-audit-" + input.MaterialId,
+                    "passed",
+                    input.MaxRewriteLevel,
+                    ProvenanceErrors: [],
+                    UnsupportedFactErrors: [],
+                    AiProseRisks: [],
+                    NonSlotEdits: [],
+                    RequiredFixes: [],
+                    DateTimeOffset.UnixEpoch)));
+        }
 
         public ValueTask<ReferenceReuseAuditPayload> AuditCandidateAsync(
             AuditReferenceReusePayload input,
