@@ -389,6 +389,50 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchMaterialsTruncatesUnknownLicenseSourcePreviewButKeepsStoredText()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("未知授权预览测试", "", ""), CancellationToken.None);
+        var longSentence = "雨声压低了整条街的呼吸，周鸣在门口停了很久，钥匙在掌心硌出一点冷意，走廊尽头的灯反复闪烁，他没有立刻敲门，只把那口气慢慢咽回去。";
+        var sourcePath = CreateSourceFile(
+            "unknown-license.md",
+            $$"""
+            # 第一章
+
+            {{longSentence}}
+            """);
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "未知授权参考", null, sourcePath, "markdown", "unknown"),
+            CancellationToken.None);
+
+        var result = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                AnchorIds: [anchor.AnchorId],
+                Query: "周鸣",
+                MaterialTypes: [ReferenceMaterialTypes.Sentence],
+                EmotionTags: [],
+                FunctionTags: [],
+                PovTags: [],
+                TechniqueTags: [],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+
+        var preview = Assert.Single(result.Items, item => item.MaterialType == ReferenceMaterialTypes.Sentence);
+        Assert.NotEqual(longSentence, preview.Text);
+        Assert.StartsWith("雨声压低了整条街的呼吸", preview.Text, StringComparison.Ordinal);
+        Assert.EndsWith("...", preview.Text, StringComparison.Ordinal);
+        Assert.True(preview.Text.Length < longSentence.Length);
+
+        var stored = await ReadMaterialRowsAsync(options, anchor.AnchorId);
+        Assert.Contains(stored, row => row.MaterialType == ReferenceMaterialTypes.Sentence && row.Text == longSentence);
+    }
+
+    [Fact]
     public async Task SearchMaterialsRanksLexicalMatchesAndBoundsPaginationWithoutEmbeddings()
     {
         var options = CreateOptions();

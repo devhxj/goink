@@ -405,7 +405,7 @@ Recommended implementation slices:
 - [ ] Reference-anchor search scope is decided: dedicated panel only, global `SearchAll` integration, or a staged hybrid path.
 - [ ] Optional LLM-assisted material tagging/adaptation has a feature-flag/design decision and does not weaken deterministic review, binding, rewrite-level, or audit gates.
 - [ ] Full-chapter candidate assembly is either explicitly deferred or implemented only after every beat candidate can prove passing audit and provenance.
-- [ ] Source preview policy is decided for unknown-license anchors, including whether exact source text is truncated by default.
+- [x] Source preview policy is decided for unknown-license anchors: material search/library previews return truncated exact text by default, while stored materials, provenance hashes, adaptation, binding, and audit still use the complete imported text.
 - [ ] Generator reproducibility policy is decided: store generator version/context hash only, or persist prompt/schema metadata without creating prompt-churn in the database.
 - [ ] Developer workflow expectation is finalized: `make dev` dependency on frontend build versus explicit Vite/build steps.
 - [ ] `overview.md`, `schema-and-integration.md`, and `decisions.md` no longer describe completed Phase 0-9 items as incomplete.
@@ -600,7 +600,7 @@ tests/Novelist.IntegrationTests/ReferenceAnchoredDraftBridgeTests.cs
 
 ## Phase 10 Design Decisions To Close
 
-- Unknown-license source previews: truncate exact source text by default, show only derived metadata, or leave current full preview behavior.
+- Unknown-license source previews: resolved for the current implementation. Search/library preview payloads truncate exact text by default; complete source/material text remains in SQLite for provenance, adaptation, binding, and audit.
 - Source segment text policy: keep full original line text, normalized text, or both.
 - Optional model assistance: keep deterministic-only extraction/adaptation, or add LLM-assisted tagging/adaptation behind an explicit feature flag.
 - Search scope: keep reference-anchor results isolated, include them in global `SearchAll`, or expose a staged opt-in integration.

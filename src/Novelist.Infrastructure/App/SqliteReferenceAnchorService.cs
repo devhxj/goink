@@ -15,6 +15,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
     private const string BuildVersion = "reference-anchor-v1";
     private const long MaxSourceBytes = 20L * 1024L * 1024L;
     private const int EmbeddingBatchSize = 64;
+    private const int UnknownLicensePreviewMaxChars = 48;
     private static readonly Regex MarkdownHeadingPattern = new(@"^\s{0,3}#{1,6}\s+(.+?)\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex BlankLinePattern = new(@"\n\s*\n", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex RiskTokenPattern = new(@"[A-Za-z][A-Za-z0-9_]{1,}|\d+(?:\.\d+)?", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -396,6 +397,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             }
 
             var all = await ReadMaterialsAsync(connection, input.NovelId, anchorIds, cancellationToken);
+            var unknownLicenseAnchorIds = await ReadUnknownLicenseAnchorIdsAsync(connection, input.NovelId, anchorIds, cancellationToken);
             var embeddingScores = await TryBuildEmbeddingScoresAsync(
                 databasePath,
                 connection,
@@ -420,7 +422,13 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             var items = filtered
                 .Skip((page - 1) * size)
                 .Take(size)
-                .Select(item => item.Material with { ScoreComponents = item.ScoreComponents })
+                .Select(item =>
+                {
+                    var material = item.Material with { ScoreComponents = item.ScoreComponents };
+                    return unknownLicenseAnchorIds.Contains(material.AnchorId)
+                        ? material with { Text = TruncateUnknownLicensePreview(material.Text) }
+                        : material;
+                })
                 .ToArray();
             return new PageResultPayload<ReferenceMaterialPayload>(items, total, page, size, totalPages);
         }
@@ -1198,6 +1206,46 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         }
 
         return materials;
+    }
+
+    private static async ValueTask<IReadOnlySet<long>> ReadUnknownLicenseAnchorIdsAsync(
+        SqliteConnection connection,
+        long novelId,
+        IReadOnlyList<long> anchorIds,
+        CancellationToken cancellationToken)
+    {
+        if (anchorIds.Count == 0)
+        {
+            return new HashSet<long>();
+        }
+
+        await using var command = connection.CreateCommand();
+        var parameterNames = new List<string>(anchorIds.Count);
+        for (var index = 0; index < anchorIds.Count; index++)
+        {
+            var parameterName = "$anchor_id_" + index.ToString(CultureInfo.InvariantCulture);
+            parameterNames.Add(parameterName);
+            command.Parameters.AddWithValue(parameterName, anchorIds[index]);
+        }
+
+        command.CommandText = $$"""
+            SELECT anchor_id
+            FROM reference_anchors
+            WHERE novel_id = $novel_id
+              AND license_status = $license_status
+              AND anchor_id IN ({{string.Join(", ", parameterNames)}})
+            ORDER BY anchor_id ASC;
+            """;
+        command.Parameters.AddWithValue("$novel_id", novelId);
+        command.Parameters.AddWithValue("$license_status", "unknown");
+        var result = new HashSet<long>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(reader.GetInt64(0));
+        }
+
+        return result;
     }
 
     private static async ValueTask<IReadOnlyDictionary<string, long>> ReadMaterialRowIdsAsync(
@@ -2456,6 +2504,14 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         {
             components[name] = Math.Round(value, 4);
         }
+    }
+
+    private static string TruncateUnknownLicensePreview(string text)
+    {
+        var normalized = (text ?? string.Empty).Trim();
+        return normalized.Length <= UnknownLicensePreviewMaxChars
+            ? normalized
+            : normalized[..UnknownLicensePreviewMaxChars].TrimEnd() + "...";
     }
 
     private static AdaptedMaterial ApplySlotValues(

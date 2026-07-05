@@ -770,7 +770,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         AddScore(components, "emotion", emotionFit ? 2.0 : 0);
         AddScore(components, "pov", povFit ? 1.5 : 0);
         AddScore(components, "prose_duty", proseDutyFit ? 2.0 : 0);
-        AddScore(components, "lexical", LexicalScore(beat.ReferenceQuery.Query, material.Text));
+        AddScore(components, "lexical", SearchOrLocalLexicalScore(beat.ReferenceQuery.Query, material));
         AddScore(components, "confidence", material.FunctionConfidence + material.EmotionConfidence * 0.25 + material.PovConfidence * 0.25);
         AddScore(components, "user_verified", material.UserVerified ? 1.0 : 0);
         AddScore(components, "accepted_feedback", acceptedFeedbackMaterialIds.Contains(material.MaterialId) ? 2.0 : 0);
@@ -916,6 +916,13 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
         var index = text.IndexOf(normalized, StringComparison.OrdinalIgnoreCase);
         return index < 0 ? 0 : Math.Max(0.5, 3.0 - index / 50.0);
+    }
+
+    private static double SearchOrLocalLexicalScore(string query, ReferenceMaterialPayload material)
+    {
+        return TryGetScoreComponent(material, "lexical", out var searchScore)
+            ? searchScore
+            : LexicalScore(query, material.Text);
     }
 
     private static void AddScore(IDictionary<string, double> components, string name, double value)

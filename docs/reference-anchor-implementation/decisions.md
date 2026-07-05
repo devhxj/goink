@@ -461,6 +461,8 @@ Validation:
 
 The service should read the source once and persist immutable source segments. It should not let agent tools read arbitrary source paths later.
 
+Unknown-license sources are allowed, but exact source text should not be exposed as a full search/library preview by default. The service keeps complete imported source segments and materials in SQLite for provenance, hashing, adaptation, binding, and audit, while `SearchReferenceMaterials` truncates preview text for anchors marked `license_status = unknown`.
+
 ### Build Pipeline
 
 Use a synchronous implementation first, but model the result as a build status. The UI can later poll the same status without changing contracts.

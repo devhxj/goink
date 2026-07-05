@@ -855,6 +855,76 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task BindBlueprintMaterialsPreservesLexicalScoreForUnknownLicenseTruncatedPreviews()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("未知授权绑定评分测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var sourcePath = CreateSourceFile(
+            "unknown-binding.md",
+            """
+            # 第一章
+
+            雨声压低了整条街的呼吸，周鸣在门口停了很久，钥匙在掌心硌出一点冷意，走廊尽头的灯反复闪烁，他没有立刻敲门，只把那口气慢慢咽回去。
+            """);
+        var referenceAnchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await referenceAnchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "未知授权绑定参考", null, sourcePath, "markdown", "unknown"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+        var generated = await service.GenerateChapterBlueprintAsync(
+            new GenerateReferenceChapterBlueprintPayload(
+                novel.Id,
+                46,
+                "未知授权绑定蓝图",
+                "敲门前的压住反应",
+                [anchor.AnchorId],
+                KnownFacts: ["周鸣在门口", "敲门前压住反应"],
+                ForbiddenFacts: []),
+            CancellationToken.None);
+        var revised = await service.ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novel.Id,
+                generated.BlueprintId,
+                [
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + generated.Beats[0].BeatId + ":reference_query.query",
+                        "慢慢咽回去"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + generated.Beats[0].BeatId + ":reference_query.material_types",
+                        "[\"sentence\"]"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + generated.Beats[0].BeatId + ":reference_query.function_tags",
+                        "[\"interiority\"]"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + generated.Beats[0].BeatId + ":required_material_types",
+                        "[\"sentence\"]"),
+                    new ReferenceBlueprintRevisionChangePayload(
+                        "beat:" + generated.Beats[0].BeatId + ":prose_duties",
+                        "[\"external_evidence\"]")
+                ],
+                "user",
+                "verify unknown-license preview truncation does not weaken binding lexical score"),
+            CancellationToken.None);
+        var review = await service.ReviewChapterBlueprintAsync(
+            new ReviewReferenceChapterBlueprintPayload(novel.Id, revised.BlueprintId),
+            CancellationToken.None);
+        var approved = await service.ApproveChapterBlueprintAsync(
+            new ApproveReferenceChapterBlueprintPayload(novel.Id, revised.BlueprintId, review.ReviewId),
+            CancellationToken.None);
+
+        var result = await service.BindBlueprintMaterialsAsync(
+            new BindReferenceBlueprintMaterialsPayload(novel.Id, approved.BlueprintId, MaxResultsPerBeat: 1, SelectTopCandidate: true),
+            CancellationToken.None);
+
+        var selected = Assert.Single(result.Links, link => link.Selected);
+        Assert.True(selected.ScoreComponents.TryGetValue("lexical", out var lexical));
+        Assert.True(lexical > 0);
+    }
+
+    [Fact]
     public async Task BindBlueprintMaterialsCanReturnRankedCandidatesWithoutSelectingThem()
     {
         var options = CreateOptions();
