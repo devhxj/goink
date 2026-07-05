@@ -84,7 +84,7 @@ Phase 10 follow-up areas:
 - continue broadening deterministic Chinese narration, emotion, POV, and unsupported-fact fixtures before enabling optional model-assisted tagging or adaptation;
 - decide whether reference-anchor search belongs only in the dedicated panel or also in global search;
 - keep full-chapter assembly deferred until every beat candidate can prove passing audit/provenance and a separate insertion-confirmation design exists;
-- close the remaining UX/product questions around dev workflow expectations.
+- keep the desktop development loop explicit: prebuild `frontend/dist` for `make dev`, or run Vite and launch with `--start-url`.
 
 ## 2026-07-05 Planning Update: AI-Orchestrated Low-Intervention Workflow
 

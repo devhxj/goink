@@ -310,6 +310,8 @@ make build   # 生产构建
 make dev     # Photino 桌面开发模式
 ```
 
+`make dev` 不会自动构建前端；本地桌面模式需要先运行 `npm --prefix frontend run build` 生成 `frontend/dist`。调试纯前端时可用 `make frontend-dev` 启动 Vite，再用 `--start-url=http://localhost:5173/` 的桌面启动配置加载 Vite 页面。
+
 ## 技术栈
 
 | 层 | 选型 |

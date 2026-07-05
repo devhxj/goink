@@ -68,8 +68,11 @@ build/runtime/sqlite-vec/
 启动桌面应用：
 
 ```bash
+npm --prefix frontend run build
 make dev
 ```
+
+`make dev` 保持快速后端/桌面启动，不隐式执行前端构建；如果 `frontend/dist/index.html` 不存在，Photino 会提示先构建前端。需要热更新前端时，先运行 `make frontend-dev`，再用 `--start-url=http://localhost:5173/` 的桌面启动配置加载 Vite 页面。
 
 只启动前端开发服务器：
 
