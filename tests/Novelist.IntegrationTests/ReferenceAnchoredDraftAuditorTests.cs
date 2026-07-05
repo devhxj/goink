@@ -108,6 +108,42 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnsupportedSensitiveIdentifier()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，林岚银行卡号622202、案号A17-42和病历号B91都写在纸背面。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("林岚银行卡号622202", StringComparison.Ordinal));
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("案号A17-42", StringComparison.Ordinal));
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("病历号B91", StringComparison.Ordinal));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("Remove unsupported fact", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsSensitiveIdentifierWhenItIsSceneFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            SceneFacts = [.. beat.SceneFacts, "林岚银行卡号622202"]
+        });
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，林岚银行卡号622202写在纸背面。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("林岚银行卡号622202", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildDraftAuditAllowsHighRiskFactWhenItIsSceneFact()
     {
         var blueprint = Blueprint(beat => beat with
@@ -724,6 +760,18 @@ public sealed class ReferenceAnchoredDraftAuditorTests
 
         Assert.Contains("旧楼地址", facts);
         Assert.Contains("地下室房间号", facts);
+    }
+
+    [Fact]
+    public void ExtractAuditableFactPhrasesReadsSensitiveIdentifierFacts()
+    {
+        var facts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(
+            "雨声压低了整条街的呼吸，林岚银行卡号622202、案号A17-42、病历号B91和车牌号A12345都写在纸背面。");
+
+        Assert.Contains("林岚银行卡号622202", facts);
+        Assert.Contains("案号A17-42", facts);
+        Assert.Contains("病历号B91", facts);
+        Assert.Contains("车牌号A12345", facts);
     }
 
     [Fact]

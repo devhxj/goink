@@ -379,6 +379,7 @@ internal static class ReferenceAnchoredDraftAuditor
             .Select(match => NormalizeAuditableFactPhrase(match.Value))
             .Where(value => value.Length >= 2));
         facts.AddRange(ExtractAccessCredentialFacts(text));
+        facts.AddRange(ExtractSensitiveIdentifierFacts(text));
         facts.AddRange(ExtractLocationIdentifierFacts(text));
         facts.AddRange(ExtractIdentityRevealFacts(text));
         facts.AddRange(ExtractRelationshipRevealFacts(text));
@@ -421,17 +422,47 @@ internal static class ReferenceAnchoredDraftAuditor
 
     private static IEnumerable<string> ExtractLocationIdentifierFacts(string text)
     {
-        const string identifierTerms = "地址|门牌号|房间号|房号|车牌|车牌号|手机号|电话号码|电话|坐标|坐标点";
+        const string identifierTerms = "门牌号|房间号|车牌号|手机号|电话号码|坐标点|地址|房号|车牌|电话|坐标";
         foreach (Match match in Regex.Matches(
             text,
-            @"(?:^|[，。！？；;,\s、]|和|与)(?<fact>[\u4e00-\u9fffA-Za-z0-9]{0,8}?(?:" + identifierTerms + @"))"))
+            @"(?:^|[，。！？；;,\s、]|和|与)(?<fact>[\u4e00-\u9fffA-Za-z0-9]{0,8}?(?:" + identifierTerms + @")(?:\s*(?:是|为|:|：)?\s*[A-Za-z0-9][A-Za-z0-9\-]{1,24})?)"))
         {
-            var fact = match.Groups["fact"].Value.Trim('，', ',', '。', '.', '；', ';', '！', '!', '？', '?', '、');
+            var fact = NormalizeDelimitedAuditableFact(match.Groups["fact"].Value);
             if (fact.Length >= 2)
             {
                 yield return fact;
             }
         }
+    }
+
+    private static IEnumerable<string> ExtractSensitiveIdentifierFacts(string text)
+    {
+        const string sensitiveTerms = "银行卡号|银行卡|银行账号|银行账户|账号|账户|卡号|案号|案件号|案件编号|案卷编号|卷宗编号|病历号|病历编号|病案号|报告编号|报告单号|检验编号|检验单号|化验单号|处方编号";
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?:^|[，。！？；;,\s、]|和|与)(?<fact>[\u4e00-\u9fffA-Za-z0-9]{0,8}?(?:" + sensitiveTerms + @")(?:\s*(?:是|为|:|：)?\s*[A-Za-z0-9][A-Za-z0-9\-]{1,24})?)"))
+        {
+            var fact = NormalizeDelimitedAuditableFact(match.Groups["fact"].Value);
+            if (fact.Length >= 2)
+            {
+                yield return fact;
+            }
+        }
+    }
+
+    private static string NormalizeDelimitedAuditableFact(string value)
+    {
+        var fact = value.Trim(' ', '\t', '\r', '\n', '，', ',', '。', '.', '；', ';', '！', '!', '？', '?', '、');
+        foreach (var separator in new[] { "和", "与" })
+        {
+            var index = fact.LastIndexOf(separator, StringComparison.Ordinal);
+            if (index > 0 && index < fact.Length - separator.Length)
+            {
+                fact = fact[(index + separator.Length)..];
+            }
+        }
+
+        return fact;
     }
 
     private static IEnumerable<string> ExtractIdentityRevealFacts(string text)
