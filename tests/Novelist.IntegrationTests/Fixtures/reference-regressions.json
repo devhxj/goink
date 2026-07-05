@@ -110,6 +110,12 @@
       "expected_error": "action-only"
     },
     {
+      "name": "blocking_only",
+      "mutation": "action_only",
+      "text": "他说了一句。她转身。两人看着门。",
+      "expected_error": "blocking-only"
+    },
+    {
       "name": "forbidden_fact",
       "mutation": "forbidden_fact",
       "text": "雨声压低了整条街的呼吸，凶手身份在门后闪了一下。",

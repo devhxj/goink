@@ -151,6 +151,12 @@ internal static class ReferenceAnchoredDraftAuditor
                 aiRisks.Add($"Candidate {candidate.CandidateId} has action-only screenplay drift despite novelistic prose duties.");
                 requiredFixes.Add($"Add interiority, sensory pressure, external evidence, transition work, or subtext to candidate {candidate.CandidateId}.");
             }
+
+            if (RequiresNovelisticExecution(beat) && IsBlockingOnly(candidate.Text))
+            {
+                aiRisks.Add($"Candidate {candidate.CandidateId} has blocking-only screenplay drift despite novelistic prose duties.");
+                requiredFixes.Add($"Add interiority, sensory pressure, external evidence, transition work, or subtext beyond dialogue tags and blocking to candidate {candidate.CandidateId}.");
+            }
         }
 
         var status = provenanceErrors.Count == 0 &&
@@ -1007,6 +1013,28 @@ internal static class ReferenceAnchoredDraftAuditor
         var actionLikeCount = sentences.Count(IsActionBlockingSentence);
         var shortSentenceCount = sentences.Count(sentence => sentence.Length <= 14);
         return actionLikeCount == sentences.Length && shortSentenceCount >= sentences.Length - 1;
+    }
+
+    private static bool IsBlockingOnly(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || IsDialogueOnly(text) || HasNovelisticNarrationEvidence(text))
+        {
+            return false;
+        }
+
+        var sentences = SplitSentences(text);
+        if (sentences.Length < 2)
+        {
+            return false;
+        }
+
+        var blockingLikeCount = sentences.Count(sentence => IsActionBlockingSentence(sentence) || IsDialogueTagBlockingSentence(sentence));
+        return blockingLikeCount == sentences.Length && sentences.Any(IsDialogueTagBlockingSentence);
+    }
+
+    private static bool IsDialogueTagBlockingSentence(string sentence)
+    {
+        return Regex.IsMatch(sentence, @"^[\u4e00-\u9fff]{1,4}(说|问|答|道|开口|喊|叫|低声说|轻声说|说了)", RegexOptions.IgnoreCase);
     }
 
     private static string[] SplitSentences(string text)

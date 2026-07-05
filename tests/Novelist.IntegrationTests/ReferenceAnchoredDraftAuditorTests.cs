@@ -622,6 +622,26 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIsBlockingOnlyDespiteNovelisticDuties()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            ProseDuties = ["interiority", "external_evidence", "transition"],
+            AntiScreenplayDuty = "show pressure beyond dialogue tags and blocking"
+        });
+        var candidate = Candidate(blueprint, "他说了一句。她转身。两人看着门。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.AiProseRisks, item => item.Contains("blocking-only", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("interiority", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildDraftAuditFailsWhenCandidateHasNoEvidenceForDeclaredProseDuties()
     {
         var blueprint = Blueprint(beat => beat with
