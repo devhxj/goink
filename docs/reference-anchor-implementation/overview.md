@@ -82,7 +82,7 @@ Phase 10 follow-up areas:
 - run the full reference-anchor workflow in the real desktop shell through the Photino bridge, not only through service and bridge tests;
 - decide and test stale-blueprint comparison/preservation behavior before surfacing stale rows more prominently in the UI;
 - continue broadening deterministic Chinese narration, emotion, POV, and unsupported-fact fixtures before enabling optional model-assisted tagging or adaptation;
-- decide whether reference-anchor search belongs only in the dedicated panel or also in global search;
+- keep reference-anchor search in the dedicated reference panel/API for now; any global search integration should be a later staged opt-in design;
 - keep full-chapter assembly deferred until every beat candidate can prove passing audit/provenance and a separate insertion-confirmation design exists;
 - keep the desktop development loop explicit: prebuild `frontend/dist` for `make dev`, or run Vite and launch with `--start-url`.
 

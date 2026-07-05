@@ -402,7 +402,7 @@ Recommended implementation slices:
 
 - [ ] Full reference-anchor workflow is exercised in the real Photino desktop shell through the bridge: create/rebuild anchor, search material, generate/review/revise/approve blueprint, bind materials, generate candidates, inspect audit, and confirm no automatic chapter insertion.
 - [ ] Stale blueprint UI behavior is decided and covered by tests or documented manual verification: preserve read-only for comparison, hide by default, or expose with clear regeneration affordance.
-- [ ] Reference-anchor search scope is decided: dedicated panel only, global `SearchAll` integration, or a staged hybrid path.
+- [x] Reference-anchor search scope is decided: keep reference material results in the dedicated reference panel/API for the current implementation; any global `SearchAll` integration must be a later staged opt-in change with its own result taxonomy and preview policy.
 - [ ] Optional LLM-assisted material tagging/adaptation has a feature-flag/design decision and does not weaken deterministic review, binding, rewrite-level, or audit gates.
 - [x] Full-chapter candidate assembly is explicitly deferred: anchored draft APIs return beat-scoped paragraph candidates only, without `chapter_text`, `assembled_text`, or `full_chapter` fields, and existing generation still does not mutate chapter content.
 - [x] Source preview policy is decided for unknown-license anchors: material search/library previews return truncated exact text by default, while stored materials, provenance hashes, adaptation, binding, and audit still use the complete imported text.
@@ -420,6 +420,7 @@ Recommended implementation slices:
 
 Targeted Phase 10 checks completed:
 
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter SearchAllLeavesReferenceMaterialsInDedicatedSearch -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter GeneratedBlueprintExposesStableGeneratorVersionWithoutPromptSnapshots -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter ReferenceChapterBlueprintPayloadsUseStableSnakeCaseJsonNames -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter AnchoredDraftPayloadSerializesBeatCandidatesWithoutFullChapterAssembly -v minimal`
@@ -612,7 +613,7 @@ tests/Novelist.IntegrationTests/ReferenceAnchoredDraftBridgeTests.cs
 - Unknown-license source previews: resolved for the current implementation. Search/library preview payloads truncate exact text by default; complete source/material text remains in SQLite for provenance, adaptation, binding, and audit.
 - Source segment text policy: keep full original line text, normalized text, or both.
 - Optional model assistance: keep deterministic-only extraction/adaptation, or add LLM-assisted tagging/adaptation behind an explicit feature flag.
-- Search scope: keep reference-anchor results isolated, include them in global `SearchAll`, or expose a staged opt-in integration.
+- Search scope: resolved for the current implementation. Keep reference-anchor results isolated in `SearchReferenceMaterials` and the dedicated reference panel; do not merge them into global `SearchAll` until a staged opt-in design defines result taxonomy, ranking, and preview policy.
 - Revision lineage: keep in-place draft blueprint revision, or create `parent_blueprint_id` lineage rows for every material contract edit.
 - Failed review assistance: keep revision fully manual/agent-driven, or add field-level fix suggestions that remain separate from approval.
 - Transition/no-reuse policy: require every generated paragraph to trace to material, or allow approved no-reuse transition beats without direct links.

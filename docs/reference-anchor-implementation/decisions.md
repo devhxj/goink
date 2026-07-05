@@ -464,6 +464,17 @@ The service should read the source once and persist immutable source segments. I
 
 Unknown-license sources are allowed, but exact source text should not be exposed as a full search/library preview by default. The service keeps complete imported source segments and materials in SQLite for provenance, hashing, adaptation, binding, and audit, while `SearchReferenceMaterials` truncates preview text for anchors marked `license_status = unknown`.
 
+### Reference Search Scope
+
+Keep reference material search scoped to `SearchReferenceMaterials` and the dedicated reference-anchor UI for the current implementation. Workspace-wide `SearchAll` should continue to cover project entities, chapter/title/content matches, and story-memory RAG hits only.
+
+Rationale:
+
+- reference material results use license-sensitive preview rules that are stricter than ordinary workspace search;
+- material ranking exposes reference-specific score components, filters, and provenance fields that do not fit the current global result taxonomy;
+- keeping a separate entry point makes it clearer when the user is searching reusable source material rather than story workspace content;
+- future global search integration should be an explicit staged opt-in design, not an accidental merge of two different search policies.
+
 ### Build Pipeline
 
 Use a synchronous implementation first, but model the result as a build status. The UI can later poll the same status without changing contracts.
