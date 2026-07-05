@@ -30,6 +30,7 @@
 - 蓝图评审现在会检查 `character_states_before/after` 里的高风险事实，角色状态不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
 - 蓝图评审现在会阻止 `character_states_before/after` 使用 forbidden facts，禁止项不能被声明成角色状态上下文。
 - 蓝图评审现在会检查 `character_goals` 里的高风险事实，角色目标不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
+- 蓝图评审现在会阻止 `character_goals` 使用 forbidden facts，禁止项不能被声明成角色目标。
 - 蓝图评审现在会检查 `character_misbeliefs` 里的高风险事实，角色误信不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
 - 蓝图评审现在会检查 `relationship_pressure` 里的高风险事实，关系压力不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
 - 蓝图评审现在会拒绝“写得更好/更有代入感”这类泛化段落意图，并要求 `paragraph_intention` 写成可检查的具体正文职责。

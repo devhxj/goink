@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 31;
+    public const int CurrentReviewVersion = 32;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -610,6 +610,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "character_states",
                     $"Forbidden fact appears in character state: {forbidden}",
                     "Remove the forbidden fact from beat character_states before it is treated as role-state context.");
+            }
+
+            foreach (var beat in blueprint.Beats.Where(beat => beat.CharacterGoals.Any(goal => ContainsForbidden(goal, forbidden))))
+            {
+                AddBeatDefect(
+                    forbiddenFactErrors,
+                    "forbidden_fact",
+                    beat,
+                    "character_goals",
+                    $"Forbidden fact appears in character goal: {forbidden}",
+                    "Remove the forbidden fact from beat character_goals before it is treated as role-state motivation.");
             }
 
             foreach (var beat in blueprint.Beats.Where(beat => beat.ViewpointAllowedKnowledge.Any(fact => ContainsForbidden(fact, forbidden))))

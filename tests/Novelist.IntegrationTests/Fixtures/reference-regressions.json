@@ -86,6 +86,11 @@
       "expected_error": "unsupported character goal fact"
     },
     {
+      "name": "forbidden_character_goal_fact",
+      "mutation": "forbidden_character_goal_fact",
+      "expected_error": "forbidden fact appears in character goal"
+    },
+    {
       "name": "unsupported_character_misbelief_fact",
       "mutation": "unsupported_character_misbelief_fact",
       "expected_error": "unsupported character misbelief fact"
