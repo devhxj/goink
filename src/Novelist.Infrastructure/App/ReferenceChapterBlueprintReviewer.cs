@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 55;
+    public const int CurrentReviewVersion = 56;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -56,6 +56,22 @@ internal static class ReferenceChapterBlueprintReviewer
             string requiredFix)
         {
             AddDefect(bucket, category, "beat:" + beat.BeatId + ":" + fieldName, beat.BeatId, reason, requiredFix);
+        }
+
+        void AddWarningDefect(
+            string category,
+            string fieldPath,
+            string beatId,
+            string reason,
+            string requiredFix)
+        {
+            defects.Add(new ReferenceChapterBlueprintReviewDefectPayload(
+                category,
+                fieldPath,
+                beatId,
+                "warning",
+                reason,
+                requiredFix));
         }
 
         void AddUnsupportedAnalysisTrackFactDefects(
@@ -1276,6 +1292,17 @@ internal static class ReferenceChapterBlueprintReviewer
                 "Blueprint already carries AI prose risk flags.",
                 "Clear or address AI prose risk flags before relying on this review for drafting.",
                 "warning");
+        }
+
+        var noReuseBeatCount = blueprint.Beats.Count(beat => !string.IsNullOrWhiteSpace(beat.NoReuseReason));
+        if (blueprint.Beats.Count >= 3 && noReuseBeatCount >= 2 && noReuseBeatCount * 2 > blueprint.Beats.Count)
+        {
+            AddWarningDefect(
+                "reference_binding",
+                "beats.no_reuse_reason",
+                string.Empty,
+                $"Too many beats choose no_reuse_reason ({noReuseBeatCount} of {blueprint.Beats.Count}), reducing the value of the anchor layer.",
+                "Review whether these beats can bind reference materials; keep no_reuse_reason only for approved transition or non-reuse beats.");
         }
 
         var defectCount = logicErrors.Count + causalityErrors.Count + emotionErrors.Count +

@@ -20,6 +20,43 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewWarnsWhenTooManyBeatsSkipReferenceReuse()
+    {
+        var blueprint = Blueprint(beat => beat) with
+        {
+            Beats =
+            [
+                Beat("1:beat:1") with
+                {
+                    BeatIndex = 1,
+                    NoReuseReason = "transition only, no reusable source material"
+                },
+                Beat("1:beat:2") with
+                {
+                    BeatIndex = 2,
+                    NoReuseReason = "transition only, no reusable source material"
+                },
+                Beat("1:beat:3") with
+                {
+                    BeatIndex = 3,
+                    NoReuseReason = "transition only, no reusable source material"
+                }
+            ]
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, review.Status);
+        Assert.Empty(review.RequiredFixes);
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "reference_binding" &&
+                defect.Severity == "warning" &&
+                defect.FieldPath.Contains("no_reuse_reason", StringComparison.OrdinalIgnoreCase) &&
+                defect.Reason.Contains("too many", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewAllowsEmotionEvidenceQueryForSubtextAndExternalEvidenceDuties()
     {
         var blueprint = Blueprint(beat => beat with
