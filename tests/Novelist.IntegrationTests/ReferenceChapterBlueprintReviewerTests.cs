@@ -664,7 +664,28 @@ public sealed class ReferenceChapterBlueprintReviewerTests
         Assert.Contains(review.CharacterStateErrors, item => item.Contains("unsupported character misbelief fact", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             review.Defects,
-            defect => defect.Category == "character_state" &&
+                defect => defect.Category == "character_state" &&
+                defect.FieldPath.Contains("character_misbeliefs", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsForbiddenFactInCharacterMisbelief()
+    {
+        var blueprint = Blueprint(
+            beat => beat with
+            {
+                CharacterMisbeliefs = ["凶手身份"]
+            },
+            forbiddenFacts: ["凶手身份"],
+            knownFacts: ["雨声压低了整条街的呼吸", "凶手身份"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ForbiddenFactErrors, item => item.Contains("character misbelief", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "forbidden_fact" &&
                 defect.FieldPath.Contains("character_misbeliefs", StringComparison.OrdinalIgnoreCase));
     }
 

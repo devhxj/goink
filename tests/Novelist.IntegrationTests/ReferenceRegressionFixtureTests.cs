@@ -155,6 +155,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 CharacterMisbeliefs = ["密室钥匙"]
             },
+            "forbidden_character_misbelief_fact" => beat with
+            {
+                CharacterMisbeliefs = ["凶手身份"]
+            },
             "missing_relationship_pressure" => beat with
             {
                 RelationshipPressure = []
@@ -283,6 +287,7 @@ public sealed class ReferenceRegressionFixtureTests
             "forbidden_viewpoint_allowed_knowledge_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_character_state_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_character_goal_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
+            "forbidden_character_misbelief_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_emotion_trigger_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_suppressed_reaction_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_external_evidence_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
@@ -305,6 +310,7 @@ public sealed class ReferenceRegressionFixtureTests
             "forbidden_viewpoint_allowed_knowledge_fact" => ["凶手身份"],
             "forbidden_character_state_fact" => ["凶手身份"],
             "forbidden_character_goal_fact" => ["凶手身份"],
+            "forbidden_character_misbelief_fact" => ["凶手身份"],
             "forbidden_emotion_trigger_fact" => ["凶手身份"],
             "forbidden_suppressed_reaction_fact" => ["凶手身份"],
             "forbidden_external_evidence_fact" => ["凶手身份"],

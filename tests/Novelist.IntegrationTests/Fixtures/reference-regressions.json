@@ -96,6 +96,11 @@
       "expected_error": "unsupported character misbelief fact"
     },
     {
+      "name": "forbidden_character_misbelief_fact",
+      "mutation": "forbidden_character_misbelief_fact",
+      "expected_error": "forbidden fact appears in character misbelief"
+    },
+    {
       "name": "missing_relationship_pressure",
       "mutation": "missing_relationship_pressure",
       "expected_error": "relationship pressure"
