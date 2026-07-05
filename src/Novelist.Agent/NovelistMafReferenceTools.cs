@@ -174,6 +174,7 @@ public sealed partial class NovelistMafToolRegistry
         private const string StartOrchestrationDescription = "启动默认 reference orchestration 候选流程。novel_id 由运行时注入；agent 只能提供章节目标、已知/禁止事实和 corpus policy，不能确认 source/fact，不能批准 blueprint revision，不能批准 final insertion，这些决策必须由作者完成。";
         private const string GetOrchestrationRunsDescription = "列出当前小说的 reference orchestration 运行历史，可按章节过滤；只读工具，不批准、不恢复、不写章节。";
         private const string GetOrchestrationRunDescription = "读取单个 reference orchestration run 的状态、当前停点和 required decision；只读工具，不批准、不恢复、不写章节。";
+        private const string GetOrchestrationRunEventsDescription = "读取单个 reference orchestration run 的本地事件历史；只读工具，只用于解释流程为何停止或继续，不批准、不恢复、不写章节。";
         private const string CancelOrchestrationDescription = "取消当前小说的 reference orchestration run；不能批准 source/fact、blueprint revision 或 final insertion，也不能写入章节正文。";
 
         private readonly IReferenceAnchoredDraftService _referenceDrafts;
@@ -202,6 +203,7 @@ public sealed partial class NovelistMafToolRegistry
             tools.Add(CreateFunction(nameof(StartReferenceOrchestrationRunAsync), "start_reference_orchestration_run", StartOrchestrationDescription));
             tools.Add(CreateFunction(nameof(GetReferenceOrchestrationRunsAsync), "get_reference_orchestration_runs", GetOrchestrationRunsDescription));
             tools.Add(CreateFunction(nameof(GetReferenceOrchestrationRunAsync), "get_reference_orchestration_run", GetOrchestrationRunDescription));
+            tools.Add(CreateFunction(nameof(GetReferenceOrchestrationRunEventsAsync), "get_reference_orchestration_run_events", GetOrchestrationRunEventsDescription));
             tools.Add(CreateFunction(nameof(CancelReferenceOrchestrationRunAsync), "cancel_reference_orchestration_run", CancelOrchestrationDescription));
         }
 
@@ -400,6 +402,15 @@ public sealed partial class NovelistMafToolRegistry
             CancellationToken cancellationToken = default)
         {
             return _referenceDrafts.GetOrchestrationRunAsync(_context.NovelId, run_id, cancellationToken);
+        }
+
+        [Description(GetOrchestrationRunEventsDescription)]
+        private ValueTask<IReadOnlyList<ReferenceOrchestrationRunEventPayload>> GetReferenceOrchestrationRunEventsAsync(
+            [Description("orchestration run id")]
+            string run_id,
+            CancellationToken cancellationToken = default)
+        {
+            return _referenceDrafts.GetOrchestrationRunEventsAsync(_context.NovelId, run_id, cancellationToken);
         }
 
         [Description(CancelOrchestrationDescription)]

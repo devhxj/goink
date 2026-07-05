@@ -230,6 +230,7 @@ public sealed class MafToolRegistryTests
         Assert.Contains("start_reference_orchestration_run", names);
         Assert.Contains("get_reference_orchestration_runs", names);
         Assert.Contains("get_reference_orchestration_run", names);
+        Assert.Contains("get_reference_orchestration_run_events", names);
         Assert.Contains("cancel_reference_orchestration_run", names);
         Assert.DoesNotContain("resume_reference_orchestration_run", names);
         Assert.DoesNotContain("approve_reference_orchestration_decision", names);
@@ -291,6 +292,12 @@ public sealed class MafToolRegistryTests
 
         var getRun = tools.Single(tool => tool.Name == "get_reference_orchestration_run");
         Assert.True(getRun.JsonSchema.GetProperty("properties").TryGetProperty("run_id", out _));
+
+        var getEvents = tools.Single(tool => tool.Name == "get_reference_orchestration_run_events");
+        AssertToolDescriptionContains(getEvents, "只读", "不批准", "不恢复", "不写章节");
+        Assert.True(getEvents.JsonSchema.GetProperty("properties").TryGetProperty("run_id", out _));
+        Assert.False(getEvents.JsonSchema.GetProperty("properties").TryGetProperty("decision_type", out _));
+        Assert.False(getEvents.JsonSchema.GetProperty("properties").TryGetProperty("decision_payload", out _));
 
         var cancelRun = tools.Single(tool => tool.Name == "cancel_reference_orchestration_run");
         Assert.True(cancelRun.JsonSchema.GetProperty("properties").TryGetProperty("run_id", out _));
@@ -479,6 +486,43 @@ public sealed class MafToolRegistryTests
         Assert.Equal(
             ReferenceOrchestrationDecisionTypes.ConfirmSourceAndFacts,
             data.GetProperty("current_decision").GetProperty("decision_type").GetString());
+    }
+
+    [Fact]
+    public async Task ReferenceOrchestrationAgentToolReadsRunEventsWithoutApprovingHumanDecisions()
+    {
+        var drafts = new RecordingReferenceAnchoredDraftService();
+        var executor = new NovelistMafChatToolExecutor(new NovelistMafToolRegistry(
+            new RecordingStoryMemorySearchService(),
+            chapterContent: null,
+            approvals: null,
+            events: null,
+            subagents: null,
+            preferences: null,
+            world: null,
+            planning: null,
+            webFetch: null,
+            webSearch: null,
+            referenceAnchors: null,
+            referenceDrafts: drafts));
+
+        var result = await executor.ExecuteAsync(
+            new ChatToolExecutionContext(23, "sess_reference", 1),
+            new ChatToolCall(
+                "call_reference_orchestration_events",
+                "get_reference_orchestration_run_events",
+                """{"run_id":"run-7"}"""),
+            CancellationToken.None);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(23, drafts.LastGetEventsNovelId);
+        Assert.Equal("run-7", drafts.LastGetEventsRunId);
+
+        var events = result.Data!.Value.EnumerateArray().ToArray();
+        var item = Assert.Single(events);
+        Assert.Equal("run-7", item.GetProperty("run_id").GetString());
+        Assert.Equal("required_decision", item.GetProperty("event_type").GetString());
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, item.GetProperty("decision_type").GetString());
     }
 
     [Fact]
@@ -982,6 +1026,10 @@ public sealed class MafToolRegistryTests
 
         public StartReferenceOrchestrationRunPayload? LastStart { get; private set; }
 
+        public long LastGetEventsNovelId { get; private set; }
+
+        public string? LastGetEventsRunId { get; private set; }
+
         public ValueTask<ReferenceChapterBlueprintPayload> GenerateChapterBlueprintAsync(
             GenerateReferenceChapterBlueprintPayload input,
             CancellationToken cancellationToken)
@@ -1146,7 +1194,22 @@ public sealed class MafToolRegistryTests
             string runId,
             CancellationToken cancellationToken)
         {
-            IReadOnlyList<ReferenceOrchestrationRunEventPayload> events = [];
+            LastGetEventsNovelId = novelId;
+            LastGetEventsRunId = runId;
+            IReadOnlyList<ReferenceOrchestrationRunEventPayload> events =
+            [
+                new ReferenceOrchestrationRunEventPayload(
+                    17,
+                    runId,
+                    novelId,
+                    "required_decision",
+                    ReferenceOrchestrationStages.BlueprintApproval,
+                    ReferenceOrchestrationRunStatuses.WaitingForUser,
+                    ReferenceOrchestrationStopReasons.BlueprintApprovalRequired,
+                    ReferenceOrchestrationDecisionTypes.ApproveBlueprint,
+                    "blueprint approval required",
+                    DateTimeOffset.UtcNow)
+            ];
             return ValueTask.FromResult(events);
         }
 

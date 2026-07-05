@@ -99,7 +99,7 @@ Targeted Phase 11 thin-slice checks completed:
 - [x] After source/fact confirmation, orchestration automatically generates a deterministic blueprint, runs deterministic blueprint review, persists `blueprint_id`/`review_id`, and stops for either blueprint approval or blueprint revision.
 - [x] After user blueprint approval, orchestration automatically binds materials, generates beat candidates, runs draft audit, persists candidate ids, and stops for final insertion confirmation without calling `SaveContent`.
 - [x] Failed blueprint review can persist deterministic proposed field-level revisions in the required decision; approving that decision applies the revision, re-runs review, and stops for blueprint approval when the revision passes.
-- [x] Agent orchestration tools can start, inspect, list, and cancel runs while deliberately withholding resume/approval/revision/final-insertion tools; start arguments cannot pre-confirm source/fact decisions, pass `anchor_ids`, decision payloads, or prose text.
+- [x] Agent orchestration tools can start, inspect, list, inspect run-event history, and cancel runs while deliberately withholding resume/approval/revision/final-insertion tools; start arguments cannot pre-confirm source/fact decisions, pass `anchor_ids`, decision payloads, or prose text.
 - [x] Draft audit failure now persists as a high-risk `resolve_high_risk_stop` decision with candidate ids and audit findings; resolving that stop marks the run failed instead of inserting prose.
 - [x] Material binding gaps now persist as a high-risk `resolve_high_risk_stop` decision with missing beat ids; resolving that stop marks the run failed instead of free-drafting.
 - [x] Stale blueprints now persist as a high-risk `resolve_high_risk_stop` decision when source-plan changes invalidate a pending approval or safe-stage continuation.
@@ -114,7 +114,7 @@ Targeted Phase 11 thin-slice checks completed:
 - [x] `npm --prefix frontend run build`
 - [x] `npm --prefix frontend run lint`
 
-These thin slices do not complete the Phase 11 automatic workflow. Proposed revision generation is currently deterministic and narrow; broader high-risk stop coverage, agent approval escalation/runtime history coverage, full Photino runtime workflow coverage, and shared-corpus default retrieval remain pending.
+These thin slices do not complete the Phase 11 automatic workflow. Proposed revision generation is currently deterministic and narrow; broader high-risk stop coverage, agent approval escalation, full Photino runtime workflow coverage, and shared-corpus default retrieval remain pending.
 
 **Files likely touched:**
 
