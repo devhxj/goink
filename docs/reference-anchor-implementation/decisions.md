@@ -1002,7 +1002,7 @@ For sentence bank and passage bank, use rule-based first-pass tags:
 - emotion-trigger and external-evidence compatibility
 - POV/narrative-distance compatibility
 
-LLM-assisted tagging can be added behind a separate extractor interface, but the first storage and pipeline should not depend on LLM availability.
+Current Phase 10 decision: material extraction and tagging stay deterministic-only. The current service must not require LLM configuration for segmentation, sentence/passage bank creation, tag assignment, slot detection, or searchable material persistence. LLM-assisted tagging can be added later only behind a separate opt-in extractor interface or feature flag, and its output must still be stored as auditable material tags that pass the same deterministic binding and audit rules.
 
 Recommended extractor interfaces in Infrastructure:
 
@@ -1034,6 +1034,8 @@ L1:
 - no model call required
 - changed slots recorded
 - locked phrases must remain
+
+Current Phase 10 decision: standalone material adaptation remains deterministic-only. `AdaptMaterialAsync` performs declared slot replacement, rewrite-level classification, non-slot edit reporting, and reuse audit without an LLM adapter. Future model-assisted adaptation must be explicit opt-in, beat-scoped, provenance-preserving, and unable to bypass max rewrite level, locked phrase, fact, POV, or audit failures.
 
 L2:
 

@@ -403,7 +403,7 @@ Recommended implementation slices:
 - [ ] Full reference-anchor workflow is exercised in the real Photino desktop shell through the bridge: create/rebuild anchor, search material, generate/review/revise/approve blueprint, bind materials, generate candidates, inspect audit, and confirm no automatic chapter insertion.
 - [x] Stale blueprint UI behavior is decided and covered by build/lint verification: preserve stale blueprints read-only for comparison, disable review/approval/revision/material binding/candidate generation, and show a regeneration prompt.
 - [x] Reference-anchor search scope is decided: keep reference material results in the dedicated reference panel/API for the current implementation; any global `SearchAll` integration must be a later staged opt-in change with its own result taxonomy and preview policy.
-- [ ] Optional LLM-assisted material tagging/adaptation has a feature-flag/design decision and does not weaken deterministic review, binding, rewrite-level, or audit gates.
+- [x] Optional LLM-assisted material tagging/adaptation is decided for the current implementation: keep extraction, tagging, slot adaptation, rewrite-level classification, and audit deterministic-only; any future model-assisted path must use an explicit opt-in interface or feature flag and cannot weaken deterministic review, binding, rewrite-level, or audit gates.
 - [x] Full-chapter candidate assembly is explicitly deferred: anchored draft APIs return beat-scoped paragraph candidates only, without `chapter_text`, `assembled_text`, or `full_chapter` fields, and existing generation still does not mutate chapter content.
 - [x] Source preview policy is decided for unknown-license anchors: material search/library previews return truncated exact text by default, while stored materials, provenance hashes, adaptation, binding, and audit still use the complete imported text.
 - [x] Generator reproducibility policy is decided: blueprint records expose `build_version` plus `context_hash`, `source_plan_hash`, and `analysis_contract_hash`; review/approval records carry `review_version`; prompt/schema snapshots are not persisted on blueprint rows to avoid prompt-churn.
@@ -429,6 +429,7 @@ Targeted Phase 10 checks completed:
 - [x] `cd frontend && npm run lint`
 - [x] Documentation closure check: `overview.md`, `schema-and-integration.md`, and `decisions.md` describe Phase 0-9 bridge, desktop composition, agent tools, frontend entry, import semantics, extracted blueprint components, and current SQLite tables as implemented/current rather than as pending work.
 - [x] Documentation check: `Makefile`, `README.md`, `docs/build-setup.md`, and `schema-and-integration.md` agree that `make dev` uses prebuilt `frontend/dist` or an explicit Vite `--start-url`.
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter MaterialTaggingAndAdaptationRemainDeterministicWithoutModelAssistedConfiguration -v minimal`
 
 **Files likely touched:**
 
@@ -616,7 +617,7 @@ tests/Novelist.IntegrationTests/ReferenceAnchoredDraftBridgeTests.cs
 
 - Unknown-license source previews: resolved for the current implementation. Search/library preview payloads truncate exact text by default; complete source/material text remains in SQLite for provenance, adaptation, binding, and audit.
 - Source segment text policy: keep full original line text, normalized text, or both.
-- Optional model assistance: keep deterministic-only extraction/adaptation, or add LLM-assisted tagging/adaptation behind an explicit feature flag.
+- Optional model assistance: resolved for the current implementation. Extraction, material tagging, slot adaptation, rewrite-level classification, and reuse audit stay deterministic-only. Future LLM-assisted tagging/adaptation requires an explicit opt-in interface or feature flag and must feed deterministic review/binding/audit instead of bypassing those gates.
 - Search scope: resolved for the current implementation. Keep reference-anchor results isolated in `SearchReferenceMaterials` and the dedicated reference panel; do not merge them into global `SearchAll` until a staged opt-in design defines result taxonomy, ranking, and preview policy.
 - Revision lineage: keep in-place draft blueprint revision, or create `parent_blueprint_id` lineage rows for every material contract edit.
 - Failed review assistance: keep revision fully manual/agent-driven, or add field-level fix suggestions that remain separate from approval.
@@ -654,12 +655,11 @@ Latest verified scope: `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj -
 
 Recommended next session:
 
-1. Execute the full desktop workflow in Photino and record any runtime-only bridge/UI gaps under Phase 10.
-2. Close the model-assisted tagging/adaptation decision before adding any optional LLM path.
+1. Execute the full desktop workflow in Photino and record any runtime-only bridge/UI gaps before marking Phase 10 complete.
 
 Recommended following session:
 
-1. Keep broadening deterministic Chinese narration, emotion, POV, and unsupported-fact fixtures before enabling optional model-assisted tagging or adaptation.
+1. Keep broadening deterministic Chinese narration, emotion, POV, and unsupported-fact fixtures; any optional model-assisted tagging or adaptation should be designed later as an explicit opt-in path that feeds the deterministic gates.
 2. Design Phase 11 orchestration contracts before changing UI, so frontend, bridge, service, and agent tools share the same run-state model.
 3. Design Phase 12 shared-corpus contracts before migrating storage, so global materials can be reused without weakening per-novel safety gates.
 

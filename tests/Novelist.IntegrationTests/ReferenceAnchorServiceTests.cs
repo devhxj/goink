@@ -892,6 +892,64 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MaterialTaggingAndAdaptationRemainDeterministicWithoutModelAssistedConfiguration()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("确定性材料测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "deterministic-material.md",
+            """
+            # 第一章
+
+            林岚没有回答，喉咙却发紧。
+
+            他握住{{object}}，没有立刻说话。
+            """);
+        var service = new SqliteReferenceAnchorService(
+            options,
+            novels,
+            new StaticEmbeddingConfigurationService(null),
+            new FailingEmbeddingClient());
+
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "确定性材料参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceAnchorBuildStates.Ready, anchor.Status);
+        var status = await service.GetBuildStatusAsync(novel.Id, anchor.AnchorId, CancellationToken.None);
+        Assert.NotNull(status);
+        Assert.Equal(0, status.VectorCount);
+
+        var rows = await ReadMaterialRowsAsync(options, anchor.AnchorId);
+        Assert.Contains(rows, row =>
+            row.MaterialType == ReferenceMaterialTypes.Sentence &&
+            row.Text == "林岚没有回答，喉咙却发紧。" &&
+            row.FunctionTag == "emotion_evidence" &&
+            row.EmotionTag == "restrained" &&
+            row.TechniqueTag == "external_evidence");
+        var slottedMaterial = Assert.Single(rows, row =>
+            row.MaterialType == ReferenceMaterialTypes.Sentence &&
+            row.Text == "他握住{{object}}，没有立刻说话。");
+        Assert.Equal(1, slottedMaterial.SlotCount);
+
+        var adapted = await service.AdaptMaterialAsync(
+            new AdaptReferenceMaterialPayload(
+                novel.Id,
+                slottedMaterial.MaterialId,
+                [new ReferenceSlotValuePayload("object", "门把手")],
+                ReferenceRewriteLevels.L1,
+                SceneFacts: ["门把手"]),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceRewriteLevels.L1, adapted.RewriteLevel);
+        Assert.Equal("他握住门把手，没有立刻说话。", adapted.Text);
+        Assert.Empty(adapted.NonSlotEdits);
+        Assert.Equal("passed", adapted.Audit.Status);
+    }
+
+    [Fact]
     public async Task CreateAnchorClassifiesChinesePunctuationDialogueParagraphAndNarrativeTags()
     {
         var options = CreateOptions();
