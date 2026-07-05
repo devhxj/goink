@@ -212,6 +212,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 NarrationStrategy = "正常叙述，写得有画面感"
             },
+            "unsupported_narration_strategy_fact" => beat with
+            {
+                NarrationStrategy = "close POV withhold 密室钥匙 through tactile detail"
+            },
             "generic_rhythm_strategy" => beat with
             {
                 RhythmStrategy = "节奏自然流畅，快慢结合"

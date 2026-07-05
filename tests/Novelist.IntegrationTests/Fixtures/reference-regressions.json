@@ -166,6 +166,11 @@
       "expected_error": "generic narration strategy"
     },
     {
+      "name": "unsupported_narration_strategy_fact",
+      "mutation": "unsupported_narration_strategy_fact",
+      "expected_error": "unsupported narration strategy fact"
+    },
+    {
       "name": "generic_rhythm_strategy",
       "mutation": "generic_rhythm_strategy",
       "expected_error": "generic rhythm strategy"

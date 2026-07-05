@@ -925,6 +925,24 @@ public sealed class ReferenceChapterBlueprintReviewerTests
         Assert.Contains(review.NarrationErrors, item => item.Contains("generic narration strategy", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             review.Defects,
+                defect => defect.Category == "narration" &&
+                defect.FieldPath.Contains("narration_strategy", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsUnsupportedNarrationStrategyFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            NarrationStrategy = "close POV withhold 密室钥匙 through tactile detail"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.NarrationErrors, item => item.Contains("unsupported narration strategy fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
             defect => defect.Category == "narration" &&
                 defect.FieldPath.Contains("narration_strategy", StringComparison.OrdinalIgnoreCase));
     }

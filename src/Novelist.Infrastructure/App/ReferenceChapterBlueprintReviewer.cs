@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 39;
+    public const int CurrentReviewVersion = 40;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -610,6 +610,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "narration_strategy",
                     $"Beat {beat.BeatIndex} uses generic narration strategy.",
                     "Rewrite narration_strategy with concrete POV distance, sensory/interiority limits, and the narration work this beat must perform.");
+            }
+
+            foreach (var unsupportedNarrationStrategyFact in FindUnsupportedNarrationStrategyFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    narrationErrors,
+                    "narration",
+                    beat,
+                    "narration_strategy",
+                    $"Beat {beat.BeatIndex} contains unsupported narration strategy fact: {unsupportedNarrationStrategyFact}",
+                    "Set up the narration_strategy fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
             }
 
             if (string.IsNullOrWhiteSpace(beat.RhythmStrategy))
@@ -1386,6 +1397,24 @@ internal static class ReferenceChapterBlueprintReviewer
             .ToArray();
 
         return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.AntiScreenplayDuty)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedNarrationStrategyFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.NarrationStrategy)
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
