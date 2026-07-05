@@ -144,6 +144,78 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsUnsupportedCausalityInFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            CausalityIn = "because 密室钥匙 pressure carries over"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.CausalityErrors, item => item.Contains("unsupported causality_in fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "causality" &&
+                defect.FieldPath.Contains("causality_in", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsUnsupportedCausalityOutFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            CausalityOut = "therefore 密室钥匙 consequence forces the next beat"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.CausalityErrors, item => item.Contains("unsupported causality_out fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "causality" &&
+                defect.FieldPath.Contains("causality_out", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsUnsupportedTransitionInFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            TransitionIn = "pressure from 密室钥匙 carries into the doorway"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.TransitionErrors, item => item.Contains("unsupported transition_in fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "transition" &&
+                defect.FieldPath.Contains("transition_in", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsUnsupportedTransitionOutFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            TransitionOut = "transition after 密室钥匙 pushes the next consequence"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.TransitionErrors, item => item.Contains("unsupported transition_out fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "transition" &&
+                defect.FieldPath.Contains("transition_out", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewEmitsStructuredDefectsForBeatFields()
     {
         var blueprint = Blueprint(beat => beat with

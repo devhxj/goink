@@ -107,6 +107,22 @@ public sealed class ReferenceRegressionFixtureTests
                 TransitionIn = "来到旧宅",
                 TransitionOut = "第二天转到仓库"
             },
+            "unsupported_causality_in_fact" => beat with
+            {
+                CausalityIn = "because 密室钥匙 pressure carries over"
+            },
+            "unsupported_causality_out_fact" => beat with
+            {
+                CausalityOut = "therefore 密室钥匙 consequence forces the next beat"
+            },
+            "unsupported_transition_in_fact" => beat with
+            {
+                TransitionIn = "pressure from 密室钥匙 carries into the doorway"
+            },
+            "unsupported_transition_out_fact" => beat with
+            {
+                TransitionOut = "transition after 密室钥匙 pushes the next consequence"
+            },
             "pov_leak" => beat with
             {
                 ViewpointAllowedKnowledge = ["雨声压低了整条街的呼吸", "周鸣是卧底"]

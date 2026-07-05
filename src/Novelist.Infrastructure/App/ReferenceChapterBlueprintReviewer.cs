@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 43;
+    public const int CurrentReviewVersion = 44;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -142,6 +142,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "Add causality_in showing why this beat follows from the previous beat.");
             }
 
+            foreach (var unsupportedCausalityInFact in FindUnsupportedCausalityInFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    causalityErrors,
+                    "causality",
+                    beat,
+                    "causality_in",
+                    $"Beat {beat.BeatIndex} contains unsupported causality_in fact: {unsupportedCausalityInFact}",
+                    "Set up the causality_in fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+
             if (string.IsNullOrWhiteSpace(beat.CausalityOut))
             {
                 AddBeatDefect(
@@ -151,6 +162,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "causality_out",
                     $"Beat {beat.BeatIndex} is missing causality_out.",
                     "Add causality_out showing the consequence this beat creates for the next beat or hook.");
+            }
+
+            foreach (var unsupportedCausalityOutFact in FindUnsupportedCausalityOutFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    causalityErrors,
+                    "causality",
+                    beat,
+                    "causality_out",
+                    $"Beat {beat.BeatIndex} contains unsupported causality_out fact: {unsupportedCausalityOutFact}",
+                    "Set up the causality_out fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
             }
 
             if (string.IsNullOrWhiteSpace(beat.TransitionIn) || string.IsNullOrWhiteSpace(beat.TransitionOut))
@@ -172,6 +194,28 @@ internal static class ReferenceChapterBlueprintReviewer
                     "transition",
                     $"Beat {beat.BeatIndex} transition lacks causal, emotional, informational, or viewpoint pressure.",
                     "Rewrite transition_in and transition_out so the movement is forced by story pressure.");
+            }
+
+            foreach (var unsupportedTransitionInFact in FindUnsupportedTransitionInFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    transitionErrors,
+                    "transition",
+                    beat,
+                    "transition_in",
+                    $"Beat {beat.BeatIndex} contains unsupported transition_in fact: {unsupportedTransitionInFact}",
+                    "Set up the transition_in fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+
+            foreach (var unsupportedTransitionOutFact in FindUnsupportedTransitionOutFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    transitionErrors,
+                    "transition",
+                    beat,
+                    "transition_out",
+                    $"Beat {beat.BeatIndex} contains unsupported transition_out fact: {unsupportedTransitionOutFact}",
+                    "Set up the transition_out fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
             }
 
             var emotionChanges = !string.Equals(beat.EmotionBefore, beat.EmotionAfter, StringComparison.Ordinal);
@@ -1441,6 +1485,78 @@ internal static class ReferenceChapterBlueprintReviewer
             .ToArray();
 
         return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.ConflictPressure)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedCausalityInFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.CausalityIn)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedCausalityOutFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.CausalityOut)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedTransitionInFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.TransitionIn)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedTransitionOutFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.TransitionOut)
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();

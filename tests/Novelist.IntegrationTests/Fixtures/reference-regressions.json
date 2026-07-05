@@ -41,6 +41,26 @@
       "expected_error": "pressure"
     },
     {
+      "name": "unsupported_causality_in_fact",
+      "mutation": "unsupported_causality_in_fact",
+      "expected_error": "unsupported causality_in fact"
+    },
+    {
+      "name": "unsupported_causality_out_fact",
+      "mutation": "unsupported_causality_out_fact",
+      "expected_error": "unsupported causality_out fact"
+    },
+    {
+      "name": "unsupported_transition_in_fact",
+      "mutation": "unsupported_transition_in_fact",
+      "expected_error": "unsupported transition_in fact"
+    },
+    {
+      "name": "unsupported_transition_out_fact",
+      "mutation": "unsupported_transition_out_fact",
+      "expected_error": "unsupported transition_out fact"
+    },
+    {
       "name": "pov_leak",
       "mutation": "pov_leak",
       "expected_error": "周鸣是卧底"
