@@ -19,7 +19,7 @@ This phase is intentionally broader than reference anchors. The reference-anchor
 - [x] Search/RAG UI is covered: global search query, result rendering, empty state, failure state, and result preview without leaking raw reference-source internals into the global search path unless a later design explicitly enables it.
 - [x] Chat and agent UI is covered at presentation level: send prompt, stream assistant text/tool-call states from mocked events, render tool cards/web-search cards, handle cancellation/failure, and keep generated content out of chapter files unless the user explicitly saves through an editor flow.
 - [ ] Metadata surfaces are covered: character, location, timeline/story-arc, preference, reader, skill, and profile panels render fixture data, empty states, and representative create/edit/delete or inspect actions where those actions exist.
-- [ ] Settings are covered: provider/model/embedding configuration panes render, validate required fields, persist safe settings through the bridge, and never require live API keys, local model files, or network access.
+- [x] Settings are covered: provider/model/embedding configuration panes render, validate required fields, persist safe settings through the bridge, and never require live API keys, local model files, or network access.
 - [ ] Import/export and file-picker affordances are covered with mocked paths and temporary fixtures; tests must not read or write real user projects outside test temp directories.
 - [x] Reference-anchor coverage is included as a smoke path in the app-wide suite, while deep anchor orchestration, blueprint, material binding, candidate, audit, and screenshot checks remain in `npm run test:reference-anchor`.
 - [x] Visual checks capture stable screenshots for bootstrap states, shell, editor, search, chat, settings, metadata panels, and reference entry point at the default desktop viewport; any smaller responsive viewport is scoped to layout integrity, not full workflow duplication.
@@ -53,11 +53,12 @@ This phase is intentionally broader than reference anchors. The reference-anchor
 - [x] Chat presentation coverage now includes explicit stop/cancel behavior via `CancelChat` and mocked agent failure rendering, while generated assistant text still never writes chapter files.
 - [x] Monaco now loads from bundled local assets instead of the default CDN path, so desktop/CI smoke tests can prove the editor renders without network access.
 - [x] The app-wide suite now covers explicit chapter text edits, `SaveContent` persistence, dirty/saved status transitions, save failure messaging, and no extra save when switching unrelated panels after a clean save.
+- [x] Settings coverage now validates missing API-key handling, persists mocked LLM provider and ONNX embedding configuration through the bridge, verifies built-in embedding readiness/test success, and avoids live keys, local model files, network calls, model discovery, file pickers, or external links.
 - [x] The suite records bridge calls and asserts no implicit `SaveContent`, no external URL open, and no reference file picker or other mutating bridge calls during the smoke path.
 - [x] `npm run verify` runs the frontend build, lint, deep reference-anchor workflow, and app-wide workflow without requiring the Photino desktop shell.
 - [x] The app-wide console-error guard caught and fixed an invalid nested-button structure in the location side panel; the mocked chat usage payload now matches the `ContextRing` contract so the smoke does not mask NaN rendering warnings.
 
-This first slice does not complete Phase 13. Create/edit/delete workflows, settings persistence validation, import/export/file-picker paths, and responsive viewport coverage remain pending.
+This first slice does not complete Phase 13. Create/edit/delete workflows, import/export/file-picker paths, and responsive viewport coverage remain pending.
 
 **Files likely touched:**
 

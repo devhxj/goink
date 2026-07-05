@@ -58,6 +58,9 @@ async function main() {
     await verifySettingsWorkflow(page)
     await page.screenshot({ path: path.join(outputDir, 'app-05-settings.png'), fullPage: true })
 
+    logStep('checking settings persistence path')
+    await verifySettingsPersistenceWorkflow(browser, url, consoleErrors, pageErrors)
+
     logStep('checking metadata panels')
     await verifyMetadataPanels(page)
     await page.screenshot({ path: path.join(outputDir, 'app-06-metadata.png'), fullPage: true })
@@ -128,7 +131,10 @@ async function newAppPage(browser, consoleErrors, pageErrors, bridgeOptions) {
   page.setDefaultTimeout(12_000)
   page.on('console', (message) => {
     if (message.type() === 'error') {
-      consoleErrors.push(message.text())
+      const text = message.text()
+      if (!isIgnorableDevServerConsoleError(text)) {
+        consoleErrors.push(text)
+      }
     }
   })
   page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -136,6 +142,10 @@ async function newAppPage(browser, consoleErrors, pageErrors, bridgeOptions) {
     await page.addInitScript(installConfigurableAppMockBridge, bridgeOptions)
   }
   return page
+}
+
+function isIgnorableDevServerConsoleError(text) {
+  return /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/\?token=[^']+' failed: Error in connection establishment: net::ERR_NO_BUFFER_SPACE$/.test(text)
 }
 
 async function verifyShellNavigation(page) {
@@ -285,6 +295,46 @@ async function verifySettingsWorkflow(page) {
   await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
 }
 
+async function verifySettingsPersistenceWorkflow(browser, url, consoleErrors, pageErrors) {
+  const page = await newAppPage(browser, consoleErrors, pageErrors, { initialized: true })
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'settings persistence workspace')
+
+  await page.locator('header').getByTitle('设置').click()
+  const dialog = settingsDialog(page)
+  await expectVisible(dialog.getByText('基础设置'), 'settings persistence dialog')
+  await dialog.getByRole('button', { name: /模型配置/ }).click()
+  await expectVisible(dialog.getByText('内置服务商'), 'model settings pane')
+
+  await dialog.getByRole('button', { name: '保存配置' }).click()
+  await expectVisible(dialog.getByText('请先配置至少一个服务商的 API Key'), 'missing credential validation')
+  await assertBridgeCallCount(page, 'SaveLLMConfig', 0)
+  await assertBridgeCallCount(page, 'TestConnection', 0)
+
+  await dialog.getByPlaceholder('输入 API Key').first().fill('mock-settings-key')
+  await dialog.getByRole('button', { name: '保存配置' }).click()
+  await expectVisible(dialog.getByText('配置已保存'), 'model settings saved')
+  await waitForBridgeCall(page, 'TestConnection')
+  await waitForBridgeCall(page, 'SaveLLMConfig')
+  await assertSavedProviderKey(page, 'mock')
+
+  await dialog.getByRole('button', { name: 'Embeddings' }).click()
+  await expectVisible(dialog.getByText('sqlite-vec 已就绪'), 'sqlite vec ready')
+  await expectVisible(dialog.getByText('bge-small-zh-v1.5'), 'builtin onnx embedding model')
+  await dialog.getByRole('button', { name: '测试' }).click()
+  await expectVisible(dialog.getByText('✓ 连通成功'), 'embedding test success')
+  await dialog.getByRole('button', { name: '保存配置' }).click()
+  await expectVisible(dialog.getByText('配置已保存'), 'embedding settings saved')
+  await waitForBridgeCall(page, 'TestEmbeddingConnection')
+  await waitForBridgeCall(page, 'SaveEmbeddingConfig')
+  await assertSavedEmbeddingProvider(page, 'onnx')
+
+  await assertBridgeCallCount(page, 'DiscoverModels', 0)
+  await assertBridgeCallCount(page, 'PickReferenceSourceFile', 0)
+  await assertBridgeCallCount(page, 'runtime.shell.openExternal', 0)
+  await page.close()
+}
+
 async function verifyMetadataPanels(page) {
   await page.getByTitle('角色').click()
   await expectVisible(page.getByRole('heading', { name: /角色/ }), 'characters heading')
@@ -401,6 +451,20 @@ async function bridgeCallCount(page, method) {
     (method) => window.__appMockState.calls.filter((call) => call.method === method).length,
     method,
   )
+}
+
+function settingsDialog(page) {
+  return page.locator('.fixed').filter({ hasText: '设置' }).last()
+}
+
+async function assertSavedProviderKey(page, expectedKey) {
+  const actual = await page.evaluate(() => window.__appMockState.savedLLMConfig?.providers?.[0]?.key ?? '')
+  assert.equal(actual, expectedKey)
+}
+
+async function assertSavedEmbeddingProvider(page, expectedProvider) {
+  const actual = await page.evaluate(() => window.__appMockState.savedEmbeddingConfig?.provider_key ?? '')
+  assert.equal(actual, expectedProvider)
 }
 
 async function expectVisible(locator, description) {
@@ -560,6 +624,8 @@ function installConfigurableAppMockBridge(options = {}) {
     nextTurnId: 101,
     searchFailureRecovered: false,
     failNextSaveContent: false,
+    savedLLMConfig: null,
+    savedEmbeddingConfig: null,
     contentByPath: {
       'goink.md': '## 当前状态\n林岚正在调查旧城门。',
       'chapters/1.md': '林岚在雨夜旧宅门前停住。\n\n她看见桌上的水痕。',
@@ -661,6 +727,12 @@ function installConfigurableAppMockBridge(options = {}) {
       case 'RebuildNovelIndex':
       case 'TestConnection':
       case 'TestEmbeddingConnection':
+        return null
+      case 'SaveLLMConfig':
+        state.savedLLMConfig = args[0]
+        return null
+      case 'SaveEmbeddingConfig':
+        state.savedEmbeddingConfig = args[0]
         return null
       case 'GetAppConfig': return { data_dir: options.platformDefaultPath ?? 'D:\\NovelistData' }
       case 'GetNovels': return state.novels

@@ -6,6 +6,7 @@
 - `npm --prefix frontend run test:app` 现在覆盖首次初始化、初始化后的空书架、已初始化但无作品、启动检查失败和桌面桥接不可用等 bootstrap 状态。
 - 正文编辑器现在使用本地打包的 Monaco 资源，桌面或 CI 离线环境不再卡在编辑器 Loading；保存失败会在编辑区显示明确提示并保留未保存状态。
 - `npm --prefix frontend run test:app` 现在覆盖章节正文编辑、显式保存、保存失败提示、脏状态切换，以及干净状态切换面板不会额外写入正文。
+- `npm --prefix frontend run test:app` 现在覆盖模型与 Embeddings 设置的必填校验、mock 桥接保存和内置 ONNX 向量配置路径，全程不需要真实 API Key、本地模型文件或网络访问。
 
 ### 2026-07-05
 
