@@ -639,6 +639,8 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
             周鸣看不见她袖口下的手指正慢慢发凉。
 
             他移开目光，指尖在门框上停了一下。
+
+            她欲言又止，指节慢慢扣紧。
             """);
         var service = new SqliteReferenceAnchorService(options, novels);
 
@@ -664,6 +666,12 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
             row.Text == "他移开目光，指尖在门框上停了一下。" &&
             row.FunctionTag == "action" &&
             row.TechniqueTag == "afterbeat");
+        Assert.Contains(rows, row =>
+            row.MaterialType == ReferenceMaterialTypes.Sentence &&
+            row.Text == "她欲言又止，指节慢慢扣紧。" &&
+            row.FunctionTag == "emotion_evidence" &&
+            row.EmotionTag == "restrained" &&
+            row.TechniqueTag == "external_evidence");
     }
 
     [Fact]
