@@ -190,6 +190,134 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewWarnsWhenPressureChangesButNarrativeDistanceNeverVaries()
+    {
+        static ReferenceChapterBlueprintBeatPayload PressuredBeat(string beatId, int beatIndex, string pressure)
+        {
+            return Beat(beatId) with
+            {
+                BeatIndex = beatIndex,
+                NarrativeDistance = "close",
+                ConflictPressure = pressure,
+                RelationshipPressure = [$"{pressure} changes trust"],
+                EmotionBefore = "controlled",
+                EmotionAfter = "heightened"
+            };
+        }
+
+        var blueprint = Blueprint(beat => beat) with
+        {
+            Beats =
+            [
+                PressuredBeat("1:beat:1", 1, "withheld clue pressure"),
+                PressuredBeat("1:beat:2", 2, "relationship pressure"),
+                PressuredBeat("1:beat:3", 3, "deadline pressure")
+            ]
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, review.Status);
+        Assert.Empty(review.RequiredFixes);
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "narration" &&
+                defect.Severity == "warning" &&
+                defect.FieldPath.Contains("narrative_distance", StringComparison.OrdinalIgnoreCase) &&
+                defect.Reason.Contains("pressure", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewDoesNotWarnWhenNarrativeDistanceMatchesStablePressure()
+    {
+        static ReferenceChapterBlueprintBeatPayload StablePressureBeat(string beatId, int beatIndex)
+        {
+            return Beat(beatId) with
+            {
+                BeatIndex = beatIndex,
+                NarrativeDistance = "close",
+                ConflictPressure = "same doorway pressure",
+                RelationshipPressure = ["same trust pressure"],
+                EmotionBefore = "controlled",
+                EmotionAfter = "controlled",
+                ParagraphIntention = $"dwell on stable pressure beat {beatIndex}",
+                ProseDuties = beatIndex switch
+                {
+                    1 => ["interiority", "external_evidence"],
+                    2 => ["sensory_pressure", "external_evidence"],
+                    _ => ["subtext", "external_evidence"]
+                }
+            };
+        }
+
+        var blueprint = Blueprint(beat => beat) with
+        {
+            Beats =
+            [
+                StablePressureBeat("1:beat:1", 1),
+                StablePressureBeat("1:beat:2", 2),
+                StablePressureBeat("1:beat:3", 3)
+            ]
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.DoesNotContain(
+            review.Defects,
+            defect => defect.Category == "narration" &&
+                defect.Severity == "warning" &&
+                defect.FieldPath.Contains("narrative_distance", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewDoesNotWarnWhenTooFewBeatsCarryPressureChanges()
+    {
+        static ReferenceChapterBlueprintBeatPayload QuietBeat(string beatId, int beatIndex)
+        {
+            return Beat(beatId) with
+            {
+                BeatIndex = beatIndex,
+                NarrativeDistance = "close",
+                ConflictPressure = "",
+                RelationshipPressure = [],
+                EmotionBefore = "controlled",
+                EmotionAfter = "controlled",
+                ParagraphIntention = $"hold quiet setup beat {beatIndex}",
+                ProseDuties = beatIndex switch
+                {
+                    1 => ["interiority", "external_evidence"],
+                    2 => ["sensory_pressure", "external_evidence"],
+                    _ => ["subtext", "external_evidence"]
+                }
+            };
+        }
+
+        var blueprint = Blueprint(beat => beat) with
+        {
+            Beats =
+            [
+                QuietBeat("1:beat:1", 1),
+                QuietBeat("1:beat:2", 2),
+                QuietBeat("1:beat:3", 3) with
+                {
+                    ConflictPressure = "deadline pressure",
+                    RelationshipPressure = ["trust tightens"],
+                    EmotionBefore = "controlled",
+                    EmotionAfter = "heightened"
+                }
+            ]
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.DoesNotContain(
+            review.Defects,
+            defect => defect.Category == "narration" &&
+                defect.Severity == "warning" &&
+                defect.FieldPath.Contains("narrative_distance", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewAllowsEmotionEvidenceQueryForSubtextAndExternalEvidenceDuties()
     {
         var blueprint = Blueprint(beat => beat with

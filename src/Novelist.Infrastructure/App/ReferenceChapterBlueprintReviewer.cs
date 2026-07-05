@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 61;
+    public const int CurrentReviewVersion = 62;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -1383,6 +1383,35 @@ internal static class ReferenceChapterBlueprintReviewer
                 "Add suppression, delayed release, restraint, misdirection, or withheld reaction to at least one emotion-changing beat.");
         }
 
+        var pressureSignalBeats = blueprint.Beats
+            .Select(beat => new
+            {
+                Beat = beat,
+                PressureSignature = GetPressureSignature(beat)
+            })
+            .Where(item => item.PressureSignature.Length > 0)
+            .ToArray();
+        var pressureChangeSignatures = pressureSignalBeats
+            .Select(item => item.PressureSignature)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var narrativeDistanceSignatures = pressureSignalBeats
+            .Select(item => NormalizeComparableText(item.Beat.NarrativeDistance))
+            .Where(distance => distance.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (pressureSignalBeats.Length >= 3 &&
+            pressureChangeSignatures.Length > 1 &&
+            narrativeDistanceSignatures.Length == 1)
+        {
+            AddWarningDefect(
+                "narration",
+                "beats.narrative_distance",
+                string.Empty,
+                $"Narrative distance stays unchanged across pressure-changing beats: {narrativeDistanceSignatures[0]}.",
+                "Vary narrative_distance or explain the distance choice in narration_strategy when conflict, relationship, or emotion pressure changes across the chapter.");
+        }
+
         var defectCount = logicErrors.Count + causalityErrors.Count + emotionErrors.Count +
             narrationErrors.Count + executionErrors.Count + characterStateErrors.Count + povErrors.Count +
             continuityErrors.Count + transitionErrors.Count + forbiddenFactErrors.Count +
@@ -2541,6 +2570,25 @@ internal static class ReferenceChapterBlueprintReviewer
                 "suppress", "suppressed", "slow release", "defer", "deferred",
                 "延迟", "滞后", "压住", "克制", "误导", "保留", "不说破", "后拍", "迟疑", "隐忍"
             ]);
+    }
+
+    private static string GetPressureSignature(ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var conflictPressure = NormalizeComparableText(beat.ConflictPressure);
+        var relationshipPressure = beat.RelationshipPressure
+            .Select(NormalizeComparableText)
+            .Where(pressure => pressure.Length > 0)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var emotionShift = string.Equals(beat.EmotionBefore, beat.EmotionAfter, StringComparison.Ordinal)
+            ? string.Empty
+            : NormalizeComparableText(beat.EmotionBefore) + ">" + NormalizeComparableText(beat.EmotionAfter);
+        return string.Join(
+            "|",
+            new[] { conflictPressure }
+                .Concat(relationshipPressure)
+                .Concat([emotionShift])
+                .Where(signal => signal.Length > 0));
     }
 
     private static bool ContainsAnyTag(IReadOnlyList<string> values, IReadOnlyList<string> candidates)
