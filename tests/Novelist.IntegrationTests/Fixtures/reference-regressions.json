@@ -96,6 +96,11 @@
       "expected_error": "forbidden fact appears in sensory anchor target"
     },
     {
+      "name": "unsupported_subtext_plan_fact",
+      "mutation": "unsupported_subtext_plan_fact",
+      "expected_error": "unsupported subtext plan fact"
+    },
+    {
       "name": "generic_slot_plan",
       "mutation": "generic_slot_plan",
       "expected_error": "generic slot plan"

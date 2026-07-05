@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 16;
+    public const int CurrentReviewVersion = 17;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -389,6 +389,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "sensory_anchor_target",
                     $"Beat {beat.BeatIndex} contains unsupported sensory anchor target fact: {unsupportedSensoryAnchorTargetFact}",
                     "Set up the sensory_anchor_target fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+
+            foreach (var unsupportedSubtextPlanFact in FindUnsupportedSubtextPlanFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    novelisticNarrationErrors,
+                    "novelistic_narration",
+                    beat,
+                    "subtext_plan",
+                    $"Beat {beat.BeatIndex} contains unsupported subtext plan fact: {unsupportedSubtextPlanFact}",
+                    "Set up the subtext_plan fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
             }
 
             if (string.IsNullOrWhiteSpace(beat.ReferenceQuery.Query) || beat.RequiredMaterialTypes.Count == 0)
@@ -836,6 +847,24 @@ internal static class ReferenceChapterBlueprintReviewer
             .ToArray();
 
         return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.SensoryAnchorTarget)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedSubtextPlanFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.SubtextPlan)
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();

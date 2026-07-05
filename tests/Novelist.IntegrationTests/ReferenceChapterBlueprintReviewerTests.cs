@@ -615,6 +615,40 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsUnsupportedSubtextPlanFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            SubtextPlan = "密室钥匙"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.NovelisticNarrationErrors, item => item.Contains("unsupported subtext plan fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "novelistic_narration" &&
+                defect.FieldPath.Contains("subtext_plan", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewAllowsSubtextPlanFactWhenKnownFactApprovesIt()
+    {
+        var blueprint = Blueprint(
+            beat => beat with
+            {
+                SubtextPlan = "密室钥匙"
+            },
+            knownFacts: ["雨声压低了整条街的呼吸", "密室钥匙"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, review.Status);
+        Assert.DoesNotContain(review.NovelisticNarrationErrors, item => item.Contains("subtext plan fact", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsGenericSlotPlan()
     {
         var blueprint = Blueprint(beat => beat with
