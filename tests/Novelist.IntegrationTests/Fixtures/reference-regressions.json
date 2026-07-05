@@ -11,6 +11,11 @@
       "expected_error": "unsupported external evidence fact"
     },
     {
+      "name": "forbidden_external_evidence_fact",
+      "mutation": "forbidden_external_evidence_fact",
+      "expected_error": "forbidden fact appears in external evidence"
+    },
+    {
       "name": "hard_transition",
       "mutation": "hard_transition",
       "expected_error": "pressure"

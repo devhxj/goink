@@ -82,6 +82,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 ExternalEvidence = "密室钥匙"
             },
+            "forbidden_external_evidence_fact" => beat with
+            {
+                ExternalEvidence = "凶手身份"
+            },
             "hard_transition" => beat with
             {
                 TransitionIn = "来到旧宅",
@@ -226,6 +230,7 @@ public sealed class ReferenceRegressionFixtureTests
         return mutation switch
         {
             "pov_forbidden_scene_fact" => ["雨声压低了整条街的呼吸", "周鸣是卧底"],
+            "forbidden_external_evidence_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_reference_query_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_source_backed_detail_target_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
             "forbidden_sensory_anchor_target_fact" => ["雨声压低了整条街的呼吸", "凶手身份"],
@@ -241,6 +246,7 @@ public sealed class ReferenceRegressionFixtureTests
     {
         return mutation switch
         {
+            "forbidden_external_evidence_fact" => ["凶手身份"],
             "forbidden_reference_query_fact" => ["凶手身份"],
             "forbidden_source_backed_detail_target_fact" => ["凶手身份"],
             "forbidden_sensory_anchor_target_fact" => ["凶手身份"],
