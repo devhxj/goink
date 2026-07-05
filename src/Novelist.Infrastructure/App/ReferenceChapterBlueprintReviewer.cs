@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 49;
+    public const int CurrentReviewVersion = 50;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -56,6 +56,65 @@ internal static class ReferenceChapterBlueprintReviewer
             string requiredFix)
         {
             AddDefect(bucket, category, "beat:" + beat.BeatId + ":" + fieldName, beat.BeatId, reason, requiredFix);
+        }
+
+        void AddUnsupportedAnalysisTrackFactDefects(
+            ReferenceChapterBlueprintAnalysisTrackPayload track,
+            List<string> bucket,
+            string category,
+            string fieldPath,
+            string displayName)
+        {
+            foreach (var unsupportedFact in FindUnsupportedAnalysisTrackSummaryFacts(blueprint, track))
+            {
+                AddDefect(
+                    bucket,
+                    category,
+                    fieldPath + ".summary",
+                    string.Empty,
+                    $"Blueprint contains unsupported {displayName} analysis fact: {unsupportedFact}",
+                    $"Set up the {fieldPath}.summary fact in approved known facts, beat scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+
+            foreach (var unsupportedFact in FindUnsupportedAnalysisTrackPointFacts(blueprint, track))
+            {
+                AddDefect(
+                    bucket,
+                    category,
+                    fieldPath + ".points",
+                    string.Empty,
+                    $"Blueprint contains unsupported {displayName} analysis point fact: {unsupportedFact}",
+                    $"Set up the {fieldPath}.points fact in approved known facts, beat scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+        }
+
+        void AddForbiddenAnalysisTrackFactDefects(
+            ReferenceChapterBlueprintAnalysisTrackPayload track,
+            string fieldPath,
+            string displayName,
+            string forbidden)
+        {
+            if (ContainsForbidden(track.Summary, forbidden))
+            {
+                AddDefect(
+                    forbiddenFactErrors,
+                    "forbidden_fact",
+                    fieldPath + ".summary",
+                    string.Empty,
+                    $"Forbidden fact appears in {displayName} analysis: {forbidden}",
+                    $"Remove the forbidden fact from {fieldPath}.summary or move it out of the forbidden fact set.");
+            }
+
+            foreach (var point in track.Points.Where(point => ContainsForbidden(point, forbidden)))
+            {
+                AddDefect(
+                    forbiddenFactErrors,
+                    "forbidden_fact",
+                    fieldPath + ".points",
+                    string.Empty,
+                    $"Forbidden fact appears in {displayName} analysis point: {forbidden}",
+                    $"Remove the forbidden fact from {fieldPath}.points or move it out of the forbidden fact set.");
+            }
         }
 
         if (IsEmptyTrack(blueprint.LogicAnalysis) ||
@@ -128,6 +187,37 @@ internal static class ReferenceChapterBlueprintReviewer
                 $"Blueprint contains unsupported logic analysis point fact: {unsupportedLogicAnalysisPointFact}",
                 "Set up the logic_analysis.points fact in approved known facts, beat scene facts, viewpoint knowledge, or slot plan before drafting.");
         }
+
+        AddUnsupportedAnalysisTrackFactDefects(
+            blueprint.EmotionAnalysis,
+            emotionErrors,
+            "emotion",
+            "emotion_analysis",
+            "emotion");
+        AddUnsupportedAnalysisTrackFactDefects(
+            blueprint.NarrationAnalysis,
+            narrationErrors,
+            "narration",
+            "narration_analysis",
+            "narration");
+        AddUnsupportedAnalysisTrackFactDefects(
+            blueprint.CharacterAnalysis,
+            characterStateErrors,
+            "character_state",
+            "character_analysis",
+            "character");
+        AddUnsupportedAnalysisTrackFactDefects(
+            blueprint.ReferenceAnalysis,
+            referenceBindingErrors,
+            "reference_binding",
+            "reference_analysis",
+            "reference");
+        AddUnsupportedAnalysisTrackFactDefects(
+            blueprint.TransitionPlan,
+            transitionErrors,
+            "transition",
+            "transition_plan",
+            "transition");
 
         foreach (var unsupportedPreviousStateFact in FindUnsupportedPreviousStateFacts(blueprint))
         {
@@ -833,6 +923,12 @@ internal static class ReferenceChapterBlueprintReviewer
                     $"Forbidden fact appears in logic analysis point: {forbidden}",
                     "Remove the forbidden fact from logic_analysis.points or move it out of the forbidden fact set.");
             }
+
+            AddForbiddenAnalysisTrackFactDefects(blueprint.EmotionAnalysis, "emotion_analysis", "emotion", forbidden);
+            AddForbiddenAnalysisTrackFactDefects(blueprint.NarrationAnalysis, "narration_analysis", "narration", forbidden);
+            AddForbiddenAnalysisTrackFactDefects(blueprint.CharacterAnalysis, "character_analysis", "character", forbidden);
+            AddForbiddenAnalysisTrackFactDefects(blueprint.ReferenceAnalysis, "reference_analysis", "reference", forbidden);
+            AddForbiddenAnalysisTrackFactDefects(blueprint.TransitionPlan, "transition_plan", "transition", forbidden);
 
             if (ContainsForbidden(blueprint.PreviousState, forbidden))
             {
@@ -1591,21 +1687,17 @@ internal static class ReferenceChapterBlueprintReviewer
 
     private static IEnumerable<string> FindUnsupportedLogicAnalysisSummaryFacts(ReferenceChapterBlueprintPayload blueprint)
     {
-        var allowedFacts = blueprint.KnownFacts
-            .Concat(blueprint.Beats.SelectMany(beat => beat.SceneFacts))
-            .Concat(blueprint.Beats.SelectMany(beat => beat.ViewpointAllowedKnowledge))
-            .Concat(blueprint.Beats.SelectMany(beat => beat.SlotPlan.Select(slot => slot.Value)))
-            .Where(item => !string.IsNullOrWhiteSpace(item))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(blueprint.LogicAnalysis.Summary)
-            .Where(fact => !IsAllowedFact(fact, allowedFacts))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return FindUnsupportedAnalysisTrackSummaryFacts(blueprint, blueprint.LogicAnalysis);
     }
 
     private static IEnumerable<string> FindUnsupportedLogicAnalysisPointFacts(ReferenceChapterBlueprintPayload blueprint)
+    {
+        return FindUnsupportedAnalysisTrackPointFacts(blueprint, blueprint.LogicAnalysis);
+    }
+
+    private static IEnumerable<string> FindUnsupportedAnalysisTrackSummaryFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintAnalysisTrackPayload track)
     {
         var allowedFacts = blueprint.KnownFacts
             .Concat(blueprint.Beats.SelectMany(beat => beat.SceneFacts))
@@ -1615,7 +1707,25 @@ internal static class ReferenceChapterBlueprintReviewer
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return blueprint.LogicAnalysis.Points
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(track.Summary)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedAnalysisTrackPointFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintAnalysisTrackPayload track)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(blueprint.Beats.SelectMany(beat => beat.SceneFacts))
+            .Concat(blueprint.Beats.SelectMany(beat => beat.ViewpointAllowedKnowledge))
+            .Concat(blueprint.Beats.SelectMany(beat => beat.SlotPlan.Select(slot => slot.Value)))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return track.Points
             .SelectMany(ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases)
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)

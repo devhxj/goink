@@ -206,6 +206,106 @@
       "expected_error": "forbidden fact appears in logic analysis point"
     },
     {
+      "name": "unsupported_emotion_analysis_summary_fact",
+      "mutation": "unsupported_emotion_analysis_summary_fact",
+      "expected_error": "unsupported emotion analysis fact"
+    },
+    {
+      "name": "unsupported_emotion_analysis_point_fact",
+      "mutation": "unsupported_emotion_analysis_point_fact",
+      "expected_error": "unsupported emotion analysis point fact"
+    },
+    {
+      "name": "forbidden_emotion_analysis_summary_fact",
+      "mutation": "forbidden_emotion_analysis_summary_fact",
+      "expected_error": "forbidden fact appears in emotion analysis"
+    },
+    {
+      "name": "forbidden_emotion_analysis_point_fact",
+      "mutation": "forbidden_emotion_analysis_point_fact",
+      "expected_error": "forbidden fact appears in emotion analysis point"
+    },
+    {
+      "name": "unsupported_narration_analysis_summary_fact",
+      "mutation": "unsupported_narration_analysis_summary_fact",
+      "expected_error": "unsupported narration analysis fact"
+    },
+    {
+      "name": "unsupported_narration_analysis_point_fact",
+      "mutation": "unsupported_narration_analysis_point_fact",
+      "expected_error": "unsupported narration analysis point fact"
+    },
+    {
+      "name": "forbidden_narration_analysis_summary_fact",
+      "mutation": "forbidden_narration_analysis_summary_fact",
+      "expected_error": "forbidden fact appears in narration analysis"
+    },
+    {
+      "name": "forbidden_narration_analysis_point_fact",
+      "mutation": "forbidden_narration_analysis_point_fact",
+      "expected_error": "forbidden fact appears in narration analysis point"
+    },
+    {
+      "name": "unsupported_character_analysis_summary_fact",
+      "mutation": "unsupported_character_analysis_summary_fact",
+      "expected_error": "unsupported character analysis fact"
+    },
+    {
+      "name": "unsupported_character_analysis_point_fact",
+      "mutation": "unsupported_character_analysis_point_fact",
+      "expected_error": "unsupported character analysis point fact"
+    },
+    {
+      "name": "forbidden_character_analysis_summary_fact",
+      "mutation": "forbidden_character_analysis_summary_fact",
+      "expected_error": "forbidden fact appears in character analysis"
+    },
+    {
+      "name": "forbidden_character_analysis_point_fact",
+      "mutation": "forbidden_character_analysis_point_fact",
+      "expected_error": "forbidden fact appears in character analysis point"
+    },
+    {
+      "name": "unsupported_reference_analysis_summary_fact",
+      "mutation": "unsupported_reference_analysis_summary_fact",
+      "expected_error": "unsupported reference analysis fact"
+    },
+    {
+      "name": "unsupported_reference_analysis_point_fact",
+      "mutation": "unsupported_reference_analysis_point_fact",
+      "expected_error": "unsupported reference analysis point fact"
+    },
+    {
+      "name": "forbidden_reference_analysis_summary_fact",
+      "mutation": "forbidden_reference_analysis_summary_fact",
+      "expected_error": "forbidden fact appears in reference analysis"
+    },
+    {
+      "name": "forbidden_reference_analysis_point_fact",
+      "mutation": "forbidden_reference_analysis_point_fact",
+      "expected_error": "forbidden fact appears in reference analysis point"
+    },
+    {
+      "name": "unsupported_transition_plan_summary_fact",
+      "mutation": "unsupported_transition_plan_summary_fact",
+      "expected_error": "unsupported transition analysis fact"
+    },
+    {
+      "name": "unsupported_transition_plan_point_fact",
+      "mutation": "unsupported_transition_plan_point_fact",
+      "expected_error": "unsupported transition analysis point fact"
+    },
+    {
+      "name": "forbidden_transition_plan_summary_fact",
+      "mutation": "forbidden_transition_plan_summary_fact",
+      "expected_error": "forbidden fact appears in transition analysis"
+    },
+    {
+      "name": "forbidden_transition_plan_point_fact",
+      "mutation": "forbidden_transition_plan_point_fact",
+      "expected_error": "forbidden fact appears in transition analysis point"
+    },
+    {
       "name": "generic_paragraph_intention",
       "mutation": "generic_paragraph_intention",
       "expected_error": "generic paragraph intention"

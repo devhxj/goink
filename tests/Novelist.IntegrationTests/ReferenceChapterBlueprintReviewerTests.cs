@@ -336,6 +336,126 @@ public sealed class ReferenceChapterBlueprintReviewerTests
                 defect.FieldPath.Contains("logic_analysis.points", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("emotion_analysis", "emotion", "emotion")]
+    [InlineData("narration_analysis", "narration", "narration")]
+    [InlineData("character_analysis", "character_state", "character")]
+    [InlineData("reference_analysis", "reference_binding", "reference")]
+    [InlineData("transition_plan", "transition", "transition")]
+    public void BuildReviewFailsUnsupportedAnalysisTrackSummaryFact(
+        string fieldPath,
+        string category,
+        string displayName)
+    {
+        var blueprint = WithAnalysisTrack(
+            Blueprint(beat => beat),
+            fieldPath,
+            displayName + " turns on 密室钥匙",
+            ["point"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(ReviewMessagesForCategory(review, category), item => item.Contains(
+            "unsupported " + displayName + " analysis fact",
+            StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == category &&
+                defect.FieldPath.Contains(fieldPath + ".summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("emotion_analysis", "emotion", "emotion")]
+    [InlineData("narration_analysis", "narration", "narration")]
+    [InlineData("character_analysis", "character_state", "character")]
+    [InlineData("reference_analysis", "reference_binding", "reference")]
+    [InlineData("transition_plan", "transition", "transition")]
+    public void BuildReviewFailsUnsupportedAnalysisTrackPointFact(
+        string fieldPath,
+        string category,
+        string displayName)
+    {
+        var blueprint = WithAnalysisTrack(
+            Blueprint(beat => beat),
+            fieldPath,
+            displayName,
+            ["turn on 密室钥匙"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(ReviewMessagesForCategory(review, category), item => item.Contains(
+            "unsupported " + displayName + " analysis point fact",
+            StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == category &&
+                defect.FieldPath.Contains(fieldPath + ".points", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("emotion_analysis", "emotion")]
+    [InlineData("narration_analysis", "narration")]
+    [InlineData("character_analysis", "character")]
+    [InlineData("reference_analysis", "reference")]
+    [InlineData("transition_plan", "transition")]
+    public void BuildReviewFailsForbiddenFactInAnalysisTrackSummary(
+        string fieldPath,
+        string displayName)
+    {
+        var blueprint = WithAnalysisTrack(
+            Blueprint(
+                beat => beat,
+                forbiddenFacts: ["凶手身份"],
+                knownFacts: ["雨声压低了整条街的呼吸", "凶手身份"]),
+            fieldPath,
+            displayName + " turns on 凶手身份",
+            ["point"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ForbiddenFactErrors, item => item.Contains(
+            displayName + " analysis",
+            StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "forbidden_fact" &&
+                defect.FieldPath.Contains(fieldPath + ".summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("emotion_analysis", "emotion")]
+    [InlineData("narration_analysis", "narration")]
+    [InlineData("character_analysis", "character")]
+    [InlineData("reference_analysis", "reference")]
+    [InlineData("transition_plan", "transition")]
+    public void BuildReviewFailsForbiddenFactInAnalysisTrackPoints(
+        string fieldPath,
+        string displayName)
+    {
+        var blueprint = WithAnalysisTrack(
+            Blueprint(
+                beat => beat,
+                forbiddenFacts: ["凶手身份"],
+                knownFacts: ["雨声压低了整条街的呼吸", "凶手身份"]),
+            fieldPath,
+            displayName,
+            ["turn on 凶手身份"]);
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ForbiddenFactErrors, item => item.Contains(
+            displayName + " analysis point",
+            StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "forbidden_fact" &&
+                defect.FieldPath.Contains(fieldPath + ".points", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void BuildReviewFailsMissingCausalityOut()
     {
@@ -1750,6 +1870,42 @@ public sealed class ReferenceChapterBlueprintReviewerTests
             LatestReview: null,
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch);
+    }
+
+    private static ReferenceChapterBlueprintPayload WithAnalysisTrack(
+        ReferenceChapterBlueprintPayload blueprint,
+        string fieldPath,
+        string summary,
+        IReadOnlyList<string> points)
+    {
+        var track = new ReferenceChapterBlueprintAnalysisTrackPayload(
+            fieldPath.Replace("_analysis", "", StringComparison.Ordinal).Replace("_plan", "", StringComparison.Ordinal),
+            summary,
+            points);
+        return fieldPath switch
+        {
+            "emotion_analysis" => blueprint with { EmotionAnalysis = track },
+            "narration_analysis" => blueprint with { NarrationAnalysis = track },
+            "character_analysis" => blueprint with { CharacterAnalysis = track },
+            "reference_analysis" => blueprint with { ReferenceAnalysis = track },
+            "transition_plan" => blueprint with { TransitionPlan = track },
+            _ => throw new ArgumentException("Unsupported analysis track.", nameof(fieldPath))
+        };
+    }
+
+    private static IReadOnlyList<string> ReviewMessagesForCategory(
+        ReferenceChapterBlueprintReviewPayload review,
+        string category)
+    {
+        return category switch
+        {
+            "emotion" => review.EmotionErrors,
+            "narration" => review.NarrationErrors,
+            "character_state" => review.CharacterStateErrors,
+            "reference_binding" => review.ReferenceBindingErrors,
+            "transition" => review.TransitionErrors,
+            _ => throw new ArgumentException("Unsupported review category.", nameof(category))
+        };
     }
 
     private static ReferenceChapterBlueprintBeatPayload Beat(string beatId)

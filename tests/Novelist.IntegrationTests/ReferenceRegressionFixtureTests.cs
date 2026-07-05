@@ -25,7 +25,8 @@ public sealed class ReferenceRegressionFixtureTests
                 previousState: PreviousStateForMutation(mutation),
                 finalState: FinalStateForMutation(mutation),
                 logicAnalysisSummary: LogicAnalysisSummaryForMutation(mutation),
-                logicAnalysisPoints: LogicAnalysisPointsForMutation(mutation));
+                logicAnalysisPoints: LogicAnalysisPointsForMutation(mutation),
+                analysisTrackMutation: AnalysisTrackForMutation(mutation));
 
             var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
             var messages = AllReviewMessages(review).ToArray();
@@ -219,6 +220,26 @@ public sealed class ReferenceRegressionFixtureTests
             "forbidden_logic_analysis_summary_fact" => beat,
             "unsupported_logic_analysis_point_fact" => beat,
             "forbidden_logic_analysis_point_fact" => beat,
+            "unsupported_emotion_analysis_summary_fact" => beat,
+            "unsupported_emotion_analysis_point_fact" => beat,
+            "forbidden_emotion_analysis_summary_fact" => beat,
+            "forbidden_emotion_analysis_point_fact" => beat,
+            "unsupported_narration_analysis_summary_fact" => beat,
+            "unsupported_narration_analysis_point_fact" => beat,
+            "forbidden_narration_analysis_summary_fact" => beat,
+            "forbidden_narration_analysis_point_fact" => beat,
+            "unsupported_character_analysis_summary_fact" => beat,
+            "unsupported_character_analysis_point_fact" => beat,
+            "forbidden_character_analysis_summary_fact" => beat,
+            "forbidden_character_analysis_point_fact" => beat,
+            "unsupported_reference_analysis_summary_fact" => beat,
+            "unsupported_reference_analysis_point_fact" => beat,
+            "forbidden_reference_analysis_summary_fact" => beat,
+            "forbidden_reference_analysis_point_fact" => beat,
+            "unsupported_transition_plan_summary_fact" => beat,
+            "unsupported_transition_plan_point_fact" => beat,
+            "forbidden_transition_plan_summary_fact" => beat,
+            "forbidden_transition_plan_point_fact" => beat,
             "generic_paragraph_intention" => beat with
             {
                 ParagraphIntention = "写得更好，更有代入感"
@@ -413,8 +434,121 @@ public sealed class ReferenceRegressionFixtureTests
         };
     }
 
+    private static AnalysisTrackMutation? AnalysisTrackForMutation(string mutation)
+    {
+        return mutation switch
+        {
+            "unsupported_emotion_analysis_summary_fact" => new AnalysisTrackMutation(
+                "emotion_analysis",
+                "emotion",
+                "emotion turns on 密室钥匙",
+                ["point"]),
+            "unsupported_emotion_analysis_point_fact" => new AnalysisTrackMutation(
+                "emotion_analysis",
+                "emotion",
+                "emotion",
+                ["turn on 密室钥匙"]),
+            "forbidden_emotion_analysis_summary_fact" => new AnalysisTrackMutation(
+                "emotion_analysis",
+                "emotion",
+                "emotion turns on 凶手身份",
+                ["point"]),
+            "forbidden_emotion_analysis_point_fact" => new AnalysisTrackMutation(
+                "emotion_analysis",
+                "emotion",
+                "emotion",
+                ["turn on 凶手身份"]),
+            "unsupported_narration_analysis_summary_fact" => new AnalysisTrackMutation(
+                "narration_analysis",
+                "narration",
+                "narration turns on 密室钥匙",
+                ["point"]),
+            "unsupported_narration_analysis_point_fact" => new AnalysisTrackMutation(
+                "narration_analysis",
+                "narration",
+                "narration",
+                ["turn on 密室钥匙"]),
+            "forbidden_narration_analysis_summary_fact" => new AnalysisTrackMutation(
+                "narration_analysis",
+                "narration",
+                "narration turns on 凶手身份",
+                ["point"]),
+            "forbidden_narration_analysis_point_fact" => new AnalysisTrackMutation(
+                "narration_analysis",
+                "narration",
+                "narration",
+                ["turn on 凶手身份"]),
+            "unsupported_character_analysis_summary_fact" => new AnalysisTrackMutation(
+                "character_analysis",
+                "character",
+                "character turns on 密室钥匙",
+                ["point"]),
+            "unsupported_character_analysis_point_fact" => new AnalysisTrackMutation(
+                "character_analysis",
+                "character",
+                "character",
+                ["turn on 密室钥匙"]),
+            "forbidden_character_analysis_summary_fact" => new AnalysisTrackMutation(
+                "character_analysis",
+                "character",
+                "character turns on 凶手身份",
+                ["point"]),
+            "forbidden_character_analysis_point_fact" => new AnalysisTrackMutation(
+                "character_analysis",
+                "character",
+                "character",
+                ["turn on 凶手身份"]),
+            "unsupported_reference_analysis_summary_fact" => new AnalysisTrackMutation(
+                "reference_analysis",
+                "reference",
+                "reference turns on 密室钥匙",
+                ["point"]),
+            "unsupported_reference_analysis_point_fact" => new AnalysisTrackMutation(
+                "reference_analysis",
+                "reference",
+                "reference",
+                ["turn on 密室钥匙"]),
+            "forbidden_reference_analysis_summary_fact" => new AnalysisTrackMutation(
+                "reference_analysis",
+                "reference",
+                "reference turns on 凶手身份",
+                ["point"]),
+            "forbidden_reference_analysis_point_fact" => new AnalysisTrackMutation(
+                "reference_analysis",
+                "reference",
+                "reference",
+                ["turn on 凶手身份"]),
+            "unsupported_transition_plan_summary_fact" => new AnalysisTrackMutation(
+                "transition_plan",
+                "transition",
+                "transition turns on 密室钥匙",
+                ["point"]),
+            "unsupported_transition_plan_point_fact" => new AnalysisTrackMutation(
+                "transition_plan",
+                "transition",
+                "transition",
+                ["turn on 密室钥匙"]),
+            "forbidden_transition_plan_summary_fact" => new AnalysisTrackMutation(
+                "transition_plan",
+                "transition",
+                "transition turns on 凶手身份",
+                ["point"]),
+            "forbidden_transition_plan_point_fact" => new AnalysisTrackMutation(
+                "transition_plan",
+                "transition",
+                "transition",
+                ["turn on 凶手身份"]),
+            _ => null
+        };
+    }
+
     private static IReadOnlyList<string> KnownFactsForMutation(string mutation)
     {
+        if (IsForbiddenAnalysisTrackMutation(mutation))
+        {
+            return ["雨声压低了整条街的呼吸", "凶手身份"];
+        }
+
         return mutation switch
         {
             "pov_forbidden_scene_fact" => ["雨声压低了整条街的呼吸", "周鸣是卧底"],
@@ -447,6 +581,11 @@ public sealed class ReferenceRegressionFixtureTests
 
     private static IReadOnlyList<string> ForbiddenFactsForMutation(string mutation)
     {
+        if (IsForbiddenAnalysisTrackMutation(mutation))
+        {
+            return ["凶手身份"];
+        }
+
         return mutation switch
         {
             "forbidden_viewpoint_allowed_knowledge_fact" => ["凶手身份"],
@@ -470,6 +609,13 @@ public sealed class ReferenceRegressionFixtureTests
             "forbidden_subtext_plan_fact" => ["凶手身份"],
             _ => []
         };
+    }
+
+    private static bool IsForbiddenAnalysisTrackMutation(string mutation)
+    {
+        return mutation.StartsWith("forbidden_", StringComparison.Ordinal) &&
+            (mutation.Contains("_analysis_", StringComparison.Ordinal) ||
+                mutation.Contains("transition_plan_", StringComparison.Ordinal));
     }
 
     private static ReferenceChapterBlueprintBeatPayload ApplyDraftMutation(
@@ -559,9 +705,47 @@ public sealed class ReferenceRegressionFixtureTests
         string previousState = "previous",
         string finalState = "final",
         string logicAnalysisSummary = "logic",
-        IReadOnlyList<string>? logicAnalysisPoints = null)
+        IReadOnlyList<string>? logicAnalysisPoints = null,
+        AnalysisTrackMutation? analysisTrackMutation = null)
     {
         var beat = configureBeat(Beat("1:beat:1"));
+        var logicTrack = new ReferenceChapterBlueprintAnalysisTrackPayload(
+            "logic",
+            logicAnalysisSummary,
+            logicAnalysisPoints ?? ["point"]);
+        var emotionTrack = new ReferenceChapterBlueprintAnalysisTrackPayload("emotion", "emotion", ["point"]);
+        var narrationTrack = new ReferenceChapterBlueprintAnalysisTrackPayload("narration", "narration", ["point"]);
+        var characterTrack = new ReferenceChapterBlueprintAnalysisTrackPayload("character", "character", ["point"]);
+        var referenceTrack = new ReferenceChapterBlueprintAnalysisTrackPayload("reference", "reference", ["point"]);
+        var transitionTrack = new ReferenceChapterBlueprintAnalysisTrackPayload("transition", "transition", ["point"]);
+        if (analysisTrackMutation is not null)
+        {
+            var track = new ReferenceChapterBlueprintAnalysisTrackPayload(
+                analysisTrackMutation.Track,
+                analysisTrackMutation.Summary,
+                analysisTrackMutation.Points);
+            switch (analysisTrackMutation.FieldPath)
+            {
+                case "emotion_analysis":
+                    emotionTrack = track;
+                    break;
+                case "narration_analysis":
+                    narrationTrack = track;
+                    break;
+                case "character_analysis":
+                    characterTrack = track;
+                    break;
+                case "reference_analysis":
+                    referenceTrack = track;
+                    break;
+                case "transition_plan":
+                    transitionTrack = track;
+                    break;
+                default:
+                    throw new ArgumentException("Unsupported analysis track mutation.", nameof(analysisTrackMutation));
+            }
+        }
+
         return new ReferenceChapterBlueprintPayload(
             1,
             10,
@@ -576,12 +760,12 @@ public sealed class ReferenceRegressionFixtureTests
             0,
             1,
             chapterFunction,
-            new ReferenceChapterBlueprintAnalysisTrackPayload("logic", logicAnalysisSummary, logicAnalysisPoints ?? ["point"]),
-            new ReferenceChapterBlueprintAnalysisTrackPayload("emotion", "emotion", ["point"]),
-            new ReferenceChapterBlueprintAnalysisTrackPayload("narration", "narration", ["point"]),
-            new ReferenceChapterBlueprintAnalysisTrackPayload("character", "character", ["point"]),
-            new ReferenceChapterBlueprintAnalysisTrackPayload("reference", "reference", ["point"]),
-            new ReferenceChapterBlueprintAnalysisTrackPayload("transition", "transition", ["point"]),
+            logicTrack,
+            emotionTrack,
+            narrationTrack,
+            characterTrack,
+            referenceTrack,
+            transitionTrack,
             new ReferenceChapterBlueprintExecutionTrackPayload(
                 "execution",
                 "execution",
@@ -676,4 +860,10 @@ public sealed class ReferenceRegressionFixtureTests
             "passed",
             DateTimeOffset.UnixEpoch);
     }
+
+    private sealed record AnalysisTrackMutation(
+        string FieldPath,
+        string Track,
+        string Summary,
+        IReadOnlyList<string> Points);
 }
