@@ -51,6 +51,7 @@
 - 蓝图评审现在会拒绝角色状态 before/after 完全相同的 beat，避免缺少角色状态变化的蓝图继续进入材料绑定和候选草稿生成。
 - 蓝图评审现在会拒绝缺少角色误信或关系压力的 beat，确保角色状态变化有明确心理盲点和关系张力支撑。
 - 蓝图评审现在会检查 `character_states_before/after` 里的高风险事实，角色状态不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
+- 蓝图评审现在会阻止 `character_states_before/after` 使用 forbidden facts，禁止项不能被声明成角色状态上下文。
 - 蓝图评审现在会检查 `character_goals` 里的高风险事实，角色目标不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
 - 蓝图评审现在会检查 `character_misbeliefs` 里的高风险事实，角色误信不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。
 - 蓝图评审现在会检查 `relationship_pressure` 里的高风险事实，关系压力不能夹带未进入 known facts 或场景事实的关键物件、身份或证据。

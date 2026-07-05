@@ -76,6 +76,11 @@
       "expected_error": "unsupported character state fact"
     },
     {
+      "name": "forbidden_character_state_fact",
+      "mutation": "forbidden_character_state_fact",
+      "expected_error": "forbidden fact appears in character state"
+    },
+    {
       "name": "unsupported_character_goal_fact",
       "mutation": "unsupported_character_goal_fact",
       "expected_error": "unsupported character goal fact"
