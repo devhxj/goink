@@ -45,11 +45,15 @@ As of 2026-07-04, the implementation has moved beyond a pure planning document:
 
 Phase 10 follow-up areas:
 
-- run the full reference-anchor workflow in the real desktop shell through the Photino bridge, not only through service and bridge tests;
+- cover the full reference-anchor frontend workflow with Playwright screenshot/DOM tests using a mocked Novelist bridge;
+- keep .NET bridge/service integration tests responsible for production bridge composition and backend behavior;
+- reduce real Photino desktop verification to a minimal runtime smoke: app loads the reference panel, representative bridge calls work, and no path auto-inserts chapter prose;
 - continue broadening deterministic Chinese narration, emotion, POV, and unsupported-fact fixtures while keeping current material tagging and adaptation deterministic-only;
 - keep reference-anchor search in the dedicated reference panel/API for now; any global search integration should be a later staged opt-in design;
 - keep full-chapter assembly deferred until every beat candidate can prove passing audit/provenance and a separate insertion-confirmation design exists;
 - keep the desktop development loop explicit: prebuild `frontend/dist` for `make dev`, or run Vite and launch with `--start-url`.
+
+Phase 10 verification policy: do not require a human to click the complete workflow in the real Photino shell before closing Phase 10. The complete UI state matrix should be automated in Playwright with a mocked bridge because it is stable, repeatable, and can assert screenshots, disabled controls, required decisions, candidate/audit visibility, and no automatic insertion. Real Photino remains necessary only for the runtime boundary: asset loading, production bridge wiring, representative bridge calls, and absence of automatic chapter mutation.
 
 Stale blueprint UI policy: keep stale blueprints visible as read-only comparison artifacts. The reference panel disables review, approval, revision, material binding, and candidate generation for stale blueprints and prompts the user to generate a new blueprint from the changed chapter plan.
 

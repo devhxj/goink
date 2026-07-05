@@ -19,6 +19,13 @@ npm run build
 npm run lint
 ```
 
+Run after Phase 10 frontend workflow hardening once the Playwright harness exists:
+
+```text
+# command to be recorded with the harness
+Playwright mock-bridge reference-anchor workflow screenshots + DOM assertions
+```
+
 Targeted new tests:
 
 ```text
@@ -75,6 +82,7 @@ tests/Novelist.IntegrationTests/ReferenceAnchoredDraftBridgeTests.cs
 - Candidate assembly: keep beat-level candidates only, or assemble a full-chapter candidate after all beats pass audit.
 - Stale blueprint UX: resolved for the current implementation. Preserve stale blueprints read-only for comparison, keep them visible, disable review/approval/revision/material binding/candidate generation, and show a regeneration prompt.
 - Development workflow: resolved as explicit frontend build/Vite steps for faster backend-only loops.
+- Phase 10 runtime verification: resolved as layered coverage. Playwright mock-bridge tests own the full frontend workflow and screenshot/DOM state matrix. .NET integration tests own bridge/service behavior and production composition. Real Photino verification is a minimal runtime smoke, not a manual full-workflow requirement.
 
 ## Phase 11 Automation Decisions To Close
 
@@ -105,7 +113,8 @@ Latest verified scope: `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj -
 
 Recommended next session:
 
-1. Execute the full desktop workflow in Photino and record any runtime-only bridge/UI gaps before marking Phase 10 complete.
+1. Add the Playwright mock-bridge reference-anchor workflow suite and record screenshots/DOM assertions for the complete Phase 10 frontend path.
+2. Keep the real Photino check minimal: load the app, open the reference panel, invoke representative bridge calls, and confirm there is no automatic chapter insertion path.
 
 Recommended following session:
 

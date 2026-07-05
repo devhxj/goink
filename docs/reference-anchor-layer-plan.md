@@ -142,7 +142,7 @@ These rules should be enforced by tests and reviewed when changing contracts, st
 
 ## Active Phase Direction
 
-Phase 10 closes runtime hardening and desktop workflow verification.
+Phase 10 closes runtime hardening with layered verification: Playwright mock-bridge tests cover the complete frontend workflow, .NET integration tests cover bridge/service behavior, and real Photino verification is a minimal runtime smoke.
 
 Phase 11 builds the low-intervention orchestrator: one command should run safe stages automatically, persist status, resume after restart, and stop only for necessary human decisions.
 

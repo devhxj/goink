@@ -4,11 +4,12 @@
 
 ## Phase 10: Product Hardening and Design Closure
 
-**Description:** Convert the remaining loose recommendations and open design questions into a final hardening phase. Phases 0-9 are considered the core implementation; Phase 10 is complete only when runtime verification, UX decisions, and optional-expansion boundaries are explicit and tested.
+**Description:** Convert the remaining loose recommendations and open design questions into a final hardening phase. Phases 0-9 are considered the core implementation; Phase 10 is complete only when runtime verification, mocked frontend workflow coverage, UX decisions, and optional-expansion boundaries are explicit and tested.
 
 **Acceptance criteria:**
 
-- [ ] Full reference-anchor workflow is exercised in the real Photino desktop shell through the bridge: create/rebuild anchor, search material, generate/review/revise/approve blueprint, bind materials, generate candidates, inspect audit, and confirm no automatic chapter insertion.
+- [ ] Full reference-anchor frontend workflow is covered by Playwright screenshot/DOM tests with a mocked Novelist bridge: create/rebuild anchor, search material, generate/review/revise/approve blueprint, bind materials, generate candidates, inspect audit, stale/disabled states, final-insertion stop, and no automatic chapter insertion.
+- [ ] Real Photino desktop verification is reduced to a minimal runtime smoke: the app loads the reference panel, the bridge can call representative reference methods through the production composition, and no runtime path auto-inserts chapter prose.
 - [x] Stale blueprint UI behavior is decided and covered by build/lint verification: preserve stale blueprints read-only for comparison, disable review/approval/revision/material binding/candidate generation, and show a regeneration prompt.
 - [x] Reference-anchor search scope is decided: keep reference material results in the dedicated reference panel/API for the current implementation; any global `SearchAll` integration must be a later staged opt-in change with its own result taxonomy and preview policy.
 - [x] Optional LLM-assisted material tagging/adaptation is decided for the current implementation: keep extraction, tagging, slot adaptation, rewrite-level classification, and audit deterministic-only; any future model-assisted path must use an explicit opt-in interface or feature flag and cannot weaken deterministic review, binding, rewrite-level, or audit gates.
@@ -24,7 +25,8 @@
 - [ ] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj`
 - [ ] `cd frontend && npm run build`
 - [ ] `cd frontend && npm run lint`
-- [ ] Manual desktop smoke test of the full Phase 10 workflow in Photino.
+- [ ] Playwright mock-bridge reference-anchor workflow screenshot/DOM suite; record the exact command after the Playwright harness is added.
+- [ ] Minimal real Photino smoke covering app load, representative bridge invocation, and no automatic chapter insertion.
 
 Targeted Phase 10 checks completed:
 
@@ -39,6 +41,7 @@ Targeted Phase 10 checks completed:
 - [x] Documentation check: `Makefile`, `README.md`, `docs/build-setup.md`, and `schema-and-integration.md` agree that `make dev` uses prebuilt `frontend/dist` or an explicit Vite `--start-url`.
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter MaterialTaggingAndAdaptationRemainDeterministicWithoutModelAssistedConfiguration -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter PhotinoReferenceWorkflowSmokeTests -v minimal` verifies the production desktop bridge composition can run the reference-anchor workflow through `PhotinoWebMessageBridge` without saving chapter content.
+- [x] Phase 10 verification boundary decided: Playwright mock-bridge tests own full frontend workflow coverage, .NET integration tests own bridge/service behavior, and real Photino smoke is only a minimal runtime check.
 
 **Files likely touched:**
 
@@ -103,6 +106,7 @@ Targeted Phase 11 thin-slice checks completed:
 - [x] Draft audit failure now persists as a high-risk `resolve_high_risk_stop` decision with candidate ids and audit findings; resolving that stop marks the run failed instead of inserting prose.
 - [x] Material binding gaps now persist as a high-risk `resolve_high_risk_stop` decision with missing beat ids; resolving that stop marks the run failed instead of free-drafting.
 - [x] Stale blueprints now persist as a high-risk `resolve_high_risk_stop` decision when source-plan changes invalidate a pending approval or safe-stage continuation.
+- [x] Orchestration material binding now applies `corpus_search_policy` include/exclude anchor filters and license-status filters before selecting materials, so the default flow can retrieve by policy without a required manual anchor list.
 - [x] Local orchestration event history now records run starts, required decisions, user resumes/approvals, stop reasons, deterministic gate stages, failures, and cancellations; `GetReferenceOrchestrationRunEvents` exposes it through the desktop bridge and frontend adapter.
 - [x] The reference-anchor page now mounts a default orchestration panel that starts runs without requiring selected anchors, shows run history, required decisions, approval summaries, candidate ids, and event history, and allows safe resume/cancel actions while leaving final insertion manual.
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter Reference -v minimal`
@@ -114,7 +118,7 @@ Targeted Phase 11 thin-slice checks completed:
 - [x] `npm --prefix frontend run build`
 - [x] `npm --prefix frontend run lint`
 
-These thin slices do not complete the Phase 11 automatic workflow. Proposed revision generation is currently deterministic and narrow; broader high-risk stop coverage, agent approval escalation, full Photino runtime workflow coverage, and shared-corpus default retrieval remain pending.
+These thin slices do not complete the Phase 11 automatic workflow or Phase 12 shared-corpus model. Proposed revision generation is currently deterministic and narrow; broader high-risk stop coverage, agent approval escalation, full Photino runtime workflow coverage, and shared-corpus storage/migration remain pending.
 
 **Files likely touched:**
 
@@ -169,6 +173,10 @@ workspace/global reference corpus
 - [ ] Feedback tests proving global tag feedback and per-novel usage feedback have different scopes.
 - [ ] Bridge and agent tests proving `anchor_ids` are optional and AI-driven corpus retrieval is the default path.
 - [ ] Frontend smoke test for corpus management and default automatic material selection.
+
+Targeted Phase 12 thin-slice checks completed:
+
+- [x] Orchestration binding can use `corpus_search_policy` include/exclude anchor filters and license-status filters when `anchor_ids` are omitted, while keeping the existing per-novel reference-anchor storage model.
 
 **Files likely touched:**
 

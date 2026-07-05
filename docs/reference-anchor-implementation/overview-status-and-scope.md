@@ -4,7 +4,7 @@
 
 ## Status
 
-Phases 0-9 are complete in the task tracker. Remaining work is tracked explicitly in `tasks-and-verification.md`: Phase 10 covers product hardening, real desktop/frontend runtime verification, stale-blueprint UX decisions, optional model-assisted expansion, and documentation closure; Phase 11 covers AI-orchestrated low-intervention workflow design; Phase 12 covers shared reference corpus and AI-driven material selection across novels.
+Phases 0-9 are complete in the task tracker. Remaining work is tracked explicitly in `tasks-and-verification.md`: Phase 10 covers product hardening, Playwright mock-bridge frontend workflow verification, minimal real Photino runtime smoke, stale-blueprint UX decisions, optional model-assisted expansion, and documentation closure; Phase 11 covers AI-orchestrated low-intervention workflow design; Phase 12 covers shared reference corpus and AI-driven material selection across novels.
 
 This plan is still the source of truth for the target design. Treat Phase 10, Phase 11, and Phase 12 as the only open implementation-plan phases unless contracts, storage, bridge, agent, or frontend behavior regresses.
 
