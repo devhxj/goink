@@ -25,18 +25,12 @@ async function main() {
     logStep('waiting for Vite')
     await waitForServer(url, server)
     browser = await launchBrowser()
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
-    page.setDefaultTimeout(12_000)
 
-    page.on('console', (message) => {
-      if (message.type() === 'error') {
-        consoleErrors.push(message.text())
-      }
-    })
-    page.on('pageerror', (error) => pageErrors.push(error.message))
+    logStep('checking bootstrap states')
+    await verifyBootstrapStates(browser, url, consoleErrors, pageErrors)
 
     logStep('loading workspace')
-    await page.addInitScript(installAppMockBridge)
+    const page = await newAppPage(browser, consoleErrors, pageErrors, { initialized: true })
     await page.goto(url, { waitUntil: 'domcontentloaded' })
     await expectVisible(page.getByText('全局回归小说'), 'workspace title')
     await expectVisible(page.getByText('AI 对话'), 'chat panel')
@@ -71,6 +65,7 @@ async function main() {
 
     logStep('checking bridge guardrails')
     await verifyBridgeCalls(page)
+    await page.close()
 
     assert.deepEqual(pageErrors, [], `Unexpected page errors:\n${pageErrors.join('\n')}`)
     assert.deepEqual(consoleErrors, [], `Unexpected console errors:\n${consoleErrors.join('\n')}`)
@@ -79,6 +74,65 @@ async function main() {
     await browser?.close()
     stopProcess(server)
   }
+}
+
+async function verifyBootstrapStates(browser, url, consoleErrors, pageErrors) {
+  const initPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: false,
+    platformDefaultPath: 'D:\\NovelistBootstrap',
+    afterInitializeNovels: [],
+    afterInitializeSettings: settingsFixture(0),
+  })
+  await initPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(initPage.getByText('欢迎使用 Novelist'), 'initialization screen')
+  await expectVisible(initPage.getByText('D:\\NovelistBootstrap'), 'default data directory')
+  await initPage.getByRole('button', { name: '开始使用' }).click()
+  await expectVisible(initPage.getByText('还没有作品，创建第一部吧'), 'empty bookshelf after initialization')
+  await waitForBridgeCall(initPage, 'Initialize')
+  await initPage.close()
+
+  const emptyPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    novels: [],
+    settings: settingsFixture(0),
+  })
+  await emptyPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(emptyPage.getByText('还没有作品，创建第一部吧'), 'empty workspace bookshelf')
+  await expectVisible(emptyPage.getByText('选择作品开始对话'), 'chat empty novel state')
+  await emptyPage.close()
+
+  const startupErrorPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    failIsInitialized: true,
+  })
+  await startupErrorPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(startupErrorPage.getByRole('heading', { name: '启动检查失败' }), 'startup failure heading')
+  await expectVisible(startupErrorPage.getByText('初始化状态读取失败'), 'startup failure detail')
+  await startupErrorPage.getByRole('button', { name: '重试' }).click()
+  await expectVisible(startupErrorPage.getByRole('heading', { name: '启动检查失败' }), 'startup retry failure')
+  await waitForBridgeCall(startupErrorPage, 'IsInitialized')
+  await startupErrorPage.close()
+
+  const bridgeUnavailablePage = await newAppPage(browser, consoleErrors, pageErrors)
+  await bridgeUnavailablePage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(bridgeUnavailablePage.getByRole('heading', { name: '无法连接桌面桥接' }), 'bridge unavailable heading')
+  await expectVisible(bridgeUnavailablePage.getByText('请确认正在通过 Novelist 桌面应用打开此界面'), 'bridge unavailable guidance')
+  await bridgeUnavailablePage.screenshot({ path: path.join(outputDir, 'app-00-bootstrap.png'), fullPage: true })
+  await bridgeUnavailablePage.close()
+}
+
+async function newAppPage(browser, consoleErrors, pageErrors, bridgeOptions) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
+  page.setDefaultTimeout(12_000)
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text())
+    }
+  })
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  if (bridgeOptions) {
+    await page.addInitScript(installConfigurableAppMockBridge, bridgeOptions)
+  }
+  return page
 }
 
 async function verifyShellNavigation(page) {
@@ -366,14 +420,48 @@ function logStep(message) {
   console.log(`[app mock] ${message}`)
 }
 
-function installAppMockBridge() {
+function settingsFixture(lastNovelId) {
+  return {
+    ID: 1,
+    last_novel_id: lastNovelId,
+    selected_model_key: 'mock/gpt',
+    reasoning_effort: 'high',
+    approval_mode: 'manual',
+    chat_panel_width: 360,
+    last_session_id: '',
+    user_name: 'Mock User',
+  }
+}
+
+function installConfigurableAppMockBridge(options = {}) {
   const now = '2026-07-05T12:00:00.000Z'
   const receivers = new Set()
+  const defaultSettings = {
+    ID: 1,
+    last_novel_id: 42,
+    selected_model_key: 'mock/gpt',
+    reasoning_effort: 'high',
+    approval_mode: 'manual',
+    chat_panel_width: 360,
+    last_session_id: '',
+    user_name: 'Mock User',
+  }
+  const defaultNovel = {
+    id: 42,
+    title: '全局回归小说',
+    genre: '悬疑',
+    description: 'App-wide Playwright fixture',
+    created_at: now,
+    updated_at: now,
+  }
   const state = {
     calls: [],
     nextSessionId: 1,
     nextTurnId: 101,
     searchFailureRecovered: false,
+    initialized: options.initialized ?? true,
+    novels: options.novels ?? [defaultNovel],
+    settings: options.settings ?? defaultSettings,
   }
 
   window.localStorage.removeItem('goink_tabs_all')
@@ -440,9 +528,16 @@ function installAppMockBridge() {
 
   async function route(method, args) {
     switch (method) {
-      case 'IsInitialized': return true
-      case 'GetSettings': return settings()
-      case 'GetPlatform': return { os: 'win32', defaultPath: 'D:\\NovelistData' }
+      case 'IsInitialized':
+        if (options.failIsInitialized) throw new Error('初始化状态读取失败')
+        return state.initialized
+      case 'Initialize':
+        state.initialized = true
+        state.novels = options.afterInitializeNovels ?? state.novels
+        state.settings = options.afterInitializeSettings ?? state.settings
+        return null
+      case 'GetSettings': return state.settings
+      case 'GetPlatform': return { os: 'win32', defaultPath: options.platformDefaultPath ?? 'D:\\NovelistData' }
       case 'runtime.window.isMaximized': return false
       case 'runtime.window.minimize':
       case 'runtime.window.toggleMaximize':
@@ -459,8 +554,8 @@ function installAppMockBridge() {
       case 'TestConnection':
       case 'TestEmbeddingConnection':
         return null
-      case 'GetAppConfig': return { data_dir: 'D:\\NovelistData' }
-      case 'GetNovels': return [novel()]
+      case 'GetAppConfig': return { data_dir: options.platformDefaultPath ?? 'D:\\NovelistData' }
+      case 'GetNovels': return state.novels
       case 'GetCover': return null
       case 'GetChapters': return chapters()
       case 'GetContent': return content(args[1])
@@ -495,30 +590,6 @@ function installAppMockBridge() {
       case 'GetReferenceOrchestrationRunEvents': return []
       default:
         return defaultValueFor(method)
-    }
-  }
-
-  function settings() {
-    return {
-      ID: 1,
-      last_novel_id: 42,
-      selected_model_key: 'mock/gpt',
-      reasoning_effort: 'high',
-      approval_mode: 'manual',
-      chat_panel_width: 360,
-      last_session_id: '',
-      user_name: 'Mock User',
-    }
-  }
-
-  function novel() {
-    return {
-      id: 42,
-      title: '全局回归小说',
-      genre: '悬疑',
-      description: 'App-wide Playwright fixture',
-      created_at: now,
-      updated_at: now,
     }
   }
 

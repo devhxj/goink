@@ -12,7 +12,7 @@ This phase is intentionally broader than reference anchors. The reference-anchor
 
 - [x] `frontend/package.json` exposes an app-wide Playwright command, for example `npm run test:app`, that is separate from `npm run test:reference-anchor`.
 - [x] The app-wide suite starts the Vite app in a real browser and injects a deterministic mocked Novelist bridge before app code calls `window.external`.
-- [ ] Workspace bootstrap is covered: empty state or init screen, project/novel load, bridge unavailable state, app error state, and stable recovery messaging.
+- [x] Workspace bootstrap is covered: empty state or init screen, project/novel load, bridge unavailable state, app error state, and stable recovery messaging.
 - [ ] Shell navigation is covered across primary activities: bookshelf/workspace, editor, chat, search, reference, characters, locations, timeline/story arcs, preferences/readers, profile, and settings/help affordances where available.
 - [ ] Novel and chapter workflows are covered with fixture data: create/edit/select novel, list chapters, open chapter tabs, switch tabs, preserve active selection, and show expected side-panel counts.
 - [ ] Content editing is covered: editor render, text edits, save through the bridge, dirty-state behavior, save failure display, and no accidental saves when switching unrelated panels.
@@ -22,7 +22,7 @@ This phase is intentionally broader than reference anchors. The reference-anchor
 - [ ] Settings are covered: provider/model/embedding configuration panes render, validate required fields, persist safe settings through the bridge, and never require live API keys, local model files, or network access.
 - [ ] Import/export and file-picker affordances are covered with mocked paths and temporary fixtures; tests must not read or write real user projects outside test temp directories.
 - [x] Reference-anchor coverage is included as a smoke path in the app-wide suite, while deep anchor orchestration, blueprint, material binding, candidate, audit, and screenshot checks remain in `npm run test:reference-anchor`.
-- [x] Visual checks capture stable screenshots for the shell, editor, search, chat, settings, metadata panels, and reference entry point at the default desktop viewport; any smaller responsive viewport is scoped to layout integrity, not full workflow duplication.
+- [x] Visual checks capture stable screenshots for bootstrap states, shell, editor, search, chat, settings, metadata panels, and reference entry point at the default desktop viewport; any smaller responsive viewport is scoped to layout integrity, not full workflow duplication.
 - [ ] Test selectors are stable and intentional: prefer accessible roles/names and add `data-testid` only where accessible selectors would be brittle.
 - [x] The suite records bridge calls and asserts high-risk guardrails, especially no implicit `SaveContent`, no direct arbitrary file read, no live network/model dependency, and no automatic chapter mutation from agent or reference workflows.
 
@@ -47,6 +47,7 @@ This phase is intentionally broader than reference anchors. The reference-anchor
 **Targeted Phase 13 thin-slice checks completed:**
 
 - [x] `npm run test:app` now runs a standalone real-browser Vite workflow with a deterministic mocked `window.external` bridge and screenshots under `output/playwright/`.
+- [x] Bootstrap coverage now exercises the first-run init screen, post-init empty bookshelf, initialized empty workspace, bridge-unavailable recovery screen, and startup-check failure retry path.
 - [x] The first app-wide suite covers workspace load, shell/book/chapter navigation, chapter open through `GetContent`, global search result navigation, chat prompt plus streamed assistant/tool/web-search presentation, settings panes, metadata panel fixture rendering, skill list rendering, and the reference-anchor entry point.
 - [x] The app-wide suite now covers search prompt, empty, failure, retry, content, character, and RAG result states, and asserts global search does not expose raw reference-source paths.
 - [x] Chat presentation coverage now includes explicit stop/cancel behavior via `CancelChat` and mocked agent failure rendering, while generated assistant text still never writes chapter files.
@@ -54,7 +55,7 @@ This phase is intentionally broader than reference anchors. The reference-anchor
 - [x] `npm run verify` runs the frontend build, lint, deep reference-anchor workflow, and app-wide workflow without requiring the Photino desktop shell.
 - [x] The app-wide console-error guard caught and fixed an invalid nested-button structure in the location side panel; the mocked chat usage payload now matches the `ContextRing` contract so the smoke does not mask NaN rendering warnings.
 
-This first slice does not complete Phase 13. Empty/error bootstrap states, create/edit/delete workflows, Monaco content editing/save/failure behavior, import/export/file-picker paths, and responsive viewport coverage remain pending.
+This first slice does not complete Phase 13. Create/edit/delete workflows, Monaco content editing/save/failure behavior, import/export/file-picker paths, and responsive viewport coverage remain pending.
 
 **Files likely touched:**
 
