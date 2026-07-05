@@ -110,6 +110,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 ParagraphIntention = "写得更好，更有代入感"
             },
+            "generic_execution_mode" => beat with
+            {
+                ExecutionMode = "正常写，自然展开"
+            },
             "generic_anti_screenplay_duty" => beat with
             {
                 AntiScreenplayDuty = "避免剧本化"

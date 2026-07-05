@@ -46,6 +46,11 @@
       "expected_error": "generic paragraph intention"
     },
     {
+      "name": "generic_execution_mode",
+      "mutation": "generic_execution_mode",
+      "expected_error": "generic execution mode"
+    },
+    {
       "name": "generic_anti_screenplay_duty",
       "mutation": "generic_anti_screenplay_duty",
       "expected_error": "generic anti-screenplay duty"

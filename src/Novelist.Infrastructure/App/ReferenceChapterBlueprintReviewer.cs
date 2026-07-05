@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 11;
+    public const int CurrentReviewVersion = 12;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -308,6 +308,17 @@ internal static class ReferenceChapterBlueprintReviewer
                         "Rewrite paragraph_intention as a concrete prose job, such as dwell, withhold, reveal, contrast, linger, or turn tied to this beat.");
                 }
 
+                if (UsesGenericExecutionMode(beat.ExecutionMode))
+                {
+                    AddBeatDefect(
+                        executionErrors,
+                        "execution",
+                        beat,
+                        "execution_mode",
+                        $"Beat {beat.BeatIndex} uses generic execution mode.",
+                        "Rewrite execution_mode as a concrete drafting operation, such as dwell, compress, withhold, reveal, braid evidence, or stage interiority.");
+                }
+
                 if (UsesGenericAntiScreenplayDuty(beat.AntiScreenplayDuty))
                 {
                     AddBeatDefect(
@@ -591,6 +602,18 @@ internal static class ReferenceChapterBlueprintReviewer
                 "make it better", "make it emotional", "more emotional", "more moving",
                 "写得更好", "写得好看", "更有代入感", "更有感染力", "更感人",
                 "加强情绪", "增强感染力", "润色一下", "优化一下", "情绪拉满", "氛围拉满"
+            ]);
+    }
+
+    private static bool UsesGenericExecutionMode(string value)
+    {
+        return ContainsAny(
+            value,
+            [
+                "write normally", "normal execution", "standard execution", "regular execution",
+                "execute normally", "as needed", "naturally", "smoothly",
+                "正常写", "正常执行", "常规执行", "按常规", "根据需要",
+                "自然展开", "自然推进", "顺着写", "流畅推进", "正常推进"
             ]);
     }
 
