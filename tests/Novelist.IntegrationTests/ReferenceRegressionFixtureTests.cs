@@ -26,7 +26,8 @@ public sealed class ReferenceRegressionFixtureTests
                 finalState: FinalStateForMutation(mutation),
                 logicAnalysisSummary: LogicAnalysisSummaryForMutation(mutation),
                 logicAnalysisPoints: LogicAnalysisPointsForMutation(mutation),
-                analysisTrackMutation: AnalysisTrackForMutation(mutation));
+                analysisTrackMutation: AnalysisTrackForMutation(mutation),
+                executionContractMutation: ExecutionContractForMutation(mutation));
 
             var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
             var messages = AllReviewMessages(review).ToArray();
@@ -240,6 +241,18 @@ public sealed class ReferenceRegressionFixtureTests
             "unsupported_transition_plan_point_fact" => beat,
             "forbidden_transition_plan_summary_fact" => beat,
             "forbidden_transition_plan_point_fact" => beat,
+            "unsupported_execution_contract_summary_fact" => beat,
+            "forbidden_execution_contract_summary_fact" => beat,
+            "unsupported_execution_contract_paragraph_intentions_fact" => beat,
+            "forbidden_execution_contract_paragraph_intentions_fact" => beat,
+            "unsupported_execution_contract_execution_modes_fact" => beat,
+            "forbidden_execution_contract_execution_modes_fact" => beat,
+            "unsupported_execution_contract_anti_screenplay_duties_fact" => beat,
+            "forbidden_execution_contract_anti_screenplay_duties_fact" => beat,
+            "unsupported_execution_contract_source_backed_detail_targets_fact" => beat,
+            "forbidden_execution_contract_source_backed_detail_targets_fact" => beat,
+            "unsupported_execution_contract_candidate_rejection_rules_fact" => beat,
+            "forbidden_execution_contract_candidate_rejection_rules_fact" => beat,
             "generic_paragraph_intention" => beat with
             {
                 ParagraphIntention = "写得更好，更有代入感"
@@ -542,9 +555,29 @@ public sealed class ReferenceRegressionFixtureTests
         };
     }
 
+    private static ExecutionContractMutation? ExecutionContractForMutation(string mutation)
+    {
+        return mutation switch
+        {
+            "unsupported_execution_contract_summary_fact" => new ExecutionContractMutation("summary", ["execution turns on 密室钥匙"]),
+            "forbidden_execution_contract_summary_fact" => new ExecutionContractMutation("summary", ["execution turns on 凶手身份"]),
+            "unsupported_execution_contract_paragraph_intentions_fact" => new ExecutionContractMutation("paragraph_intentions", ["turn on 密室钥匙"]),
+            "forbidden_execution_contract_paragraph_intentions_fact" => new ExecutionContractMutation("paragraph_intentions", ["turn on 凶手身份"]),
+            "unsupported_execution_contract_execution_modes_fact" => new ExecutionContractMutation("execution_modes", ["turn on 密室钥匙"]),
+            "forbidden_execution_contract_execution_modes_fact" => new ExecutionContractMutation("execution_modes", ["turn on 凶手身份"]),
+            "unsupported_execution_contract_anti_screenplay_duties_fact" => new ExecutionContractMutation("anti_screenplay_duties", ["turn on 密室钥匙"]),
+            "forbidden_execution_contract_anti_screenplay_duties_fact" => new ExecutionContractMutation("anti_screenplay_duties", ["turn on 凶手身份"]),
+            "unsupported_execution_contract_source_backed_detail_targets_fact" => new ExecutionContractMutation("source_backed_detail_targets", ["turn on 密室钥匙"]),
+            "forbidden_execution_contract_source_backed_detail_targets_fact" => new ExecutionContractMutation("source_backed_detail_targets", ["turn on 凶手身份"]),
+            "unsupported_execution_contract_candidate_rejection_rules_fact" => new ExecutionContractMutation("candidate_rejection_rules", ["turn on 密室钥匙"]),
+            "forbidden_execution_contract_candidate_rejection_rules_fact" => new ExecutionContractMutation("candidate_rejection_rules", ["turn on 凶手身份"]),
+            _ => null
+        };
+    }
+
     private static IReadOnlyList<string> KnownFactsForMutation(string mutation)
     {
-        if (IsForbiddenAnalysisTrackMutation(mutation))
+        if (IsForbiddenAnalysisTrackMutation(mutation) || IsForbiddenExecutionContractMutation(mutation))
         {
             return ["雨声压低了整条街的呼吸", "凶手身份"];
         }
@@ -581,7 +614,7 @@ public sealed class ReferenceRegressionFixtureTests
 
     private static IReadOnlyList<string> ForbiddenFactsForMutation(string mutation)
     {
-        if (IsForbiddenAnalysisTrackMutation(mutation))
+        if (IsForbiddenAnalysisTrackMutation(mutation) || IsForbiddenExecutionContractMutation(mutation))
         {
             return ["凶手身份"];
         }
@@ -616,6 +649,11 @@ public sealed class ReferenceRegressionFixtureTests
         return mutation.StartsWith("forbidden_", StringComparison.Ordinal) &&
             (mutation.Contains("_analysis_", StringComparison.Ordinal) ||
                 mutation.Contains("transition_plan_", StringComparison.Ordinal));
+    }
+
+    private static bool IsForbiddenExecutionContractMutation(string mutation)
+    {
+        return mutation.StartsWith("forbidden_execution_contract_", StringComparison.Ordinal);
     }
 
     private static ReferenceChapterBlueprintBeatPayload ApplyDraftMutation(
@@ -706,7 +744,8 @@ public sealed class ReferenceRegressionFixtureTests
         string finalState = "final",
         string logicAnalysisSummary = "logic",
         IReadOnlyList<string>? logicAnalysisPoints = null,
-        AnalysisTrackMutation? analysisTrackMutation = null)
+        AnalysisTrackMutation? analysisTrackMutation = null,
+        ExecutionContractMutation? executionContractMutation = null)
     {
         var beat = configureBeat(Beat("1:beat:1"));
         var logicTrack = new ReferenceChapterBlueprintAnalysisTrackPayload(
@@ -746,6 +785,28 @@ public sealed class ReferenceRegressionFixtureTests
             }
         }
 
+        var executionContract = new ReferenceChapterBlueprintExecutionTrackPayload(
+            "execution",
+            "execution",
+            ["intention"],
+            ["dwell"],
+            ["anti-screenplay"],
+            ["detail"],
+            ["reject"]);
+        if (executionContractMutation is not null)
+        {
+            executionContract = executionContractMutation.FieldName switch
+            {
+                "summary" => executionContract with { Summary = executionContractMutation.Values[0] },
+                "paragraph_intentions" => executionContract with { ParagraphIntentions = executionContractMutation.Values },
+                "execution_modes" => executionContract with { ExecutionModes = executionContractMutation.Values },
+                "anti_screenplay_duties" => executionContract with { AntiScreenplayDuties = executionContractMutation.Values },
+                "source_backed_detail_targets" => executionContract with { SourceBackedDetailTargets = executionContractMutation.Values },
+                "candidate_rejection_rules" => executionContract with { CandidateRejectionRules = executionContractMutation.Values },
+                _ => throw new ArgumentException("Unsupported execution contract mutation.", nameof(executionContractMutation))
+            };
+        }
+
         return new ReferenceChapterBlueprintPayload(
             1,
             10,
@@ -766,14 +827,7 @@ public sealed class ReferenceRegressionFixtureTests
             characterTrack,
             referenceTrack,
             transitionTrack,
-            new ReferenceChapterBlueprintExecutionTrackPayload(
-                "execution",
-                "execution",
-                ["intention"],
-                ["dwell"],
-                ["anti-screenplay"],
-                ["detail"],
-                ["reject"]),
+            executionContract,
             previousState,
             finalState,
             finalHook,
@@ -866,4 +920,8 @@ public sealed class ReferenceRegressionFixtureTests
         string Track,
         string Summary,
         IReadOnlyList<string> Points);
+
+    private sealed record ExecutionContractMutation(
+        string FieldName,
+        IReadOnlyList<string> Values);
 }

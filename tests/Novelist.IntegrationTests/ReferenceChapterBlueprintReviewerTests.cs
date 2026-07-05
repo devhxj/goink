@@ -457,6 +457,106 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsUnsupportedExecutionContractSummaryFact()
+    {
+        var blueprint = Blueprint(beat => beat) with
+        {
+            ExecutionContract = ExecutionContract() with
+            {
+                Summary = "execution turns on 密室钥匙"
+            }
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ExecutionErrors, item => item.Contains("unsupported execution contract fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "execution" &&
+                defect.FieldPath.Contains("execution_contract.summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsForbiddenFactInExecutionContractSummary()
+    {
+        var blueprint = Blueprint(
+            beat => beat,
+            forbiddenFacts: ["凶手身份"],
+            knownFacts: ["雨声压低了整条街的呼吸", "凶手身份"]) with
+        {
+            ExecutionContract = ExecutionContract() with
+            {
+                Summary = "execution turns on 凶手身份"
+            }
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ForbiddenFactErrors, item => item.Contains("execution contract", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "forbidden_fact" &&
+                defect.FieldPath.Contains("execution_contract.summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("paragraph_intentions")]
+    [InlineData("execution_modes")]
+    [InlineData("anti_screenplay_duties")]
+    [InlineData("source_backed_detail_targets")]
+    [InlineData("candidate_rejection_rules")]
+    public void BuildReviewFailsUnsupportedExecutionContractListFact(string fieldName)
+    {
+        var blueprint = Blueprint(beat => beat) with
+        {
+            ExecutionContract = WithExecutionContractList(
+                ExecutionContract(),
+                fieldName,
+                ["turn on 密室钥匙"])
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ExecutionErrors, item => item.Contains("unsupported execution contract " + fieldName + " fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "execution" &&
+                defect.FieldPath.Contains("execution_contract." + fieldName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("paragraph_intentions")]
+    [InlineData("execution_modes")]
+    [InlineData("anti_screenplay_duties")]
+    [InlineData("source_backed_detail_targets")]
+    [InlineData("candidate_rejection_rules")]
+    public void BuildReviewFailsForbiddenFactInExecutionContractLists(string fieldName)
+    {
+        var blueprint = Blueprint(
+            beat => beat,
+            forbiddenFacts: ["凶手身份"],
+            knownFacts: ["雨声压低了整条街的呼吸", "凶手身份"]) with
+        {
+            ExecutionContract = WithExecutionContractList(
+                ExecutionContract(),
+                fieldName,
+                ["turn on 凶手身份"])
+        };
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ForbiddenFactErrors, item => item.Contains("execution contract " + fieldName, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "forbidden_fact" &&
+                defect.FieldPath.Contains("execution_contract." + fieldName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsMissingCausalityOut()
     {
         var blueprint = Blueprint(beat => beat with
@@ -1905,6 +2005,34 @@ public sealed class ReferenceChapterBlueprintReviewerTests
             "reference_binding" => review.ReferenceBindingErrors,
             "transition" => review.TransitionErrors,
             _ => throw new ArgumentException("Unsupported review category.", nameof(category))
+        };
+    }
+
+    private static ReferenceChapterBlueprintExecutionTrackPayload ExecutionContract()
+    {
+        return new ReferenceChapterBlueprintExecutionTrackPayload(
+            "execution",
+            "execution",
+            ["intention"],
+            ["dwell"],
+            ["anti-screenplay"],
+            ["detail"],
+            ["reject"]);
+    }
+
+    private static ReferenceChapterBlueprintExecutionTrackPayload WithExecutionContractList(
+        ReferenceChapterBlueprintExecutionTrackPayload contract,
+        string fieldName,
+        IReadOnlyList<string> values)
+    {
+        return fieldName switch
+        {
+            "paragraph_intentions" => contract with { ParagraphIntentions = values },
+            "execution_modes" => contract with { ExecutionModes = values },
+            "anti_screenplay_duties" => contract with { AntiScreenplayDuties = values },
+            "source_backed_detail_targets" => contract with { SourceBackedDetailTargets = values },
+            "candidate_rejection_rules" => contract with { CandidateRejectionRules = values },
+            _ => throw new ArgumentException("Unsupported execution contract field.", nameof(fieldName))
         };
     }
 

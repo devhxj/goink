@@ -306,6 +306,66 @@
       "expected_error": "forbidden fact appears in transition analysis point"
     },
     {
+      "name": "unsupported_execution_contract_summary_fact",
+      "mutation": "unsupported_execution_contract_summary_fact",
+      "expected_error": "unsupported execution contract fact"
+    },
+    {
+      "name": "forbidden_execution_contract_summary_fact",
+      "mutation": "forbidden_execution_contract_summary_fact",
+      "expected_error": "forbidden fact appears in execution contract"
+    },
+    {
+      "name": "unsupported_execution_contract_paragraph_intentions_fact",
+      "mutation": "unsupported_execution_contract_paragraph_intentions_fact",
+      "expected_error": "unsupported execution contract paragraph_intentions fact"
+    },
+    {
+      "name": "forbidden_execution_contract_paragraph_intentions_fact",
+      "mutation": "forbidden_execution_contract_paragraph_intentions_fact",
+      "expected_error": "forbidden fact appears in execution contract paragraph_intentions"
+    },
+    {
+      "name": "unsupported_execution_contract_execution_modes_fact",
+      "mutation": "unsupported_execution_contract_execution_modes_fact",
+      "expected_error": "unsupported execution contract execution_modes fact"
+    },
+    {
+      "name": "forbidden_execution_contract_execution_modes_fact",
+      "mutation": "forbidden_execution_contract_execution_modes_fact",
+      "expected_error": "forbidden fact appears in execution contract execution_modes"
+    },
+    {
+      "name": "unsupported_execution_contract_anti_screenplay_duties_fact",
+      "mutation": "unsupported_execution_contract_anti_screenplay_duties_fact",
+      "expected_error": "unsupported execution contract anti_screenplay_duties fact"
+    },
+    {
+      "name": "forbidden_execution_contract_anti_screenplay_duties_fact",
+      "mutation": "forbidden_execution_contract_anti_screenplay_duties_fact",
+      "expected_error": "forbidden fact appears in execution contract anti_screenplay_duties"
+    },
+    {
+      "name": "unsupported_execution_contract_source_backed_detail_targets_fact",
+      "mutation": "unsupported_execution_contract_source_backed_detail_targets_fact",
+      "expected_error": "unsupported execution contract source_backed_detail_targets fact"
+    },
+    {
+      "name": "forbidden_execution_contract_source_backed_detail_targets_fact",
+      "mutation": "forbidden_execution_contract_source_backed_detail_targets_fact",
+      "expected_error": "forbidden fact appears in execution contract source_backed_detail_targets"
+    },
+    {
+      "name": "unsupported_execution_contract_candidate_rejection_rules_fact",
+      "mutation": "unsupported_execution_contract_candidate_rejection_rules_fact",
+      "expected_error": "unsupported execution contract candidate_rejection_rules fact"
+    },
+    {
+      "name": "forbidden_execution_contract_candidate_rejection_rules_fact",
+      "mutation": "forbidden_execution_contract_candidate_rejection_rules_fact",
+      "expected_error": "forbidden fact appears in execution contract candidate_rejection_rules"
+    },
+    {
       "name": "generic_paragraph_intention",
       "mutation": "generic_paragraph_intention",
       "expected_error": "generic paragraph intention"

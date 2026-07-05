@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 50;
+    public const int CurrentReviewVersion = 51;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -117,6 +117,62 @@ internal static class ReferenceChapterBlueprintReviewer
             }
         }
 
+        void AddUnsupportedExecutionContractFactDefects()
+        {
+            foreach (var unsupportedFact in FindUnsupportedExecutionContractSummaryFacts(blueprint))
+            {
+                AddDefect(
+                    executionErrors,
+                    "execution",
+                    "execution_contract.summary",
+                    string.Empty,
+                    $"Blueprint contains unsupported execution contract fact: {unsupportedFact}",
+                    "Set up the execution_contract.summary fact in approved known facts, beat scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+
+            foreach (var field in ExecutionContractListFields(blueprint.ExecutionContract))
+            {
+                foreach (var unsupportedFact in FindUnsupportedExecutionContractListFacts(blueprint, field.Values))
+                {
+                    AddDefect(
+                        executionErrors,
+                        "execution",
+                        "execution_contract." + field.FieldName,
+                        string.Empty,
+                        $"Blueprint contains unsupported execution contract {field.FieldName} fact: {unsupportedFact}",
+                        $"Set up the execution_contract.{field.FieldName} fact in approved known facts, beat scene facts, viewpoint knowledge, or slot plan before drafting.");
+                }
+            }
+        }
+
+        void AddForbiddenExecutionContractFactDefects(string forbidden)
+        {
+            if (ContainsForbidden(blueprint.ExecutionContract.Summary, forbidden))
+            {
+                AddDefect(
+                    forbiddenFactErrors,
+                    "forbidden_fact",
+                    "execution_contract.summary",
+                    string.Empty,
+                    $"Forbidden fact appears in execution contract: {forbidden}",
+                    "Remove the forbidden fact from execution_contract.summary or move it out of the forbidden fact set.");
+            }
+
+            foreach (var field in ExecutionContractListFields(blueprint.ExecutionContract))
+            {
+                foreach (var item in field.Values.Where(item => ContainsForbidden(item, forbidden)))
+                {
+                    AddDefect(
+                        forbiddenFactErrors,
+                        "forbidden_fact",
+                        "execution_contract." + field.FieldName,
+                        string.Empty,
+                        $"Forbidden fact appears in execution contract {field.FieldName}: {forbidden}",
+                        $"Remove the forbidden fact from execution_contract.{field.FieldName} or move it out of the forbidden fact set.");
+                }
+            }
+        }
+
         if (IsEmptyTrack(blueprint.LogicAnalysis) ||
             IsEmptyTrack(blueprint.EmotionAnalysis) ||
             IsEmptyTrack(blueprint.NarrationAnalysis) ||
@@ -218,6 +274,8 @@ internal static class ReferenceChapterBlueprintReviewer
             "transition",
             "transition_plan",
             "transition");
+
+        AddUnsupportedExecutionContractFactDefects();
 
         foreach (var unsupportedPreviousStateFact in FindUnsupportedPreviousStateFacts(blueprint))
         {
@@ -929,6 +987,7 @@ internal static class ReferenceChapterBlueprintReviewer
             AddForbiddenAnalysisTrackFactDefects(blueprint.CharacterAnalysis, "character_analysis", "character", forbidden);
             AddForbiddenAnalysisTrackFactDefects(blueprint.ReferenceAnalysis, "reference_analysis", "reference", forbidden);
             AddForbiddenAnalysisTrackFactDefects(blueprint.TransitionPlan, "transition_plan", "transition", forbidden);
+            AddForbiddenExecutionContractFactDefects(forbidden);
 
             if (ContainsForbidden(blueprint.PreviousState, forbidden))
             {
@@ -1229,6 +1288,16 @@ internal static class ReferenceChapterBlueprintReviewer
     {
         return !string.IsNullOrWhiteSpace(value) &&
             value.Contains(forbidden, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<(string FieldName, IReadOnlyList<string> Values)> ExecutionContractListFields(
+        ReferenceChapterBlueprintExecutionTrackPayload track)
+    {
+        yield return ("paragraph_intentions", track.ParagraphIntentions);
+        yield return ("execution_modes", track.ExecutionModes);
+        yield return ("anti_screenplay_duties", track.AntiScreenplayDuties);
+        yield return ("source_backed_detail_targets", track.SourceBackedDetailTargets);
+        yield return ("candidate_rejection_rules", track.CandidateRejectionRules);
     }
 
     private static IEnumerable<string> FindBeatScopedForbiddenFactFields(
@@ -1726,6 +1795,41 @@ internal static class ReferenceChapterBlueprintReviewer
             .ToArray();
 
         return track.Points
+            .SelectMany(ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedExecutionContractSummaryFacts(ReferenceChapterBlueprintPayload blueprint)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(blueprint.Beats.SelectMany(beat => beat.SceneFacts))
+            .Concat(blueprint.Beats.SelectMany(beat => beat.ViewpointAllowedKnowledge))
+            .Concat(blueprint.Beats.SelectMany(beat => beat.SlotPlan.Select(slot => slot.Value)))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(blueprint.ExecutionContract.Summary)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedExecutionContractListFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        IReadOnlyList<string> values)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(blueprint.Beats.SelectMany(beat => beat.SceneFacts))
+            .Concat(blueprint.Beats.SelectMany(beat => beat.ViewpointAllowedKnowledge))
+            .Concat(blueprint.Beats.SelectMany(beat => beat.SlotPlan.Select(slot => slot.Value)))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return values
             .SelectMany(ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases)
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
