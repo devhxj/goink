@@ -147,6 +147,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 ProseDuties = []
             },
+            "unsupported_max_rewrite_level" => beat with
+            {
+                MaxRewriteLevel = "LX"
+            },
             "action_dialogue_only" => beat with
             {
                 BeatType = ReferenceBlueprintBeatTypes.Action,

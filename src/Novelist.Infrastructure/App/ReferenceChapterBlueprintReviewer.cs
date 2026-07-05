@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 52;
+    public const int CurrentReviewVersion = 53;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -815,6 +815,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "subtext_plan",
                     $"Beat {beat.BeatIndex} contains unsupported subtext plan fact: {unsupportedSubtextPlanFact}",
                     "Set up the subtext_plan fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
+            }
+
+            if (!ReferenceRewriteLevels.All.Contains(beat.MaxRewriteLevel, StringComparer.Ordinal))
+            {
+                AddBeatDefect(
+                    referenceBindingErrors,
+                    "reference_binding",
+                    beat,
+                    "max_rewrite_level",
+                    $"Beat {beat.BeatIndex} uses unsupported max_rewrite_level: {beat.MaxRewriteLevel}",
+                    "Set max_rewrite_level to L0, L1, L2, L3, or L4 before material binding.");
             }
 
             if (string.IsNullOrWhiteSpace(beat.ReferenceQuery.Query) || beat.RequiredMaterialTypes.Count == 0)

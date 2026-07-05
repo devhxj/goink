@@ -81,6 +81,11 @@
       "expected_error": "prose duties"
     },
     {
+      "name": "unsupported_max_rewrite_level",
+      "mutation": "unsupported_max_rewrite_level",
+      "expected_error": "unsupported max_rewrite_level"
+    },
+    {
       "name": "action_dialogue_only_beat",
       "mutation": "action_dialogue_only",
       "expected_error": "action/dialogue"

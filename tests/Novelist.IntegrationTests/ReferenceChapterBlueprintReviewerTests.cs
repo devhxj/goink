@@ -1863,6 +1863,24 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsUnsupportedMaxRewriteLevel()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            MaxRewriteLevel = "LX"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ReferenceBindingErrors, item => item.Contains("unsupported max_rewrite_level", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "reference_binding" &&
+                defect.FieldPath.Contains("max_rewrite_level", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsMaterialQueryWithoutBeatFit()
     {
         var blueprint = Blueprint(beat => beat with
