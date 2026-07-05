@@ -10,18 +10,36 @@ Core implementation phases 0-9 are complete in the task tracker. Phase 10 tracks
 
 2026-07-04
 
-## Plan Documents
+## Stable Entry Points
 
-- [Overview and architecture](reference-anchor-implementation/overview.md): scope, review-first workflow update, current implementation snapshot, and architecture map.
-- [Implementation decisions](reference-anchor-implementation/decisions.md): storage, blueprint workflow, review strategy, adaptation strategy, and audit strategy.
-- [Schema and integration plan](reference-anchor-implementation/schema-and-integration.md): database schema, bridge APIs, desktop composition, agent tools, frontend workflow, and desktop debugging notes.
-- [Tasks, tests, and guardrails](reference-anchor-implementation/tasks-and-verification.md): phased task breakdown, required test matrix, critical guardrails, and open Phase 10-12 completion tasks.
+- [Overview and architecture](reference-anchor-implementation/overview.md): stable overview index for status/scope, planning updates, and architecture map.
+- [Implementation decisions](reference-anchor-implementation/decisions.md): stable decisions index for foundation, pipeline, quality, material, and audit decisions.
+- [Schema and integration plan](reference-anchor-implementation/schema-and-integration.md): stable integration index for database, bridge, desktop/agent, and frontend surfaces.
+- [Tasks, tests, and guardrails](reference-anchor-implementation/tasks-and-verification.md): stable task index for phase breakdowns, test matrix, guardrails, and open Phase 10-12 work.
+
+## Topic Documents
+
+- [Status and scope](reference-anchor-implementation/overview-status-and-scope.md)
+- [Planning updates](reference-anchor-implementation/overview-planning-updates.md)
+- [Architecture map](reference-anchor-implementation/overview-architecture-map.md)
+- [Foundation and blueprint decisions](reference-anchor-implementation/decisions-foundation-and-blueprint.md)
+- [Boundaries and pipeline decisions](reference-anchor-implementation/decisions-boundaries-and-pipeline.md)
+- [Blueprint quality decisions](reference-anchor-implementation/decisions-blueprint-quality.md)
+- [Materials and audit decisions](reference-anchor-implementation/decisions-materials-and-audit.md)
+- [Database schema](reference-anchor-implementation/schema-database.md)
+- [Bridge API surface](reference-anchor-implementation/schema-bridge-api.md)
+- [Desktop and agent integration](reference-anchor-implementation/schema-desktop-and-agent.md)
+- [Frontend surface](reference-anchor-implementation/schema-frontend.md)
+- [Tasks phases 0-4](reference-anchor-implementation/tasks-phases-0-4.md)
+- [Tasks phases 5-9](reference-anchor-implementation/tasks-phases-5-9.md)
+- [Tasks phases 10-12](reference-anchor-implementation/tasks-phases-10-12.md)
+- [Verification and guardrails](reference-anchor-implementation/tasks-verification-and-guardrails.md)
 
 ## Reading Order
 
-1. Start with the overview for scope, current status, and runtime boundaries.
-2. Read decisions before changing contracts, storage, blueprint review, material binding, or draft audit behavior.
-3. Use the schema and integration plan while wiring bridge, desktop, agent, or frontend surfaces.
-4. Use tasks and verification for implementation sequencing, acceptance criteria, tests, and guardrails.
+1. Start with the overview index, then read status/scope and planning updates.
+2. Read the relevant decision topic before changing contracts, storage, blueprint review, material binding, or draft audit behavior.
+3. Use the schema and integration topic pages while wiring bridge, desktop, agent, or frontend surfaces.
+4. Use the task phase pages for implementation sequencing, and the verification page for acceptance tests and guardrails.
 
 The companion design document remains [Reference Anchor Layer Plan](reference-anchor-layer-plan.md).
