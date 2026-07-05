@@ -408,6 +408,7 @@ internal static class ReferenceAnchoredDraftAuditor
             .Where(value => value.Length >= 2));
         facts.AddRange(ExtractAccessCredentialFacts(text));
         facts.AddRange(ExtractSensitiveIdentifierFacts(text));
+        facts.AddRange(ExtractLegalDocumentFacts(text));
         facts.AddRange(ExtractLocationIdentifierFacts(text));
         facts.AddRange(ExtractIdentityRevealFacts(text));
         facts.AddRange(ExtractRelationshipRevealFacts(text));
@@ -441,6 +442,21 @@ internal static class ReferenceAnchoredDraftAuditor
             @"(?:^|[，。！？；;,\s、]|和|与)(?<fact>[\u4e00-\u9fffA-Za-z0-9]{0,8}(?:" + credentialTerms + @"))"))
         {
             var fact = match.Groups["fact"].Value.Trim('，', ',', '。', '.', '；', ';', '！', '!', '？', '?', '、');
+            if (fact.Length >= 2)
+            {
+                yield return fact;
+            }
+        }
+    }
+
+    private static IEnumerable<string> ExtractLegalDocumentFacts(string text)
+    {
+        const string legalDocumentTerms = "股权转让协议|转让协议|保密协议|离婚协议|收养协议|合作协议|投资协议|遗嘱副本|遗嘱原件|遗嘱|合同副本|合同原件|合同|协议|产权证明|所有权证明|房产证明|继承证明|授权书|委托书|承诺书|收据";
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?:^|[，。！？；;,\s、]|和|与)(?<fact>[\u4e00-\u9fffA-Za-z0-9]{0,8}?(?:" + legalDocumentTerms + @"))"))
+        {
+            var fact = NormalizeDelimitedAuditableFact(match.Groups["fact"].Value);
             if (fact.Length >= 2)
             {
                 yield return fact;

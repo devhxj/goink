@@ -140,6 +140,12 @@
       "expected_error": "林岚银行卡号622202"
     },
     {
+      "name": "unsupported_legal_document",
+      "mutation": "default",
+      "text": "雨声压低了整条街的呼吸，旧宅股权转让协议被压在账本下面。",
+      "expected_error": "旧宅股权转让协议"
+    },
+    {
       "name": "non_pov_interior_leak",
       "mutation": "non_pov_character",
       "text": "雨声压低了整条街的呼吸，周鸣心里明白她已经看穿了他。",

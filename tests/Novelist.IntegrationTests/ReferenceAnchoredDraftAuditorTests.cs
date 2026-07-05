@@ -126,6 +126,23 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFailsWhenCandidateIntroducesUnsupportedLegalDocument()
+    {
+        var blueprint = Blueprint(beat => beat);
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，旧宅股权转让协议和地下室产权证明被压在账本下面。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("旧宅股权转让协议", StringComparison.Ordinal));
+        Assert.Contains(audit.UnsupportedFactErrors, item => item.Contains("地下室产权证明", StringComparison.Ordinal));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("Remove unsupported fact", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildDraftAuditAllowsSensitiveIdentifierWhenItIsSceneFact()
     {
         var blueprint = Blueprint(beat => beat with
@@ -141,6 +158,24 @@ public sealed class ReferenceAnchoredDraftAuditorTests
 
         Assert.Equal("passed", audit.Status);
         Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("林岚银行卡号622202", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsLegalDocumentWhenItIsSceneFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            SceneFacts = [.. beat.SceneFacts, "旧宅股权转让协议"]
+        });
+        var candidate = Candidate(blueprint, "雨声压低了整条街的呼吸，旧宅股权转让协议被塞进抽屉夹层。");
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.UnsupportedFactErrors, item => item.Contains("旧宅股权转让协议", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -794,6 +829,16 @@ public sealed class ReferenceAnchoredDraftAuditorTests
         Assert.Contains("案号A17-42", facts);
         Assert.Contains("病历号B91", facts);
         Assert.Contains("车牌号A12345", facts);
+    }
+
+    [Fact]
+    public void ExtractAuditableFactPhrasesReadsLegalDocumentFacts()
+    {
+        var facts = ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(
+            "雨声压低了整条街的呼吸，旧宅股权转让协议和地下室产权证明被压在账本下面。");
+
+        Assert.Contains("旧宅股权转让协议", facts);
+        Assert.Contains("地下室产权证明", facts);
     }
 
     [Fact]
