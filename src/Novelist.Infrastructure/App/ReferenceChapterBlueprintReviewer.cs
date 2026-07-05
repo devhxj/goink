@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 59;
+    public const int CurrentReviewVersion = 60;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -1359,6 +1359,16 @@ internal static class ReferenceChapterBlueprintReviewer
                 "Vary adjacent paragraph intentions so each beat has a distinct prose job instead of repeating the same execution instruction.");
         }
 
+        foreach (var beat in blueprint.Beats.Where(beat => ExceedsDefaultRewriteLevel(beat.MaxRewriteLevel)))
+        {
+            AddWarningDefect(
+                "reference_binding",
+                "beat:" + beat.BeatId + ":max_rewrite_level",
+                beat.BeatId,
+                $"Beat {beat.BeatIndex} max_rewrite_level exceeds the project default L1: {beat.MaxRewriteLevel}.",
+                "Confirm the beat needs a higher rewrite budget, or lower max_rewrite_level to L1 before material binding.");
+        }
+
         var defectCount = logicErrors.Count + causalityErrors.Count + emotionErrors.Count +
             narrationErrors.Count + executionErrors.Count + characterStateErrors.Count + povErrors.Count +
             continuityErrors.Count + transitionErrors.Count + forbiddenFactErrors.Count +
@@ -2491,6 +2501,11 @@ internal static class ReferenceChapterBlueprintReviewer
         return string.IsNullOrWhiteSpace(value)
             ? string.Empty
             : string.Join(' ', value.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+    }
+
+    private static bool ExceedsDefaultRewriteLevel(string rewriteLevel)
+    {
+        return rewriteLevel is ReferenceRewriteLevels.L2 or ReferenceRewriteLevels.L3 or ReferenceRewriteLevels.L4;
     }
 
     private static bool ContainsAnyTag(IReadOnlyList<string> values, IReadOnlyList<string> candidates)

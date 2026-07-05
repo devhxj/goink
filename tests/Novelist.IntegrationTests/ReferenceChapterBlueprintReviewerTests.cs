@@ -132,6 +132,26 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewWarnsWhenMaxRewriteLevelExceedsDefault()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            MaxRewriteLevel = ReferenceRewriteLevels.L2
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, review.Status);
+        Assert.Empty(review.RequiredFixes);
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "reference_binding" &&
+                defect.Severity == "warning" &&
+                defect.FieldPath.Contains("max_rewrite_level", StringComparison.OrdinalIgnoreCase) &&
+                defect.Reason.Contains("project default", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewAllowsEmotionEvidenceQueryForSubtextAndExternalEvidenceDuties()
     {
         var blueprint = Blueprint(beat => beat with
