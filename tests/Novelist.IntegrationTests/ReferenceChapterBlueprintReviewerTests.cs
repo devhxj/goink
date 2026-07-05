@@ -607,6 +607,24 @@ public sealed class ReferenceChapterBlueprintReviewerTests
     }
 
     [Fact]
+    public void BuildReviewFailsUnsupportedRelationshipPressureFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            RelationshipPressure = ["密室钥匙"]
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.CharacterStateErrors, item => item.Contains("unsupported relationship pressure fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
+            defect => defect.Category == "character_state" &&
+                defect.FieldPath.Contains("relationship_pressure", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildReviewFailsGenericParagraphIntention()
     {
         var blueprint = Blueprint(beat => beat with

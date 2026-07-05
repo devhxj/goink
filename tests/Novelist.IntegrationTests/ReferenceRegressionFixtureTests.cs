@@ -141,6 +141,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 RelationshipPressure = []
             },
+            "unsupported_relationship_pressure_fact" => beat with
+            {
+                RelationshipPressure = ["密室钥匙"]
+            },
             "generic_paragraph_intention" => beat with
             {
                 ParagraphIntention = "写得更好，更有代入感"

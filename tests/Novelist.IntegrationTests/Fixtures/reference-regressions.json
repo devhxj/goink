@@ -81,6 +81,11 @@
       "expected_error": "relationship pressure"
     },
     {
+      "name": "unsupported_relationship_pressure_fact",
+      "mutation": "unsupported_relationship_pressure_fact",
+      "expected_error": "unsupported relationship pressure fact"
+    },
+    {
       "name": "generic_paragraph_intention",
       "mutation": "generic_paragraph_intention",
       "expected_error": "generic paragraph intention"

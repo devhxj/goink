@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 27;
+    public const int CurrentReviewVersion = 28;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -253,6 +253,17 @@ internal static class ReferenceChapterBlueprintReviewer
                     "character_misbeliefs",
                     $"Beat {beat.BeatIndex} contains unsupported character misbelief fact: {unsupportedCharacterMisbeliefFact}",
                     "Move the character_misbeliefs fact into approved known facts or scene facts before using it as role-state pressure.");
+            }
+
+            foreach (var unsupportedRelationshipPressureFact in FindUnsupportedRelationshipPressureFacts(blueprint, beat))
+            {
+                AddBeatDefect(
+                    characterStateErrors,
+                    "character_state",
+                    beat,
+                    "relationship_pressure",
+                    $"Beat {beat.BeatIndex} contains unsupported relationship pressure fact: {unsupportedRelationshipPressureFact}",
+                    "Move the relationship_pressure fact into approved known facts or scene facts before using it as relationship leverage.");
             }
 
             if (beat.ViewpointForbiddenKnowledge.Any(forbidden =>
@@ -804,6 +815,23 @@ internal static class ReferenceChapterBlueprintReviewer
             .ToArray();
 
         return beat.CharacterMisbeliefs
+            .SelectMany(ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases)
+            .Where(fact => !IsAllowedFact(fact, approvedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedRelationshipPressureFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var approvedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return beat.RelationshipPressure
             .SelectMany(ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases)
             .Where(fact => !IsAllowedFact(fact, approvedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
