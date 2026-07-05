@@ -2903,6 +2903,85 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReferenceOrchestrationRunStopsForHighRiskDecisionWhenBlueprintBecomesStaleBeforeApproval()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("编排蓝图失效测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "主角在雨夜门口确认线索，决定去找证人。"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+
+        var started = await service.StartOrchestrationRunAsync(
+            new StartReferenceOrchestrationRunPayload(
+                novel.Id,
+                ChapterNumber: 7,
+                ChapterGoal: "让主角从犹豫走向行动",
+                KnownFacts: ["证人存在", "雨夜门口出现线索"],
+                ForbiddenFacts: ["凶手身份"],
+                AnchorIds: null,
+                CorpusSearchPolicy: new ReferenceCorpusSearchPolicyPayload(
+                    "story_context",
+                    MaxResultsPerBeat: 5,
+                    LicenseStatuses: ["user_provided"],
+                    IncludeAnchorIds: [],
+                    ExcludeAnchorIds: []),
+                SourceConfirmed: true),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, started.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, started.Stage);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, started.CurrentDecision?.DecisionType);
+
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "主角改为直接进入屋内，不再等待证人。"),
+            CancellationToken.None);
+
+        var stopped = await service.ResumeOrchestrationRunAsync(
+            new ResumeReferenceOrchestrationRunPayload(
+                novel.Id,
+                started.RunId,
+                ReferenceOrchestrationDecisionTypes.ApproveBlueprint,
+                started.ReviewId),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, stopped.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, stopped.Stage);
+        Assert.Equal(ReferenceOrchestrationStopReasons.HighRiskGateBlocked, stopped.LastStopReason);
+        Assert.NotNull(stopped.CurrentDecision);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop, stopped.CurrentDecision.DecisionType);
+        Assert.Equal(ReferenceOrchestrationStopReasons.HighRiskGateBlocked, stopped.CurrentDecision.StopReason);
+        Assert.Contains("inspect_stale_blueprint", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("regenerate_blueprint", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("stale", stopped.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            stopped.CurrentDecision.ApprovalSummary.HighRiskFindings,
+            finding => finding.Contains("stale_blueprint", StringComparison.Ordinal));
+
+        var staleBlueprint = await service.GetChapterBlueprintAsync(novel.Id, started.BlueprintId, CancellationToken.None);
+        Assert.NotNull(staleBlueprint);
+        Assert.Equal(ReferenceBlueprintStates.Stale, staleBlueprint.Status);
+
+        var resolved = await service.ResumeOrchestrationRunAsync(
+            new ResumeReferenceOrchestrationRunPayload(
+                novel.Id,
+                started.RunId,
+                ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop,
+                "acknowledged"),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.Failed, resolved.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, resolved.Stage);
+        Assert.Equal(ReferenceOrchestrationStopReasons.HighRiskGateBlocked, resolved.LastStopReason);
+        Assert.Null(resolved.CurrentDecision);
+    }
+
+    [Fact]
     public async Task ReferenceOrchestrationRunStopsForBlueprintRevisionWhenAutoReviewFails()
     {
         var options = CreateOptions();

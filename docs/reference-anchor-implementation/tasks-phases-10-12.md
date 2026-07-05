@@ -102,9 +102,11 @@ Targeted Phase 11 thin-slice checks completed:
 - [x] Agent orchestration tools can start, inspect, list, and cancel runs while deliberately withholding resume/approval/revision/final-insertion tools; start arguments cannot pre-confirm source/fact decisions, pass `anchor_ids`, decision payloads, or prose text.
 - [x] Draft audit failure now persists as a high-risk `resolve_high_risk_stop` decision with candidate ids and audit findings; resolving that stop marks the run failed instead of inserting prose.
 - [x] Material binding gaps now persist as a high-risk `resolve_high_risk_stop` decision with missing beat ids; resolving that stop marks the run failed instead of free-drafting.
+- [x] Stale blueprints now persist as a high-risk `resolve_high_risk_stop` decision when source-plan changes invalidate a pending approval or safe-stage continuation.
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter Reference -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter ReferenceOrchestrationRun -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter ReferenceOrchestrationRunStopsForHighRiskDecisionWhenMaterialBindingHasMissingLinks -v minimal`
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter ReferenceOrchestrationRunStopsForHighRiskDecisionWhenBlueprintBecomesStaleBeforeApproval -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter MafToolRegistryTests -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter 'ReferenceOrchestrationRunPersistsResumeAndCancelState|ReferenceAnchoredDraftServiceTests' -v minimal`
 - [x] `npm --prefix frontend run build`

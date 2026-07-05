@@ -853,6 +853,12 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         }
         catch (Exception exception)
         {
+            if (IsStaleBlueprintException(exception))
+            {
+                var stale = await BuildStaleBlueprintHighRiskStopRunAsync(current, exception, cancellationToken);
+                return await PersistOrchestrationRunAsync(stale, cancellationToken);
+            }
+
             var failed = current with
             {
                 Status = ReferenceOrchestrationRunStatuses.Failed,
@@ -3232,6 +3238,40 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             BuildMaterialBindingGapApprovalSummary(blueprint, missingBeatIds));
     }
 
+    private async ValueTask<ReferenceOrchestrationRunPayload> BuildStaleBlueprintHighRiskStopRunAsync(
+        ReferenceOrchestrationRunPayload run,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        var blueprint = run.BlueprintId > 0
+            ? await GetChapterBlueprintAsync(run.NovelId, run.BlueprintId, cancellationToken)
+            : null;
+        return run with
+        {
+            Status = ReferenceOrchestrationRunStatuses.WaitingForUser,
+            Stage = DetermineStaleBlueprintStopStage(run, exception),
+            CurrentDecision = BuildStaleBlueprintHighRiskStopDecision(run, blueprint),
+            LastStopReason = ReferenceOrchestrationStopReasons.HighRiskGateBlocked,
+            ErrorMessage = NormalizeOptional(
+                exception.Message,
+                "Stale blueprint must be regenerated before reference orchestration can continue.",
+                1_000),
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+    }
+
+    private static ReferenceOrchestrationRequiredDecisionPayload BuildStaleBlueprintHighRiskStopDecision(
+        ReferenceOrchestrationRunPayload run,
+        ReferenceChapterBlueprintPayload? blueprint)
+    {
+        return new ReferenceOrchestrationRequiredDecisionPayload(
+            ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop,
+            ReferenceOrchestrationStopReasons.HighRiskGateBlocked,
+            "The approved blueprint became stale before orchestration could continue. Regenerate and re-review the blueprint before material binding or drafting.",
+            ["inspect_stale_blueprint", "regenerate_blueprint", "restart_or_cancel_run"],
+            BuildStaleBlueprintApprovalSummary(run, blueprint));
+    }
+
     private static ReferenceOrchestrationBlueprintRevisionProposalPayload BuildBlueprintRevisionProposal(
         ReferenceChapterBlueprintPayload blueprint,
         ReferenceChapterBlueprintReviewPayload review)
@@ -3543,6 +3583,40 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             highRiskFindings);
     }
 
+    private static ReferenceOrchestrationApprovalSummaryPayload BuildStaleBlueprintApprovalSummary(
+        ReferenceOrchestrationRunPayload run,
+        ReferenceChapterBlueprintPayload? blueprint)
+    {
+        var knownFacts = blueprint?.KnownFacts ?? run.KnownFacts;
+        var forbiddenFacts = blueprint?.ForbiddenFacts ?? run.ForbiddenFacts;
+        var factBoundaryChanges = knownFacts
+            .Select(fact => "known: " + fact)
+            .Concat(forbiddenFacts.Select(fact => "forbidden: " + fact))
+            .Take(20)
+            .ToArray();
+        var emotionalTrajectory = blueprint is null || blueprint.Beats.Count == 0
+            ? "stale blueprint must be regenerated before emotional trajectory is trusted"
+            : blueprint.Beats[0].EmotionBefore + " -> " + blueprint.Beats[^1].EmotionAfter;
+        var rewriteBudget = blueprint is null
+            ? ReferenceRewriteLevels.L0
+            : blueprint.Beats
+                .Select(beat => beat.MaxRewriteLevel)
+                .OrderByDescending(RewriteLevelRank)
+                .FirstOrDefault() ?? ReferenceRewriteLevels.L0;
+        var highRiskFindings = blueprint is null
+            ? new[] { "stale_blueprint: blueprint state changed before orchestration could continue" }
+            : [$"stale_blueprint: blueprint {blueprint.BlueprintId} source plan changed before orchestration could continue"];
+
+        return new ReferenceOrchestrationApprovalSummaryPayload(
+            blueprint?.ChapterFunction ?? run.ChapterGoal,
+            string.IsNullOrWhiteSpace(blueprint?.GlobalPov) ? "not selected" : blueprint.GlobalPov,
+            factBoundaryChanges,
+            emotionalTrajectory,
+            "regenerate blueprint before material binding or draft generation",
+            rewriteBudget,
+            highRiskFindings);
+    }
+
     private static string BuildDraftAuditFailureMessage(ReferenceAnchoredDraftAuditPayload audit)
     {
         var failures = audit.RequiredFixes
@@ -3583,6 +3657,40 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         return ReferenceAnchoredDraftPreflight.RequiredMaterialBeatIds(blueprint.Beats)
             .Where(beatId => !selectedBeatIds.Contains(beatId))
             .ToArray();
+    }
+
+    private static bool IsStaleBlueprintException(Exception exception)
+    {
+        return exception is ArgumentException &&
+            exception.Message.Contains("Stale blueprint must be regenerated", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string DetermineStaleBlueprintStopStage(ReferenceOrchestrationRunPayload run, Exception exception)
+    {
+        if (exception.Message.Contains("before approval", StringComparison.OrdinalIgnoreCase))
+        {
+            return ReferenceOrchestrationStages.BlueprintApproval;
+        }
+
+        if (exception.Message.Contains("before review", StringComparison.OrdinalIgnoreCase) ||
+            exception.Message.Contains("before revision", StringComparison.OrdinalIgnoreCase))
+        {
+            return ReferenceOrchestrationStages.BlueprintReview;
+        }
+
+        if (exception.Message.Contains("before material binding", StringComparison.OrdinalIgnoreCase))
+        {
+            return ReferenceOrchestrationStages.MaterialBinding;
+        }
+
+        if (exception.Message.Contains("draft generation", StringComparison.OrdinalIgnoreCase))
+        {
+            return ReferenceOrchestrationStages.DraftGeneration;
+        }
+
+        return string.IsNullOrWhiteSpace(run.Stage)
+            ? ReferenceOrchestrationStages.BlueprintApproval
+            : run.Stage;
     }
 
     private static string BuildBlueprintPremise(string? planText, string chapterFunction)
