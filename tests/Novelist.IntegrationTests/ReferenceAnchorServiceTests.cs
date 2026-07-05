@@ -419,6 +419,14 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
             CancellationToken.None);
         await MarkAnchorAsWorkspaceCorpusAsync(options, workspaceAnchor.AnchorId);
 
+        var anchors = await service.GetAnchorsAsync(targetNovel.Id, CancellationToken.None);
+        Assert.Contains(anchors, item => item.AnchorId == workspaceAnchor.AnchorId && item.NovelId == 0);
+        Assert.DoesNotContain(anchors, item => item.AnchorId == privateAnchor.AnchorId);
+        var status = await service.GetBuildStatusAsync(targetNovel.Id, workspaceAnchor.AnchorId, CancellationToken.None);
+        Assert.NotNull(status);
+        Assert.Equal(0, status.NovelId);
+        Assert.Equal(ReferenceAnchorBuildStates.Ready, status.Status);
+
         var defaultSearch = await service.SearchMaterialsAsync(
             new SearchReferenceMaterialsPayload(
                 targetNovel.Id,
@@ -551,6 +559,20 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
         Assert.Equal(targetNovel.Id, feedback.NovelId);
         Assert.Equal(workspaceMaterial.MaterialId, feedback.MaterialId);
         Assert.Equal(adapted.CandidateId, feedback.CandidateId);
+        var updated = await service.UpdateMaterialTagsAsync(
+            new UpdateReferenceMaterialTagsPayload(
+                targetNovel.Id,
+                workspaceMaterial.MaterialId,
+                FunctionTag: "interiority",
+                EmotionTag: "restrained",
+                SceneTag: null,
+                PovTag: "close",
+                TechniqueTag: "afterbeat",
+                Origin: "user",
+                Note: "correct shared corpus tag"),
+            CancellationToken.None);
+        Assert.True(updated.UserVerified);
+        Assert.Equal("interiority", updated.FunctionTag);
         await Assert.ThrowsAsync<ArgumentException>(async () =>
             await service.AdaptMaterialAsync(
                 new AdaptReferenceMaterialPayload(
@@ -568,6 +590,19 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
                     "他握住门把手，说出了另一部小说的秘密。",
                     ReferenceRewriteLevels.L2,
                     SceneFacts: ["门把手"]),
+                CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.UpdateMaterialTagsAsync(
+                new UpdateReferenceMaterialTagsPayload(
+                    targetNovel.Id,
+                    privateMaterial.MaterialId,
+                    FunctionTag: "interiority",
+                    EmotionTag: null,
+                    SceneTag: null,
+                    PovTag: null,
+                    TechniqueTag: null,
+                    Origin: "user",
+                    Note: "must not cross private anchor boundary"),
                 CancellationToken.None));
     }
 
