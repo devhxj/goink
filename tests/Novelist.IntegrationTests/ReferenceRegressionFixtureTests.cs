@@ -42,7 +42,9 @@ public sealed class ReferenceRegressionFixtureTests
             var mutation = fixture.GetProperty("mutation").GetString() ?? string.Empty;
             var expected = fixture.GetProperty("expected_error").GetString() ?? string.Empty;
             var text = fixture.GetProperty("text").GetString() ?? string.Empty;
-            var blueprint = Blueprint(beat => ApplyDraftMutation(beat, mutation));
+            var blueprint = Blueprint(
+                beat => ApplyDraftMutation(beat, mutation),
+                knownFacts: KnownFactsForMutation(mutation));
             var candidate = Candidate(blueprint, text);
 
             var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(blueprint, [candidate], DateTimeOffset.UnixEpoch);
@@ -174,6 +176,7 @@ public sealed class ReferenceRegressionFixtureTests
         {
             "pov_forbidden_scene_fact" => ["雨声压低了整条街的呼吸", "周鸣是卧底"],
             "limited_pov_hidden_position" => ["雨声压低了整条街的呼吸", "周鸣在门后"],
+            "limited_pov_offstage_fact" => ["雨声压低了整条街的呼吸", "周鸣握住那把钥匙", "那把钥匙"],
             _ => ["雨声压低了整条街的呼吸"]
         };
     }
@@ -199,6 +202,11 @@ public sealed class ReferenceRegressionFixtureTests
                 CharacterStatesBefore = ["林岚 controlled", "周鸣 guarded"]
             },
             "limited_pov" => beat with
+            {
+                PovCharacter = "林岚",
+                NarrativeDistance = "limited"
+            },
+            "limited_pov_offstage_fact" => beat with
             {
                 PovCharacter = "林岚",
                 NarrativeDistance = "limited"

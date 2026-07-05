@@ -158,6 +158,12 @@
       "expected_error": "unperceived"
     },
     {
+      "name": "limited_pov_unheard_offstage_fact",
+      "mutation": "limited_pov_offstage_fact",
+      "text": "雨声压低了整条街的呼吸，林岚听不见门外的动静，门外周鸣已经握住那把钥匙。",
+      "expected_error": "offstage"
+    },
+    {
       "name": "limited_pov_hidden_position",
       "mutation": "limited_pov_hidden_position",
       "text": "雨声压低了整条街的呼吸，林岚背对着门，周鸣在门后无声地站着。",

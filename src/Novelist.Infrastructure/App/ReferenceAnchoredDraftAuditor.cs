@@ -283,6 +283,7 @@ internal static class ReferenceAnchoredDraftAuditor
         }
 
         violations.AddRange(FindUnperceivedPovFactReveals(beat, candidateText));
+        violations.AddRange(FindOffstageFactRevealsAfterBlockedPerception(beat, candidateText));
         violations.AddRange(FindHiddenPositionBehindPovReveals(beat, candidateText));
         return violations;
     }
@@ -308,6 +309,33 @@ internal static class ReferenceAnchoredDraftAuditor
             {
                 yield return "limited POV cannot reveal unperceived facts to the reader.";
             }
+        }
+    }
+
+    private static IEnumerable<string> FindOffstageFactRevealsAfterBlockedPerception(
+        ReferenceChapterBlueprintBeatPayload beat,
+        string candidateText)
+    {
+        if (string.IsNullOrWhiteSpace(beat.PovCharacter))
+        {
+            yield break;
+        }
+
+        var povCharacter = Regex.Escape(beat.PovCharacter.Trim());
+        const string blockedPerception = "(?:听不见|听不到|没听见|没有听见|看不见|看不到|没看见|没有看见|不知道|并不知道|没有察觉|未曾发现|没有发现)";
+        const string offstagePlace = "(?:门外|窗外|窗后|门后|墙后|隔壁|屋外|走廊|楼下|暗处|阴影里)";
+        const string revealMarker = "(?:已经|早已|正|正在|悄悄|无声|忽然)";
+        const string offstageAction = "(?:握|拿|藏|站|等|打开|关上|靠近|离开|放下|写下|盯|看|出现|倒下)";
+        var pattern = povCharacter +
+            @"[^。！？!?；;\n]{0,24}" + blockedPerception +
+            @"[^。！？!?；;\n]{0,24}" + offstagePlace +
+            @"[^。！？!?；;\n]{0,40}" + offstagePlace +
+            @"[^。！？!?；;\n]{0,24}" + revealMarker +
+            @"[^。！？!?；;\n]{0,12}" + offstageAction;
+
+        if (Regex.IsMatch(candidateText, pattern, RegexOptions.IgnoreCase))
+        {
+            yield return "limited POV cannot reveal offstage facts after blocked perception.";
         }
     }
 
