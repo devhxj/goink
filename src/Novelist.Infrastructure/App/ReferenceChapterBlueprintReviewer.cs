@@ -4,7 +4,7 @@ namespace Novelist.Infrastructure.App;
 
 internal static class ReferenceChapterBlueprintReviewer
 {
-    public const int CurrentReviewVersion = 38;
+    public const int CurrentReviewVersion = 39;
 
     public static ReferenceChapterBlueprintReviewPayload BuildReview(
         ReferenceChapterBlueprintPayload blueprint,
@@ -463,6 +463,17 @@ internal static class ReferenceChapterBlueprintReviewer
                         "anti_screenplay_duty",
                         $"Beat {beat.BeatIndex} uses generic anti-screenplay duty.",
                         "Rewrite anti_screenplay_duty as concrete prose work beyond stage directions, dialogue labels, or camera blocking.");
+                }
+
+                foreach (var unsupportedAntiScreenplayDutyFact in FindUnsupportedAntiScreenplayDutyFacts(blueprint, beat))
+                {
+                    AddBeatDefect(
+                        screenplayRisks,
+                        "screenplay_drift",
+                        beat,
+                        "anti_screenplay_duty",
+                        $"Beat {beat.BeatIndex} contains unsupported anti-screenplay duty fact: {unsupportedAntiScreenplayDutyFact}",
+                        "Set up the anti_screenplay_duty fact in approved known facts, scene facts, viewpoint knowledge, or slot plan before drafting.");
                 }
             }
 
@@ -1357,6 +1368,24 @@ internal static class ReferenceChapterBlueprintReviewer
             .ToArray();
 
         return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.CandidateRejectionRule)
+            .Where(fact => !IsAllowedFact(fact, allowedFacts))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> FindUnsupportedAntiScreenplayDutyFacts(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintBeatPayload beat)
+    {
+        var allowedFacts = blueprint.KnownFacts
+            .Concat(beat.SceneFacts)
+            .Concat(beat.ViewpointAllowedKnowledge)
+            .Concat(beat.SlotPlan.Select(slot => slot.Value))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return ReferenceAnchoredDraftAuditor.ExtractAuditableFactPhrases(beat.AntiScreenplayDuty)
             .Where(fact => !IsAllowedFact(fact, allowedFacts))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();

@@ -156,6 +156,11 @@
       "expected_error": "generic anti-screenplay duty"
     },
     {
+      "name": "unsupported_anti_screenplay_duty_fact",
+      "mutation": "unsupported_anti_screenplay_duty_fact",
+      "expected_error": "unsupported anti-screenplay duty fact"
+    },
+    {
       "name": "generic_narration_strategy",
       "mutation": "generic_narration_strategy",
       "expected_error": "generic narration strategy"

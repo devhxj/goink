@@ -889,6 +889,24 @@ public sealed class ReferenceChapterBlueprintReviewerTests
         Assert.Contains(review.ScreenplayDriftRisks, item => item.Contains("generic anti-screenplay duty", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             review.Defects,
+                defect => defect.Category == "screenplay_drift" &&
+                defect.FieldPath.Contains("anti_screenplay_duty", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildReviewFailsUnsupportedAntiScreenplayDutyFact()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            AntiScreenplayDuty = "show hesitation around 密室钥匙 instead of stage blocking"
+        });
+
+        var review = ReferenceChapterBlueprintReviewer.BuildReview(blueprint, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, review.Status);
+        Assert.Contains(review.ScreenplayDriftRisks, item => item.Contains("unsupported anti-screenplay duty fact", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            review.Defects,
             defect => defect.Category == "screenplay_drift" &&
                 defect.FieldPath.Contains("anti_screenplay_duty", StringComparison.OrdinalIgnoreCase));
     }

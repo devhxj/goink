@@ -204,6 +204,10 @@ public sealed class ReferenceRegressionFixtureTests
             {
                 AntiScreenplayDuty = "避免剧本化"
             },
+            "unsupported_anti_screenplay_duty_fact" => beat with
+            {
+                AntiScreenplayDuty = "show hesitation around 密室钥匙 instead of stage blocking"
+            },
             "generic_narration_strategy" => beat with
             {
                 NarrationStrategy = "正常叙述，写得有画面感"
