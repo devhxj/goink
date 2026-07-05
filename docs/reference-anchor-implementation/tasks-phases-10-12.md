@@ -96,12 +96,13 @@ confirm source + chapter target + known/forbidden facts
 Targeted Phase 11 thin-slice checks completed:
 
 - [x] Contract, bridge, SQLite state persistence shell, and frontend adapter types now exist for starting, listing, inspecting, resuming, and cancelling orchestration runs.
+- [x] After source/fact confirmation, orchestration automatically generates a deterministic blueprint, runs deterministic blueprint review, persists `blueprint_id`/`review_id`, and stops for either blueprint approval or blueprint revision.
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter Reference -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter 'ReferenceOrchestrationRunPersistsResumeAndCancelState|ReferenceAnchoredDraftServiceTests' -v minimal`
 - [x] `npm --prefix frontend run build`
 - [x] `npm --prefix frontend run lint`
 
-This thin slice does not complete the Phase 11 automatic workflow. The happy path, failed-review revision path, high-risk stops, agent tool constraints, and frontend runtime workflow remain pending.
+These thin slices do not complete the Phase 11 automatic workflow. Material binding after approval, candidate generation, draft audit, full failed-review revision continuation, high-risk stops beyond deterministic review failure, agent tool constraints, and frontend runtime workflow remain pending.
 
 **Files likely touched:**
 

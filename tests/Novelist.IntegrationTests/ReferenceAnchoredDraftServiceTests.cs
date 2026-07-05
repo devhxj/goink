@@ -2813,10 +2813,25 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
                 "confirmed"),
             CancellationToken.None);
 
-        Assert.Equal(ReferenceOrchestrationRunStatuses.Running, resumed.Status);
-        Assert.Equal(ReferenceOrchestrationStages.BlueprintGeneration, resumed.Stage);
-        Assert.Null(resumed.CurrentDecision);
-        Assert.Equal(string.Empty, resumed.LastStopReason);
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, resumed.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, resumed.Stage);
+        Assert.True(resumed.BlueprintId > 0);
+        Assert.StartsWith("review-", resumed.ReviewId, StringComparison.Ordinal);
+        Assert.Equal(ReferenceOrchestrationStopReasons.BlueprintApprovalRequired, resumed.LastStopReason);
+        Assert.NotNull(resumed.CurrentDecision);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, resumed.CurrentDecision.DecisionType);
+        Assert.Equal(ReferenceOrchestrationStopReasons.BlueprintApprovalRequired, resumed.CurrentDecision.StopReason);
+        Assert.Contains("approve_blueprint", resumed.CurrentDecision.RequiredActions);
+        Assert.Equal("雨夜门口确认事实边界", resumed.CurrentDecision.ApprovalSummary.ChapterFunction);
+        Assert.Contains("known: 林岚在门口", resumed.CurrentDecision.ApprovalSummary.FactBoundaryChanges);
+        Assert.Contains("forbidden: 凶手身份", resumed.CurrentDecision.ApprovalSummary.FactBoundaryChanges);
+
+        var blueprint = await reloadedService.GetChapterBlueprintAsync(novel.Id, resumed.BlueprintId, CancellationToken.None);
+        Assert.NotNull(blueprint);
+        Assert.Equal(ReferenceBlueprintStates.ReviewPassed, blueprint.Status);
+        Assert.NotNull(blueprint.LatestReview);
+        Assert.Equal(resumed.ReviewId, blueprint.LatestReview.ReviewId);
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, blueprint.LatestReview.Status);
 
         var cancelled = await reloadedService.CancelOrchestrationRunAsync(
             new CancelReferenceOrchestrationRunPayload(novel.Id, started.RunId, "user stopped run"),
@@ -2826,6 +2841,113 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.Equal(ReferenceOrchestrationStopReasons.Cancelled, cancelled.LastStopReason);
         Assert.Equal("user stopped run", cancelled.ErrorMessage);
         Assert.Null(cancelled.CurrentDecision);
+    }
+
+    [Fact]
+    public async Task ReferenceOrchestrationRunWithConfirmedSourceAutoReviewsBlueprintAndStopsForApproval()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("自动编排测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "主角在雨夜门口确认线索，决定去找证人。"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+
+        var run = await service.StartOrchestrationRunAsync(
+            new StartReferenceOrchestrationRunPayload(
+                novel.Id,
+                ChapterNumber: 6,
+                ChapterGoal: "让主角从犹豫走向行动",
+                KnownFacts: ["证人存在", "雨夜门口出现线索"],
+                ForbiddenFacts: ["凶手身份"],
+                AnchorIds: null,
+                CorpusSearchPolicy: new ReferenceCorpusSearchPolicyPayload(
+                    "story_context",
+                    MaxResultsPerBeat: 5,
+                    LicenseStatuses: ["user_provided"],
+                    IncludeAnchorIds: [],
+                    ExcludeAnchorIds: []),
+                SourceConfirmed: true),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, run.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, run.Stage);
+        Assert.True(run.BlueprintId > 0);
+        Assert.StartsWith("review-", run.ReviewId, StringComparison.Ordinal);
+        Assert.Equal(ReferenceOrchestrationStopReasons.BlueprintApprovalRequired, run.LastStopReason);
+        Assert.NotNull(run.CurrentDecision);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, run.CurrentDecision.DecisionType);
+        Assert.Equal("让主角从犹豫走向行动", run.CurrentDecision.ApprovalSummary.ChapterFunction);
+        Assert.Contains("known: 证人存在", run.CurrentDecision.ApprovalSummary.FactBoundaryChanges);
+        Assert.Contains("forbidden: 凶手身份", run.CurrentDecision.ApprovalSummary.FactBoundaryChanges);
+
+        var blueprint = await service.GetChapterBlueprintAsync(novel.Id, run.BlueprintId, CancellationToken.None);
+        Assert.NotNull(blueprint);
+        Assert.Equal(ReferenceBlueprintStates.ReviewPassed, blueprint.Status);
+        Assert.NotNull(blueprint.LatestReview);
+        Assert.Equal(run.ReviewId, blueprint.LatestReview.ReviewId);
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, blueprint.LatestReview.Status);
+
+        var reloadedService = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+        var loaded = await reloadedService.GetOrchestrationRunAsync(novel.Id, run.RunId, CancellationToken.None);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(run.BlueprintId, loaded.BlueprintId);
+        Assert.Equal(run.ReviewId, loaded.ReviewId);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, loaded.Stage);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, loaded.CurrentDecision?.DecisionType);
+    }
+
+    [Fact]
+    public async Task ReferenceOrchestrationRunStopsForBlueprintRevisionWhenAutoReviewFails()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("编排失败评审测试", "", ""), CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(
+            options,
+            novels,
+            new FileSystemPlanningService(options, novels));
+
+        var run = await service.StartOrchestrationRunAsync(
+            new StartReferenceOrchestrationRunPayload(
+                novel.Id,
+                ChapterNumber: 8,
+                ChapterGoal: "测试禁用事实门禁",
+                KnownFacts: ["门"],
+                ForbiddenFacts: ["final hook"],
+                AnchorIds: null,
+                CorpusSearchPolicy: new ReferenceCorpusSearchPolicyPayload(
+                    "story_context",
+                    MaxResultsPerBeat: 3,
+                    LicenseStatuses: ["user_provided"],
+                    IncludeAnchorIds: [],
+                    ExcludeAnchorIds: []),
+                SourceConfirmed: true),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, run.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintReview, run.Stage);
+        Assert.True(run.BlueprintId > 0);
+        Assert.StartsWith("review-", run.ReviewId, StringComparison.Ordinal);
+        Assert.Equal(ReferenceOrchestrationStopReasons.BlueprintRevisionApprovalRequired, run.LastStopReason);
+        Assert.NotNull(run.CurrentDecision);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApplyBlueprintRevision, run.CurrentDecision.DecisionType);
+        Assert.Equal(ReferenceOrchestrationStopReasons.BlueprintRevisionApprovalRequired, run.CurrentDecision.StopReason);
+        Assert.Contains("revise_blueprint", run.CurrentDecision.RequiredActions);
+        Assert.NotEmpty(run.CurrentDecision.ApprovalSummary.HighRiskFindings);
+
+        var blueprint = await service.GetChapterBlueprintAsync(novel.Id, run.BlueprintId, CancellationToken.None);
+        Assert.NotNull(blueprint);
+        Assert.Equal(ReferenceBlueprintStates.ReviewFailed, blueprint.Status);
+        Assert.NotNull(blueprint.LatestReview);
+        Assert.Equal(run.ReviewId, blueprint.LatestReview.ReviewId);
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Failed, blueprint.LatestReview.Status);
     }
 
     public void Dispose()

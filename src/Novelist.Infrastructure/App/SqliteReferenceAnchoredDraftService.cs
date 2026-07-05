@@ -585,12 +585,15 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             await EnsureSchemaAsync(databasePath, cancellationToken);
             await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
             await InsertOrchestrationRunAsync(connection, run, cancellationToken);
-            return run;
         }
         finally
         {
             _mutex.Release();
         }
+
+        return ShouldRunOrchestrationSafeStages(run)
+            ? await AdvanceOrchestrationSafeStagesAsync(run, cancellationToken)
+            : run;
     }
 
     public async ValueTask<IReadOnlyList<ReferenceOrchestrationRunPayload>> GetOrchestrationRunsAsync(
@@ -649,6 +652,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         var runId = NormalizeRunId(input.RunId);
         var decisionType = NormalizeOrchestrationDecisionType(input.DecisionType);
 
+        ReferenceOrchestrationRunPayload updated;
         await _mutex.WaitAsync(cancellationToken);
         try
         {
@@ -673,7 +677,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 throw new ArgumentException("Decision type does not match the pending orchestration decision.", nameof(input));
             }
 
-            var updated = run with
+            updated = run with
             {
                 Status = ReferenceOrchestrationRunStatuses.Running,
                 Stage = NextStageAfterDecision(decisionType),
@@ -683,12 +687,15 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 UpdatedAt = DateTimeOffset.UtcNow
             };
             await UpdateOrchestrationRunAsync(connection, updated, cancellationToken);
-            return updated;
         }
         finally
         {
             _mutex.Release();
         }
+
+        return ShouldRunOrchestrationSafeStages(updated)
+            ? await AdvanceOrchestrationSafeStagesAsync(updated, cancellationToken)
+            : updated;
     }
 
     public async ValueTask<ReferenceOrchestrationRunPayload> CancelOrchestrationRunAsync(
@@ -717,6 +724,80 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             };
             await UpdateOrchestrationRunAsync(connection, updated, cancellationToken);
             return updated;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    private async ValueTask<ReferenceOrchestrationRunPayload> AdvanceOrchestrationSafeStagesAsync(
+        ReferenceOrchestrationRunPayload run,
+        CancellationToken cancellationToken)
+    {
+        var current = run;
+        try
+        {
+            if (!string.Equals(current.Stage, ReferenceOrchestrationStages.BlueprintGeneration, StringComparison.Ordinal))
+            {
+                return current;
+            }
+
+            var blueprint = await GenerateChapterBlueprintAsync(
+                new GenerateReferenceChapterBlueprintPayload(
+                    current.NovelId,
+                    current.ChapterNumber,
+                    Title: null,
+                    current.ChapterGoal,
+                    current.AnchorIds,
+                    current.KnownFacts,
+                    current.ForbiddenFacts),
+                cancellationToken);
+            current = await PersistOrchestrationRunAsync(
+                current with
+                {
+                    Stage = ReferenceOrchestrationStages.BlueprintReview,
+                    BlueprintId = blueprint.BlueprintId,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                },
+                cancellationToken);
+
+            var review = await ReviewChapterBlueprintAsync(
+                new ReviewReferenceChapterBlueprintPayload(current.NovelId, blueprint.BlueprintId),
+                cancellationToken);
+            current = BuildPostReviewOrchestrationRun(current, blueprint, review);
+            return await PersistOrchestrationRunAsync(current, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var failed = current with
+            {
+                Status = ReferenceOrchestrationRunStatuses.Failed,
+                CurrentDecision = null,
+                LastStopReason = string.Empty,
+                ErrorMessage = NormalizeOptional(exception.Message, "orchestration failed", 1_000),
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            return await PersistOrchestrationRunAsync(failed, cancellationToken);
+        }
+    }
+
+    private async ValueTask<ReferenceOrchestrationRunPayload> PersistOrchestrationRunAsync(
+        ReferenceOrchestrationRunPayload run,
+        CancellationToken cancellationToken)
+    {
+        await _mutex.WaitAsync(cancellationToken);
+        try
+        {
+            var databasePath = await DatabasePathAsync(cancellationToken);
+            await EnsureSchemaAsync(databasePath, cancellationToken);
+            await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+            await UpdateOrchestrationRunAsync(connection, run, cancellationToken);
+            return run;
         }
         finally
         {
@@ -2846,6 +2927,39 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         };
     }
 
+    private static bool ShouldRunOrchestrationSafeStages(ReferenceOrchestrationRunPayload run)
+    {
+        return string.Equals(run.Status, ReferenceOrchestrationRunStatuses.Running, StringComparison.Ordinal) &&
+            run.CurrentDecision is null &&
+            string.Equals(run.Stage, ReferenceOrchestrationStages.BlueprintGeneration, StringComparison.Ordinal);
+    }
+
+    private static ReferenceOrchestrationRunPayload BuildPostReviewOrchestrationRun(
+        ReferenceOrchestrationRunPayload run,
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintReviewPayload review)
+    {
+        var reviewPassed = string.Equals(review.Status, ReferenceBlueprintReviewStatuses.Passed, StringComparison.Ordinal);
+        var stopReason = reviewPassed
+            ? ReferenceOrchestrationStopReasons.BlueprintApprovalRequired
+            : ReferenceOrchestrationStopReasons.BlueprintRevisionApprovalRequired;
+        return run with
+        {
+            Status = ReferenceOrchestrationRunStatuses.WaitingForUser,
+            Stage = reviewPassed
+                ? ReferenceOrchestrationStages.BlueprintApproval
+                : ReferenceOrchestrationStages.BlueprintReview,
+            BlueprintId = blueprint.BlueprintId,
+            ReviewId = review.ReviewId,
+            CurrentDecision = reviewPassed
+                ? BuildBlueprintApprovalDecision(blueprint, review)
+                : BuildBlueprintRevisionDecision(blueprint, review),
+            LastStopReason = stopReason,
+            ErrorMessage = string.Empty,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+    }
+
     private static ReferenceOrchestrationRequiredDecisionPayload BuildSourceConfirmationDecision(
         string chapterGoal,
         IReadOnlyList<string> knownFacts,
@@ -2871,6 +2985,76 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 "search policy: " + policy.Mode,
                 "L2",
                 []));
+    }
+
+    private static ReferenceOrchestrationRequiredDecisionPayload BuildBlueprintApprovalDecision(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintReviewPayload review)
+    {
+        return new ReferenceOrchestrationRequiredDecisionPayload(
+            ReferenceOrchestrationDecisionTypes.ApproveBlueprint,
+            ReferenceOrchestrationStopReasons.BlueprintApprovalRequired,
+            "Deterministic blueprint review passed. Approve the compact blueprint and risk summary before material binding and draft generation.",
+            ["inspect_blueprint_summary", "approve_blueprint"],
+            BuildBlueprintApprovalSummary(blueprint, review));
+    }
+
+    private static ReferenceOrchestrationRequiredDecisionPayload BuildBlueprintRevisionDecision(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintReviewPayload review)
+    {
+        return new ReferenceOrchestrationRequiredDecisionPayload(
+            ReferenceOrchestrationDecisionTypes.ApplyBlueprintRevision,
+            ReferenceOrchestrationStopReasons.BlueprintRevisionApprovalRequired,
+            "Deterministic blueprint review failed. Inspect required fixes and approve a blueprint revision before orchestration can continue.",
+            ["inspect_review", "revise_blueprint", "approve_blueprint_revision"],
+            BuildBlueprintApprovalSummary(blueprint, review));
+    }
+
+    private static ReferenceOrchestrationApprovalSummaryPayload BuildBlueprintApprovalSummary(
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceChapterBlueprintReviewPayload review)
+    {
+        var factBoundaryChanges = blueprint.KnownFacts
+            .Select(fact => "known: " + fact)
+            .Concat(blueprint.ForbiddenFacts.Select(fact => "forbidden: " + fact))
+            .Take(20)
+            .ToArray();
+        var emotionalTrajectory = blueprint.Beats.Count == 0
+            ? blueprint.EmotionAnalysis.Summary
+            : blueprint.Beats[0].EmotionBefore + " -> " + blueprint.Beats[^1].EmotionAfter;
+        var materialTypes = blueprint.Beats
+            .SelectMany(beat => beat.RequiredMaterialTypes)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var materialUsePlan = materialTypes.Length == 0
+            ? blueprint.ReferenceAnalysis.Summary
+            : blueprint.ReferenceAnalysis.Summary + "; required material types: " + string.Join(", ", materialTypes);
+        var rewriteBudget = blueprint.Beats
+            .Select(beat => beat.MaxRewriteLevel)
+            .OrderByDescending(RewriteLevelRank)
+            .FirstOrDefault() ?? ReferenceRewriteLevels.L0;
+        var highRiskFindings = review.Defects
+            .Select(defect => string.IsNullOrWhiteSpace(defect.BeatId)
+                ? $"{defect.Category}: {defect.Reason}"
+                : $"{defect.Category}:{defect.BeatId}: {defect.Reason}")
+            .Concat(review.ScreenplayDriftRisks.Select(risk => "screenplay: " + risk))
+            .Concat(review.AiProseRisks.Select(risk => "ai_prose: " + risk))
+            .Concat(review.RequiredFixes.Select(fix => "required_fix: " + fix))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .Take(20)
+            .ToArray();
+
+        return new ReferenceOrchestrationApprovalSummaryPayload(
+            blueprint.ChapterFunction,
+            string.IsNullOrWhiteSpace(blueprint.GlobalPov) ? "not selected" : blueprint.GlobalPov,
+            factBoundaryChanges,
+            emotionalTrajectory,
+            materialUsePlan,
+            rewriteBudget,
+            highRiskFindings);
     }
 
     private static string BuildBlueprintPremise(string? planText, string chapterFunction)
