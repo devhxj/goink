@@ -28,6 +28,7 @@ public sealed class ReferenceBridgeHandlerRoutingTests
         await AssertOkAsync(dispatcher, "DeleteReferenceAnchor", 42L, 99L);
         await AssertOkAsync(dispatcher, "DeleteReferenceAnchors", new DeleteReferenceAnchorsPayload(42, [100, 101]));
         await AssertOkAsync(dispatcher, "DeleteReferenceMaterials", new DeleteReferenceMaterialsPayload(42, ["material-4", "material-5"]));
+        await AssertOkAsync(dispatcher, "RestoreReferenceMaterials", new RestoreReferenceMaterialsPayload(42, ["material-4", "material-5"]));
         await AssertOkAsync(dispatcher, "PromoteReferenceAnchorToWorkspaceCorpus", new PromoteReferenceAnchorToWorkspaceCorpusPayload(
             42,
             99,
@@ -60,7 +61,8 @@ public sealed class ReferenceBridgeHandlerRoutingTests
             ["afterbeat"],
             2,
             10,
-            ProseDuties: ["source_backed_detail"]));
+            ProseDuties: ["source_backed_detail"],
+            ArchiveFilter: ReferenceMaterialArchiveFilters.Archived));
         await AssertOkAsync(dispatcher, "UpdateReferenceMaterialTags", new UpdateReferenceMaterialTagsPayload(
             42,
             "material-1",
@@ -119,12 +121,13 @@ public sealed class ReferenceBridgeHandlerRoutingTests
                 "DeleteAnchor:42:99",
                 "DeleteAnchors:42:100,101",
                 "DeleteMaterials:42:material-4,material-5",
+                "RestoreMaterials:42:material-4,material-5",
                 "PromoteAnchorToWorkspaceCorpus:42:99:imported:migrated,shared",
                 "PromoteAnchorsToWorkspaceCorpus:42:100,101:imported:bulk,shared",
                 "UpdateAnchorMetadata:42:99:Updated Anchor:Updated Author:licensed:workspace:user_verified:curated,rain",
                 "RebuildAnchor:42:99",
                 "GetBuildStatus:42:99",
-                "SearchMaterials:42:99:fog:passage:unease:interiority:close:afterbeat:2:10:source_backed_detail",
+                "SearchMaterials:42:99:fog:passage:unease:interiority:close:afterbeat:2:10:source_backed_detail:archived",
                 "UpdateMaterialTags:42:material-1:interiority:unease:threshold:close:afterbeat:user:verified",
                 "UpdateMaterialsTags:42:material-2,material-3:object_subtext:contained_tension:rain_threshold:limited_close:delayed_reaction:ui:bulk verified",
                 "AdaptMaterial:42:material-1:object=door:L2:door exists",
@@ -341,6 +344,15 @@ public sealed class ReferenceBridgeHandlerRoutingTests
             return ValueTask.CompletedTask;
         }
 
+        public ValueTask RestoreMaterialsAsync(
+            RestoreReferenceMaterialsPayload input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls.Add($"RestoreMaterials:{input.NovelId}:{string.Join(",", input.MaterialIds)}");
+            return ValueTask.CompletedTask;
+        }
+
         public ValueTask<ReferenceAnchorPayload> PromoteAnchorToWorkspaceCorpusAsync(
             PromoteReferenceAnchorToWorkspaceCorpusPayload input,
             CancellationToken cancellationToken)
@@ -394,7 +406,7 @@ public sealed class ReferenceBridgeHandlerRoutingTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Calls.Add(
-                $"SearchMaterials:{input.NovelId}:{string.Join(',', input.AnchorIds)}:{input.Query}:{string.Join(',', input.MaterialTypes)}:{string.Join(',', input.EmotionTags)}:{string.Join(',', input.FunctionTags)}:{string.Join(',', input.PovTags)}:{string.Join(',', input.TechniqueTags)}:{input.Page}:{input.Size}:{string.Join(',', input.ProseDuties ?? [])}");
+                $"SearchMaterials:{input.NovelId}:{string.Join(',', input.AnchorIds)}:{input.Query}:{string.Join(',', input.MaterialTypes)}:{string.Join(',', input.EmotionTags)}:{string.Join(',', input.FunctionTags)}:{string.Join(',', input.PovTags)}:{string.Join(',', input.TechniqueTags)}:{input.Page}:{input.Size}:{string.Join(',', input.ProseDuties ?? [])}:{input.ArchiveFilter}");
             return ValueTask.FromResult(new PageResultPayload<ReferenceMaterialPayload>([], 0, input.Page, input.Size, 0));
         }
 

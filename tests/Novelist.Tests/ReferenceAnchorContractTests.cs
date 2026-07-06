@@ -141,6 +141,22 @@ public sealed class ReferenceAnchorContractTests
     }
 
     [Fact]
+    public void RestoreReferenceMaterialsPayloadUsesStableSnakeCaseJsonNames()
+    {
+        var input = new RestoreReferenceMaterialsPayload(
+            NovelId: 42,
+            MaterialIds: ["material-1", "material-2"]);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(input, BridgeJson.SerializerOptions));
+        var root = json.RootElement;
+
+        Assert.Equal(42, root.GetProperty("novel_id").GetInt64());
+        Assert.Equal(["material-1", "material-2"], root.GetProperty("material_ids").EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray());
+        Assert.False(root.TryGetProperty("NovelId", out _));
+        Assert.False(root.TryGetProperty("MaterialIds", out _));
+    }
+
+    [Fact]
     public void UpdateReferenceAnchorMetadataPayloadUsesStableSnakeCaseJsonNames()
     {
         var input = new UpdateReferenceAnchorMetadataPayload(
@@ -223,7 +239,8 @@ public sealed class ReferenceAnchorContractTests
             Size: 10,
             NarrativeDuties: ["external_evidence"],
             EmotionTransitions: ["neutral->heightened"],
-            ProseDuties: ["source_backed_detail"]);
+            ProseDuties: ["source_backed_detail"],
+            ArchiveFilter: ReferenceMaterialArchiveFilters.Archived);
 
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(payload, BridgeJson.SerializerOptions));
         var root = json.RootElement;
@@ -231,9 +248,11 @@ public sealed class ReferenceAnchorContractTests
         Assert.Equal("external_evidence", root.GetProperty("narrative_duties")[0].GetString());
         Assert.Equal("neutral->heightened", root.GetProperty("emotion_transitions")[0].GetString());
         Assert.Equal("source_backed_detail", root.GetProperty("prose_duties")[0].GetString());
+        Assert.Equal("archived", root.GetProperty("archive_filter").GetString());
         Assert.False(root.TryGetProperty("NarrativeDuties", out _));
         Assert.False(root.TryGetProperty("EmotionTransitions", out _));
         Assert.False(root.TryGetProperty("ProseDuties", out _));
+        Assert.False(root.TryGetProperty("ArchiveFilter", out _));
     }
 
     [Fact]
@@ -851,6 +870,7 @@ public sealed class ReferenceAnchorContractTests
             "DeleteReferenceAnchor",
             "DeleteReferenceAnchors",
             "DeleteReferenceMaterials",
+            "RestoreReferenceMaterials",
             "PromoteReferenceAnchorsToWorkspaceCorpus",
             "PromoteReferenceAnchorToWorkspaceCorpus",
             "UpdateReferenceAnchorMetadata",

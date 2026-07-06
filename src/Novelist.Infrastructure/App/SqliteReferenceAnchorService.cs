@@ -60,6 +60,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
     private static readonly HashSet<string> AllowedSourceTrustLevels = new(ReferenceSourceTrustLevels.All, StringComparer.Ordinal);
     private static readonly HashSet<string> AllowedFeedbackDecisions = new(ReferenceFeedbackDecisions.All, StringComparer.Ordinal);
     private static readonly HashSet<string> AllowedFeedbackTargetTypes = new(ReferenceFeedbackTargetTypes.All, StringComparer.Ordinal);
+    private static readonly HashSet<string> AllowedMaterialArchiveFilters = new(ReferenceMaterialArchiveFilters.Allowed, StringComparer.Ordinal);
 
     private readonly AppInitializationOptions _options;
     private readonly INovelService _novels;
@@ -418,6 +419,9 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         ValidateNovelId(input.NovelId);
         var page = Math.Max(1, input.Page);
         var size = Math.Clamp(input.Size, 1, 100);
+        var archiveFilter = string.IsNullOrWhiteSpace(input.ArchiveFilter)
+            ? ReferenceMaterialArchiveFilters.Active
+            : ValidateAllowedText(input.ArchiveFilter, nameof(input.ArchiveFilter), AllowedMaterialArchiveFilters);
         await _mutex.WaitAsync(cancellationToken);
         try
         {
@@ -435,7 +439,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
                 return new PageResultPayload<ReferenceMaterialPayload>([], 0, page, size, 0);
             }
 
-            var all = await ReadMaterialsAsync(connection, input.NovelId, anchorIds, cancellationToken);
+            var all = await ReadMaterialsAsync(connection, input.NovelId, anchorIds, archiveFilter, cancellationToken);
             var unknownLicenseAnchorIds = await ReadUnknownLicenseAnchorIdsAsync(connection, input.NovelId, anchorIds, cancellationToken);
             var acceptedFeedbackMaterialIds = await ReadAcceptedFeedbackMaterialIdsAsync(
                 connection,
@@ -884,6 +888,25 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         return DeleteMaterialsCoreAsync(input.NovelId, materialIds, cancellationToken);
     }
 
+    public ValueTask RestoreMaterialsAsync(
+        RestoreReferenceMaterialsPayload input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ValidateNovelId(input.NovelId);
+        if (input.MaterialIds.Count == 0)
+        {
+            throw new ArgumentException("At least one reference material must be selected.", nameof(input));
+        }
+
+        var materialIds = input.MaterialIds
+            .Select(materialId => NormalizeRequiredText(materialId, nameof(input.MaterialIds), maxLength: 256))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return RestoreMaterialsCoreAsync(input.NovelId, materialIds, cancellationToken);
+    }
+
     private async ValueTask DeleteMaterialsCoreAsync(
         long novelId,
         IReadOnlyList<string> materialIds,
@@ -922,6 +945,53 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
                 if (affected == 0)
                 {
                     throw new ArgumentException("Reference material does not exist for this novel or visible workspace corpus.", nameof(materialIds));
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    private async ValueTask RestoreMaterialsCoreAsync(
+        long novelId,
+        IReadOnlyList<string> materialIds,
+        CancellationToken cancellationToken)
+    {
+        await _mutex.WaitAsync(cancellationToken);
+        try
+        {
+            var databasePath = await DatabasePathAsync(cancellationToken);
+            await EnsureSchemaAsync(databasePath, cancellationToken);
+            await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+            foreach (var materialId in materialIds)
+            {
+                await using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = $$"""
+                    UPDATE reference_materials
+                    SET archived_at = NULL
+                    WHERE material_id = $material_id
+                      AND archived_at IS NOT NULL
+                      AND anchor_id IN (
+                        SELECT anchor_id
+                        FROM reference_anchors
+                        WHERE {{NovelOrVisibleWorkspaceCorpusPredicate}}
+                      );
+                    """;
+                command.Parameters.AddWithValue("$material_id", materialId);
+                command.Parameters.AddWithValue("$novel_id", novelId);
+                command.Parameters.AddWithValue("$workspace_corpus_novel_id", WorkspaceCorpusNovelId);
+                command.Parameters.AddWithValue("$workspace_corpus_visibility", ReferenceCorpusVisibilities.Workspace);
+                var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+                if (affected == 0)
+                {
+                    throw new ArgumentException("Archived reference material does not exist for this novel or visible workspace corpus.", nameof(materialIds));
                 }
             }
 
@@ -1648,6 +1718,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         SqliteConnection connection,
         long novelId,
         IReadOnlyList<long> anchorIds,
+        string archiveFilter,
         CancellationToken cancellationToken)
     {
         if (anchorIds.Count == 0)
@@ -1672,7 +1743,11 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             FROM reference_materials m
             INNER JOIN reference_anchors a ON a.anchor_id = m.anchor_id
             WHERE {{AnchorAliasNovelOrVisibleWorkspaceCorpusPredicate}}
-              AND m.archived_at IS NULL
+              AND (
+                $archive_filter = $archive_filter_all OR
+                ($archive_filter = $archive_filter_active AND m.archived_at IS NULL) OR
+                ($archive_filter = $archive_filter_archived AND m.archived_at IS NOT NULL)
+              )
               AND m.anchor_id IN ({{string.Join(", ", parameterNames)}})
             ORDER BY CASE WHEN a.novel_id = $novel_id THEN 0 ELSE 1 END,
                      m.anchor_id ASC, m.material_id ASC;
@@ -1680,6 +1755,10 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         command.Parameters.AddWithValue("$novel_id", novelId);
         command.Parameters.AddWithValue("$workspace_corpus_novel_id", WorkspaceCorpusNovelId);
         command.Parameters.AddWithValue("$workspace_corpus_visibility", ReferenceCorpusVisibilities.Workspace);
+        command.Parameters.AddWithValue("$archive_filter", archiveFilter);
+        command.Parameters.AddWithValue("$archive_filter_active", ReferenceMaterialArchiveFilters.Active);
+        command.Parameters.AddWithValue("$archive_filter_archived", ReferenceMaterialArchiveFilters.Archived);
+        command.Parameters.AddWithValue("$archive_filter_all", ReferenceMaterialArchiveFilters.All);
         var materials = new List<ReferenceMaterialPayload>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

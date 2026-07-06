@@ -63,6 +63,10 @@ public interface IReferenceAnchorService
         DeleteReferenceMaterialsPayload input,
         CancellationToken cancellationToken);
 
+    ValueTask RestoreMaterialsAsync(
+        RestoreReferenceMaterialsPayload input,
+        CancellationToken cancellationToken);
+
     ValueTask<ReferenceAnchorPayload> PromoteAnchorToWorkspaceCorpusAsync(
         PromoteReferenceAnchorToWorkspaceCorpusPayload input,
         CancellationToken cancellationToken);

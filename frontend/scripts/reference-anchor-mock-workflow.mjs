@@ -241,6 +241,18 @@ async function createRebuildAndSearchReferenceMaterial(page) {
   await libraryMaterialPanel.getByRole('button', { name: /^归档所选材料$/ }).click()
   await expectVisible(page.getByText('材料库已归档 2 条材料'), 'corpus material library archive message')
   await expectHidden(libraryMaterialPanel.getByText('mat-001'), 'archived corpus material hidden from current library page')
+  await libraryMaterialPanel.getByLabel('材料状态').selectOption('archived')
+  await libraryMaterialPanel.getByRole('button', { name: /^检索材料库$/ }).click()
+  await expectVisible(libraryMaterialPanel.getByText('第 1 / 1 页 · 2 条材料'), 'archived corpus material library result count')
+  await expectVisible(libraryMaterialPanel.getByText('mat-001'), 'archived corpus material visible in archived filter')
+  const archivedFirstMaterial = libraryMaterialPanel.locator('[aria-label="材料库结果"] > .rounded').filter({ hasText: 'mat-001' }).first()
+  await archivedFirstMaterial.getByRole('checkbox').check()
+  await expectVisible(libraryMaterialPanel.getByText('已选 1 条材料'), 'archived corpus material selected for restore')
+  await assertDisabled(libraryMaterialPanel.getByRole('button', { name: /^批量校正材料库$/ }), 'archived material bulk correction disabled')
+  await libraryMaterialPanel.getByRole('button', { name: /^恢复所选材料$/ }).click()
+  await expectVisible(page.getByText('材料库已恢复 1 条材料'), 'corpus material library restore message')
+  await expectHidden(libraryMaterialPanel.getByText('mat-001'), 'restored corpus material hidden from archived page')
+  await libraryMaterialPanel.getByLabel('材料状态').selectOption('active')
 
   await page.getByPlaceholder('参考书名').fill('批量动作参考')
   await page.getByPlaceholder('可选').first().fill('Batch Curator')
@@ -368,6 +380,7 @@ async function verifyBridgeCalls(page) {
     'UpdateReferenceMaterialsTags',
     'DeleteReferenceAnchors',
     'DeleteReferenceMaterials',
+    'RestoreReferenceMaterials',
     'RebuildReferenceAnchor',
     'SearchReferenceMaterials',
     'GenerateReferenceChapterBlueprint',
@@ -466,6 +479,11 @@ async function verifyBridgeCalls(page) {
   assert(libraryDeleteMaterialsCall, 'missing corpus material library DeleteReferenceMaterials call')
   assert.equal(libraryDeleteMaterialsCall.args[0].novel_id, 42, 'corpus material library archive payload must include novel id')
   assert.deepEqual(libraryDeleteMaterialsCall.args[0].material_ids, ['mat-006', 'mat-001'], 'corpus material library archive payload must include selected cross-page material ids')
+
+  const libraryRestoreMaterialsCall = calls.find((call) => call.method === 'RestoreReferenceMaterials')
+  assert(libraryRestoreMaterialsCall, 'missing corpus material library RestoreReferenceMaterials call')
+  assert.equal(libraryRestoreMaterialsCall.args[0].novel_id, 42, 'corpus material library restore payload must include novel id')
+  assert.deepEqual(libraryRestoreMaterialsCall.args[0].material_ids, ['mat-001'], 'corpus material library restore payload must include selected archived material ids')
 
   const startCall = calls.find((call) => call.method === 'StartReferenceOrchestrationRun')
   assert(startCall, 'missing StartReferenceOrchestrationRun call')
@@ -727,6 +745,7 @@ function installReferenceAnchorMockBridge() {
       case 'DeleteReferenceAnchor': return deleteReferenceAnchor(args[0], args[1])
       case 'DeleteReferenceAnchors': return deleteReferenceAnchors(args[0])
       case 'DeleteReferenceMaterials': return deleteReferenceMaterials(args[0])
+      case 'RestoreReferenceMaterials': return restoreReferenceMaterials(args[0])
       case 'UpdateReferenceMaterialTags': return updateReferenceMaterialTags(args[0])
       case 'UpdateReferenceMaterialsTags': return updateReferenceMaterialsTags(args[0])
       case 'RebuildReferenceAnchor': return rebuildReferenceAnchor(args[1])
@@ -894,6 +913,13 @@ function installReferenceAnchorMockBridge() {
     return null
   }
 
+  function restoreReferenceMaterials(input) {
+    for (const materialId of input.material_ids) {
+      state.archivedMaterialIds.delete(materialId)
+    }
+    return null
+  }
+
   function rebuildReferenceAnchor(anchorId) {
     const anchor = state.anchors.find((item) => item.anchor_id === anchorId)
     if (anchor) {
@@ -921,11 +947,12 @@ function installReferenceAnchorMockBridge() {
       if (isMaterialLibrarySearch) {
         const page = input.page ?? 1
         const size = input.size ?? 10
-        const itemIndexes = page === 2 ? [6] : [1, 2, 3, 4]
+        const archivedOnly = input.archive_filter === 'archived'
+        const itemIndexes = archivedOnly ? [1, 6] : page === 2 ? [6] : [1, 2, 3, 4]
         const items = itemIndexes
           .map(material)
-          .filter((item) => !state.archivedMaterialIds.has(item.material_id))
-        return pagedResult(items, page, size, Math.max(0, 11 - state.archivedMaterialIds.size))
+          .filter((item) => archivedOnly ? state.archivedMaterialIds.has(item.material_id) : !state.archivedMaterialIds.has(item.material_id))
+        return pagedResult(items, page, size, archivedOnly ? state.archivedMaterialIds.size : Math.max(0, 11 - state.archivedMaterialIds.size))
       }
 
       return pagedResult([material(1)], input.page ?? 1, input.size ?? 10, 1)

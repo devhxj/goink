@@ -90,6 +90,7 @@ public static class BridgeCompatibilityAppMethods
         "ResumeReferenceOrchestrationRun",
         "ReviseReferenceChapterBlueprint",
         "ReviewReferenceChapterBlueprint",
+        "RestoreReferenceMaterials",
         "SaveAvatar",
         "SaveContent",
         "SaveCover",

@@ -156,6 +156,7 @@ export interface NovelistAppApi {
   RebuildNovelIndex: AppMethod<[number], void>
   RecordReferenceUserFeedback: AppMethod<[reference.RecordUserFeedbackInput], reference.UserFeedback>
   ResumeReferenceOrchestrationRun: AppMethod<[reference.ResumeOrchestrationRunInput], reference.OrchestrationRun>
+  RestoreReferenceMaterials: AppMethod<[reference.RestoreMaterialsInput], void>
   ReviseReferenceChapterBlueprint: AppMethod<[reference.ReviseChapterBlueprintInput], reference.ChapterBlueprint>
   ReviewReferenceChapterBlueprint: AppMethod<[reference.ReviewChapterBlueprintInput], reference.ChapterBlueprintReview>
   SaveAvatar: AppMethod<[number[]], void>
@@ -304,6 +305,7 @@ export const appApi: NovelistAppApi = {
   RebuildNovelIndex: appMethod<NovelistAppApi['RebuildNovelIndex']>('RebuildNovelIndex'),
   RecordReferenceUserFeedback: appMethod<NovelistAppApi['RecordReferenceUserFeedback']>('RecordReferenceUserFeedback'),
   ResumeReferenceOrchestrationRun: appMethod<NovelistAppApi['ResumeReferenceOrchestrationRun']>('ResumeReferenceOrchestrationRun'),
+  RestoreReferenceMaterials: appMethod<NovelistAppApi['RestoreReferenceMaterials']>('RestoreReferenceMaterials'),
   ReviseReferenceChapterBlueprint: appMethod<NovelistAppApi['ReviseReferenceChapterBlueprint']>('ReviseReferenceChapterBlueprint'),
   ReviewReferenceChapterBlueprint: appMethod<NovelistAppApi['ReviewReferenceChapterBlueprint']>('ReviewReferenceChapterBlueprint'),
   SaveAvatar: appMethod<NovelistAppApi['SaveAvatar']>('SaveAvatar'),

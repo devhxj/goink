@@ -5580,5 +5580,10 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
             DeleteReferenceMaterialsPayload input,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public ValueTask RestoreMaterialsAsync(
+            RestoreReferenceMaterialsPayload input,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }

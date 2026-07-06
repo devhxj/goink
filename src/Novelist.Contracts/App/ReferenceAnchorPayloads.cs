@@ -67,6 +67,15 @@ public static class ReferenceMaterialTypes
     public static IReadOnlyList<string> All { get; } = [Chapter, Paragraph, Sentence, Passage];
 }
 
+public static class ReferenceMaterialArchiveFilters
+{
+    public const string Active = "active";
+    public const string Archived = "archived";
+    public const string All = "all";
+
+    public static IReadOnlyList<string> Allowed { get; } = [Active, Archived, All];
+}
+
 public static class ReferenceFeedbackDecisions
 {
     public const string Accepted = "accepted";
@@ -162,6 +171,10 @@ public sealed record DeleteReferenceAnchorsPayload(
     [property: JsonPropertyName("anchor_ids")] IReadOnlyList<long> AnchorIds);
 
 public sealed record DeleteReferenceMaterialsPayload(
+    [property: JsonPropertyName("novel_id")] long NovelId,
+    [property: JsonPropertyName("material_ids")] IReadOnlyList<string> MaterialIds);
+
+public sealed record RestoreReferenceMaterialsPayload(
     [property: JsonPropertyName("novel_id")] long NovelId,
     [property: JsonPropertyName("material_ids")] IReadOnlyList<string> MaterialIds);
 
@@ -318,7 +331,10 @@ public sealed record SearchReferenceMaterialsPayload(
     IReadOnlyList<string>? EmotionTransitions = null,
     [property: JsonPropertyName("prose_duties")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<string>? ProseDuties = null);
+    IReadOnlyList<string>? ProseDuties = null,
+    [property: JsonPropertyName("archive_filter")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? ArchiveFilter = null);
 
 public sealed record ReferenceSlotValuePayload(
     [property: JsonPropertyName("slot_name")] string SlotName,

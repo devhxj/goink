@@ -3373,6 +3373,192 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RestoreMaterialsMakesArchivedMaterialsSearchableAgain()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var ownerNovel = await novels.CreateNovelAsync(new CreateNovelPayload("材料恢复来源", "", ""), CancellationToken.None);
+        var consumingNovel = await novels.CreateNovelAsync(new CreateNovelPayload("材料恢复使用方", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "material-restore.md",
+            """
+            雨声压住门外的街。
+
+            林岚把杯子推远，没有立刻说话。
+            """);
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(
+                ownerNovel.Id,
+                "共享材料待恢复参考",
+                null,
+                sourcePath,
+                "markdown",
+                "user_provided",
+                ReferenceCorpusVisibilities.Workspace),
+            CancellationToken.None);
+        var beforeSearch = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                consumingNovel.Id,
+                AnchorIds: [anchor.AnchorId],
+                Query: "杯子",
+                MaterialTypes: [ReferenceMaterialTypes.Sentence],
+                EmotionTags: [],
+                FunctionTags: [],
+                PovTags: [],
+                TechniqueTags: [],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+        var materialId = Assert.Single(beforeSearch.Items).MaterialId;
+
+        await service.DeleteMaterialsAsync(
+            new DeleteReferenceMaterialsPayload(consumingNovel.Id, [materialId]),
+            CancellationToken.None);
+
+        var defaultSearch = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                consumingNovel.Id,
+                AnchorIds: [anchor.AnchorId],
+                Query: "杯子",
+                MaterialTypes: [ReferenceMaterialTypes.Sentence],
+                EmotionTags: [],
+                FunctionTags: [],
+                PovTags: [],
+                TechniqueTags: [],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+        Assert.Empty(defaultSearch.Items);
+
+        var archivedSearch = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                consumingNovel.Id,
+                AnchorIds: [anchor.AnchorId],
+                Query: "杯子",
+                MaterialTypes: [ReferenceMaterialTypes.Sentence],
+                EmotionTags: [],
+                FunctionTags: [],
+                PovTags: [],
+                TechniqueTags: [],
+                Page: 1,
+                Size: 10,
+                ArchiveFilter: ReferenceMaterialArchiveFilters.Archived),
+            CancellationToken.None);
+        Assert.Contains(archivedSearch.Items, material => material.MaterialId == materialId);
+
+        await service.RestoreMaterialsAsync(
+            new RestoreReferenceMaterialsPayload(consumingNovel.Id, [materialId]),
+            CancellationToken.None);
+
+        Assert.Null(await ReadMaterialArchivedAtAsync(options, materialId));
+        var restoredSearch = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                consumingNovel.Id,
+                AnchorIds: [anchor.AnchorId],
+                Query: "杯子",
+                MaterialTypes: [ReferenceMaterialTypes.Sentence],
+                EmotionTags: [],
+                FunctionTags: [],
+                PovTags: [],
+                TechniqueTags: [],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+        Assert.Contains(restoredSearch.Items, material => material.MaterialId == materialId);
+
+        var adapted = await service.AdaptMaterialAsync(
+            new AdaptReferenceMaterialPayload(
+                consumingNovel.Id,
+                materialId,
+                SlotValues: [],
+                MaxRewriteLevel: ReferenceRewriteLevels.L2,
+                SceneFacts: []),
+            CancellationToken.None);
+        Assert.Equal(materialId, adapted.MaterialId);
+    }
+
+    [Fact]
+    public async Task RestoreMaterialsRollsBackWhenAnyMaterialIsNotAccessible()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var targetNovel = await novels.CreateNovelAsync(new CreateNovelPayload("材料恢复目标", "", ""), CancellationToken.None);
+        var otherNovel = await novels.CreateNovelAsync(new CreateNovelPayload("材料恢复其他", "", ""), CancellationToken.None);
+        var targetPath = CreateSourceFile("material-restore-target.md", "目标共享材料。");
+        var privatePath = CreateSourceFile("material-restore-private.md", "其他小说私有材料。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var targetAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(
+                targetNovel.Id,
+                "目标共享恢复参考",
+                null,
+                targetPath,
+                "markdown",
+                "user_provided",
+                ReferenceCorpusVisibilities.Workspace),
+            CancellationToken.None);
+        var privateAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(otherNovel.Id, "其他私有恢复参考", null, privatePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var targetMaterial = Assert.Single((await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                targetNovel.Id,
+                [targetAnchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None)).Items);
+        var privateMaterial = Assert.Single((await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                otherNovel.Id,
+                [privateAnchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None)).Items);
+        await service.DeleteMaterialsAsync(
+            new DeleteReferenceMaterialsPayload(targetNovel.Id, [targetMaterial.MaterialId]),
+            CancellationToken.None);
+        await service.DeleteMaterialsAsync(
+            new DeleteReferenceMaterialsPayload(otherNovel.Id, [privateMaterial.MaterialId]),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.RestoreMaterialsAsync(
+                new RestoreReferenceMaterialsPayload(targetNovel.Id, [targetMaterial.MaterialId, privateMaterial.MaterialId]),
+                CancellationToken.None));
+
+        Assert.NotNull(await ReadMaterialArchivedAtAsync(options, targetMaterial.MaterialId));
+        var targetDefaultSearch = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                targetNovel.Id,
+                [targetAnchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        Assert.DoesNotContain(targetDefaultSearch.Items, material => material.MaterialId == targetMaterial.MaterialId);
+    }
+
+    [Fact]
     public async Task BridgeReferenceAnchorHandlersCreateAndListAnchors()
     {
         var options = CreateOptions();

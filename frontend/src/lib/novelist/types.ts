@@ -540,6 +540,11 @@ export namespace reference {
     material_ids: string[]
   }
 
+  export interface RestoreMaterialsInput {
+    novel_id: number
+    material_ids: string[]
+  }
+
   export interface MaterialQuery {
     query: string
     material_types: string[]
@@ -564,6 +569,7 @@ export namespace reference {
     narrative_duties?: string[] | null
     emotion_transitions?: string[] | null
     prose_duties?: string[] | null
+    archive_filter?: 'active' | 'archived' | 'all' | null
   }
 
   export interface SlotValue {

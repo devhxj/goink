@@ -49,6 +49,14 @@ public static class ReferenceAnchorBridgeHandlers
             return null;
         });
 
+        dispatcher.Register("RestoreReferenceMaterials", async (context, cancellationToken) =>
+        {
+            await service.RestoreMaterialsAsync(
+                ReadObjectArg<RestoreReferenceMaterialsPayload>(context.Payload, 0, "input"),
+                cancellationToken);
+            return null;
+        });
+
         dispatcher.Register("PromoteReferenceAnchorToWorkspaceCorpus", async (context, cancellationToken) =>
             await service.PromoteAnchorToWorkspaceCorpusAsync(
                 ReadObjectArg<PromoteReferenceAnchorToWorkspaceCorpusPayload>(context.Payload, 0, "input"),

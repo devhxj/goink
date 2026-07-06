@@ -72,6 +72,7 @@ type MaterialSearchFilters = {
 
 type AnchorScopeFilter = 'all' | 'novel' | 'workspace_corpus'
 type MaterialPreviewSort = 'default' | 'score_desc' | 'material_id_asc'
+type MaterialArchiveFilter = 'active' | 'archived'
 
 type MaterialPreviewState = {
   items: reference.Material[]
@@ -250,6 +251,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [materialLibrary, setMaterialLibrary] = useState<MaterialLibraryState>(EMPTY_MATERIAL_LIBRARY)
   const [materialLibraryPageQuery, setMaterialLibraryPageQuery] = useState('')
   const [materialLibrarySort, setMaterialLibrarySort] = useState<MaterialPreviewSort>('default')
+  const [materialLibraryArchiveFilter, setMaterialLibraryArchiveFilter] = useState<MaterialArchiveFilter>('active')
   const [selectedLibraryMaterialIds, setSelectedLibraryMaterialIds] = useState<string[]>([])
   const [bulkLibraryMaterialTagForm, setBulkLibraryMaterialTagForm] = useState<MaterialTagForm>(EMPTY_MATERIAL_TAG_FORM)
   const [blueprintForm, setBlueprintForm] = useState<BlueprintForm>(EMPTY_BLUEPRINT_FORM)
@@ -755,6 +757,15 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     })
   }
 
+  function changeMaterialLibraryArchiveFilter(value: MaterialArchiveFilter) {
+    setMaterialLibraryArchiveFilter(value)
+    setMaterialLibrary(EMPTY_MATERIAL_LIBRARY)
+    setMaterialLibraryPageQuery('')
+    setMaterialLibrarySort('default')
+    setSelectedLibraryMaterialIds([])
+    setBulkLibraryMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
+  }
+
   async function searchMaterialLibrary(page = 1, resetPageView = false) {
     const result = await run(() => app.SearchReferenceMaterials({
       novel_id: novelId,
@@ -770,6 +781,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       narrative_duties: lines(materialLibraryFilters.narrativeDuties),
       emotion_transitions: lines(materialLibraryFilters.emotionTransitions),
       prose_duties: lines(materialLibraryFilters.proseDuties),
+      archive_filter: materialLibraryArchiveFilter,
     }))
     if (result) {
       setMaterialLibrary({
@@ -840,6 +852,36 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       total: Math.max(0, current.total - archivedSet.size),
     }))
     setSelectedLibraryMaterialIds(ids => ids.filter(id => !archivedSet.has(id)))
+    setBulkLibraryMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
+  }
+
+  async function restoreSelectedLibraryMaterials() {
+    if (selectedLibraryMaterialIds.length === 0) return
+    const restoredIds = [...selectedLibraryMaterialIds]
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await app.RestoreReferenceMaterials({
+        novel_id: novelId,
+        material_ids: restoredIds,
+      })
+      setMessage(`材料库已恢复 ${restoredIds.length} 条材料`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '操作失败')
+      setLoading(false)
+      return
+    } finally {
+      setLoading(false)
+    }
+
+    const restoredSet = new Set(restoredIds)
+    setMaterialLibrary(current => ({
+      ...current,
+      items: current.items.filter(item => !restoredSet.has(item.material_id)),
+      total: Math.max(0, current.total - restoredSet.size),
+    }))
+    setSelectedLibraryMaterialIds(ids => ids.filter(id => !restoredSet.has(id)))
     setBulkLibraryMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
   }
 
@@ -1779,6 +1821,19 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                       />
                     </Field>
                   </div>
+                  <div className="w-32">
+                    <Field label="材料状态">
+                      <select
+                        value={materialLibraryArchiveFilter}
+                        onChange={event => changeMaterialLibraryArchiveFilter(event.target.value as MaterialArchiveFilter)}
+                        className={inputClass}
+                        aria-label="材料状态"
+                      >
+                        <option value="active">当前材料</option>
+                        <option value="archived">已归档</option>
+                      </select>
+                    </Field>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -1864,19 +1919,19 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Field label="材料库批量功能">
-                          <input value={bulkLibraryMaterialTagForm.functionTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, functionTag: event.target.value }))} className={inputClass} aria-label="材料库批量功能标签" />
+                          <input value={bulkLibraryMaterialTagForm.functionTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, functionTag: event.target.value }))} className={inputClass} aria-label="材料库批量功能标签" disabled={materialLibraryArchiveFilter === 'archived'} />
                         </Field>
                         <Field label="材料库批量情绪">
-                          <input value={bulkLibraryMaterialTagForm.emotionTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, emotionTag: event.target.value }))} className={inputClass} aria-label="材料库批量情绪标签" />
+                          <input value={bulkLibraryMaterialTagForm.emotionTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, emotionTag: event.target.value }))} className={inputClass} aria-label="材料库批量情绪标签" disabled={materialLibraryArchiveFilter === 'archived'} />
                         </Field>
                         <Field label="材料库批量场景">
-                          <input value={bulkLibraryMaterialTagForm.sceneTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, sceneTag: event.target.value }))} className={inputClass} aria-label="材料库批量场景标签" />
+                          <input value={bulkLibraryMaterialTagForm.sceneTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, sceneTag: event.target.value }))} className={inputClass} aria-label="材料库批量场景标签" disabled={materialLibraryArchiveFilter === 'archived'} />
                         </Field>
                         <Field label="材料库批量 POV">
-                          <input value={bulkLibraryMaterialTagForm.povTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, povTag: event.target.value }))} className={inputClass} aria-label="材料库批量 POV 标签" />
+                          <input value={bulkLibraryMaterialTagForm.povTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, povTag: event.target.value }))} className={inputClass} aria-label="材料库批量 POV 标签" disabled={materialLibraryArchiveFilter === 'archived'} />
                         </Field>
                         <Field label="材料库批量技法">
-                          <input value={bulkLibraryMaterialTagForm.techniqueTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, techniqueTag: event.target.value }))} className={inputClass} aria-label="材料库批量技法标签" />
+                          <input value={bulkLibraryMaterialTagForm.techniqueTag} onChange={event => setBulkLibraryMaterialTagForm(form => ({ ...form, techniqueTag: event.target.value }))} className={inputClass} aria-label="材料库批量技法标签" disabled={materialLibraryArchiveFilter === 'archived'} />
                         </Field>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -1885,7 +1940,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                           onClick={() => {
                             void saveBulkLibraryMaterialTags()
                           }}
-                          disabled={loading || selectedLibraryMaterialIds.length === 0 || !hasBulkLibraryMaterialTagOverride}
+                          disabled={loading || materialLibraryArchiveFilter === 'archived' || selectedLibraryMaterialIds.length === 0 || !hasBulkLibraryMaterialTagOverride}
                           className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                         >
                           <Check className="h-3.5 w-3.5" />批量校正材料库
@@ -1893,21 +1948,34 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                         <button
                           type="button"
                           onClick={() => setBulkLibraryMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)}
-                          disabled={loading || !hasBulkLibraryMaterialTagOverride}
+                          disabled={loading || materialLibraryArchiveFilter === 'archived' || !hasBulkLibraryMaterialTagOverride}
                           className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
                         >
                           <X className="h-3.5 w-3.5" />清空批量标签
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void archiveSelectedLibraryMaterials()
-                          }}
-                          disabled={loading || selectedLibraryMaterialIds.length === 0}
-                          className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
-                        >
-                          <Archive className="h-3.5 w-3.5" />归档所选材料
-                        </button>
+                        {materialLibraryArchiveFilter === 'archived' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void restoreSelectedLibraryMaterials()
+                            }}
+                            disabled={loading || selectedLibraryMaterialIds.length === 0}
+                            className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                          >
+                            <RefreshCcw className="h-3.5 w-3.5" />恢复所选材料
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void archiveSelectedLibraryMaterials()
+                            }}
+                            disabled={loading || selectedLibraryMaterialIds.length === 0}
+                            className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                          >
+                            <Archive className="h-3.5 w-3.5" />归档所选材料
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
