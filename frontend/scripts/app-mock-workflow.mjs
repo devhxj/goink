@@ -212,6 +212,7 @@ async function runStressSuite(browser, url) {
   const stressPath = `chapters/${stressChapterNumber}.md`
   const largeText = makeLargeChineseFixture(runConfig.stressSizeBytes)
   const chapters = makeStressChapters(chapterCount, stressTitle)
+  const referenceStress = makeStressReferenceFixture(largeText)
   const page = await newAppPage(
     browser,
     consoleErrors,
@@ -231,6 +232,11 @@ async function runStressSuite(browser, url) {
         longest_streak: 1,
         total_novels: 1,
         total_chapters: chapterCount,
+      },
+      referenceStress,
+      referenceAnchors: [referenceStress.anchor],
+      referenceBuildStatuses: {
+        [String(referenceStress.anchor.anchor_id)]: referenceStress.buildStatus,
       },
     },
     { width: 1440, height: 1100 },
@@ -256,6 +262,10 @@ async function runStressSuite(browser, url) {
   )
   await page.screenshot({ path: path.join(outputDir, 'app-stress-10mb-editor.png'), fullPage: true })
 
+  logStep('checking 10MB reference material browsing and binding')
+  const referenceMetrics = await verifyStressReferenceMaterialPath(page, referenceStress)
+  await page.screenshot({ path: path.join(outputDir, 'app-stress-10mb-reference.png'), fullPage: true })
+
   const callCount = await page.evaluate(() => window.__appMockState.calls.length)
   await fs.writeFile(
     path.join(outputDir, 'stress-metrics.json'),
@@ -265,6 +275,13 @@ async function runStressSuite(browser, url) {
       characterCount: largeText.length,
       chapterCount,
       selectedPath: stressPath,
+      referenceSourcePath: referenceStress.anchor.source_path,
+      referenceSourceBytes: referenceStress.sourceBytes,
+      referenceSourceCharacters: referenceStress.sourceCharacters,
+      referenceSourceSegmentCount: referenceStress.buildStatus.source_segment_count,
+      referenceMaterialCount: referenceStress.materialTotal,
+      referenceMaterialPages: Math.ceil(referenceStress.materialTotal / 10),
+      ...referenceMetrics,
       bridgeCallCount: callCount,
       elapsedMs: Date.now() - startedAt,
     }, null, 2)}\n`,
@@ -1929,8 +1946,108 @@ async function verifyStressGuardrails(page) {
   const calls = await page.evaluate(() => window.__appMockState.calls)
   const methods = calls.map((call) => call.method)
   assert(methods.includes('GetContent'), 'stress workflow must load the large chapter through the bridge')
+  assert(methods.includes('GetReferenceAnchors'), 'stress workflow must load reference anchors')
+  assert(methods.includes('RebuildReferenceAnchor'), 'stress workflow must exercise reference import/segmentation status')
+  assert(methods.includes('SearchReferenceMaterials'), 'stress workflow must search generated reference materials')
+  assert(methods.includes('GenerateReferenceChapterBlueprint'), 'stress workflow must generate a reference blueprint')
+  assert(methods.includes('BindReferenceBlueprintMaterials'), 'stress workflow must bind generated materials into the blueprint')
   assert(!methods.includes('SaveContent'), 'stress workflow must not save large chapter content implicitly')
   assert(!methods.includes('runtime.shell.openExternal'), 'stress workflow must not open external URLs')
+
+  const rebuildCall = calls.find((call) => call.method === 'RebuildReferenceAnchor')
+  assert(rebuildCall?.result?.source_segment_count > 0, 'stress rebuild must report source segments')
+  assert(rebuildCall?.result?.material_count > 0, 'stress rebuild must report generated materials')
+
+  const defaultLibrarySearch = calls.find((call) =>
+    call.method === 'SearchReferenceMaterials' &&
+    Array.isArray(call.args[0]?.anchor_ids) &&
+    call.args[0].anchor_ids.length === 0 &&
+    call.args[0].page === 1)
+  assert(defaultLibrarySearch, 'stress material library search must not require manually selected anchors')
+  assert(defaultLibrarySearch.result?.total >= 1_200, 'stress material library search must expose a large paged material set')
+
+  const blueprintCall = calls.find((call) => call.method === 'GenerateReferenceChapterBlueprint')
+  assert(blueprintCall, 'stress workflow must generate a blueprint')
+  assert.deepEqual(blueprintCall.args[0].anchor_ids, [], 'stress blueprint generation must work without manual per-novel corpus binding')
+
+  const bindCall = calls.find((call) => call.method === 'BindReferenceBlueprintMaterials')
+  assert(bindCall, 'stress workflow must bind blueprint materials')
+  assert(bindCall.result?.links?.some((link) => String(link.material_id).startsWith('stress-mat-')), 'stress binding must use generated stress materials')
+  assertBridgeCallOrder(calls, 'ReviewReferenceChapterBlueprint', 'ApproveReferenceChapterBlueprint')
+  assertBridgeCallOrder(calls, 'ApproveReferenceChapterBlueprint', 'BindReferenceBlueprintMaterials')
+}
+
+function assertBridgeCallOrder(calls, beforeMethod, afterMethod) {
+  const beforeIndex = calls.findIndex((call) => call.method === beforeMethod)
+  const afterIndex = calls.findIndex((call) => call.method === afterMethod)
+  assert(beforeIndex >= 0, `Missing bridge call ${beforeMethod}`)
+  assert(afterIndex >= 0, `Missing bridge call ${afterMethod}`)
+  assert(beforeIndex < afterIndex, `${beforeMethod} must happen before ${afterMethod}`)
+}
+
+async function verifyStressReferenceMaterialPath(page, referenceStress) {
+  await clickActivity(page, '参考锚定')
+  await expectVisible(page.getByRole('heading', { name: /参考锚定/ }), 'stress reference heading')
+  await expectVisible(page.getByText(referenceStress.anchor.title), 'stress reference anchor title')
+  await expectVisible(page.getByText(referenceStress.anchor.status), 'stress reference anchor ready state')
+
+  await page.getByTitle('重建').first().click()
+  await expectVisible(page.getByText('锚点已重建'), 'stress anchor rebuild message')
+
+  const rebuildStatus = await page.evaluate(async ({ novelId, anchorId }) =>
+    await window.novelist.invoke('GetReferenceAnchorBuildStatus', { args: [novelId, anchorId] }),
+  { novelId: referenceStress.anchor.novel_id, anchorId: referenceStress.anchor.anchor_id })
+  assert.equal(rebuildStatus.source_segment_count, referenceStress.buildStatus.source_segment_count, 'stress build status must preserve source segment count')
+  assert.equal(rebuildStatus.material_count, referenceStress.buildStatus.material_count, 'stress build status must preserve material count')
+
+  const anchorTitlePattern = escapeRegExp(referenceStress.anchor.title)
+  await page.getByRole('button', { name: new RegExp(`浏览 ${anchorTitlePattern} 的材料`) }).click()
+  await expectVisible(page.getByText(`第 1 / ${Math.ceil(referenceStress.materialTotal / 5)} 页 · 共 ${referenceStress.materialTotal} 条`), 'stress anchor material pagination summary')
+  await expectVisible(page.getByText('stress-mat-0001'), 'stress anchor material first id')
+  await expectVisible(page.getByText('stress-seg-0001'), 'stress anchor material provenance segment')
+  await page.getByRole('button', { name: new RegExp(`浏览 ${anchorTitlePattern} 的下一页材料`) }).click()
+  await expectVisible(page.getByText('stress-mat-0006'), 'stress anchor material next page id')
+
+  const libraryPanel = page.locator('.rounded-lg').filter({ hasText: '材料库' }).first()
+  const searchStartedAt = Date.now()
+  await libraryPanel.getByLabel('材料库搜索').fill('10MB 水痕')
+  await libraryPanel.getByRole('button', { name: /^检索材料库$/ }).click()
+  await expectVisible(libraryPanel.getByText(`第 1 / ${Math.ceil(referenceStress.materialTotal / 10)} 页 · ${referenceStress.materialTotal} 条材料`), 'stress material library pagination summary')
+  const materialSearchElapsedMs = Date.now() - searchStartedAt
+  assert(materialSearchElapsedMs < 10_000, `stress material library search took ${materialSearchElapsedMs}ms`)
+  await expectVisible(libraryPanel.getByText('stress-mat-0001'), 'stress material library first id')
+  await expectVisible(libraryPanel.getByText('stress-seg-0001'), 'stress material library provenance segment')
+  await libraryPanel.getByRole('button', { name: /^下一页$/ }).click()
+  await expectVisible(libraryPanel.getByText(`第 2 / ${Math.ceil(referenceStress.materialTotal / 10)} 页 · ${referenceStress.materialTotal} 条材料`), 'stress material library next page summary')
+  await expectVisible(libraryPanel.getByText('stress-mat-0011'), 'stress material library next page id')
+
+  await page.getByRole('button', { name: /打开高级模式/ }).click()
+  await expectVisible(page.getByRole('button', { name: /生成蓝图/ }), 'stress manual blueprint generation visible')
+  const blueprintPanel = page.locator('.rounded-md').filter({ hasText: '章节蓝图' }).first()
+  await blueprintPanel.getByLabel('章节号').fill(String(referenceStress.chapterNumber))
+  await blueprintPanel.getByLabel('标题').fill('10MB 材料绑定验收')
+  await blueprintPanel.getByLabel('章节目标').fill('验证大体量参考源自动分段后可检索、分页浏览并绑定蓝图。')
+  await blueprintPanel.getByLabel('已知事实').fill('只使用10MB参考源可审计材料\n保持受限视角')
+  await blueprintPanel.getByLabel('禁止事实').fill('未经来源支持的门外身份')
+  await blueprintPanel.getByRole('button', { name: /生成蓝图/ }).click()
+  await expectVisible(page.getByText('章节蓝图已生成'), 'stress blueprint generated message')
+
+  const bindingStartedAt = Date.now()
+  const detail = page.getByTestId('reference-blueprint-detail')
+  await detail.getByRole('button', { name: /评审/ }).click()
+  await expectVisible(page.getByText('蓝图评审已完成'), 'stress blueprint reviewed message')
+  await detail.getByRole('button', { name: /批准/ }).click()
+  await expectVisible(page.getByText('蓝图已批准'), 'stress blueprint approved message')
+  await detail.getByRole('button', { name: /绑定/ }).click()
+  await expectVisible(page.getByText('材料已绑定到蓝图'), 'stress materials bound message')
+  const blueprintBindingElapsedMs = Date.now() - bindingStartedAt
+  assert(blueprintBindingElapsedMs < 10_000, `stress blueprint binding took ${blueprintBindingElapsedMs}ms`)
+  await expectVisible(detail.getByText('stress-mat-0001'), 'stress bound generated material id')
+
+  return {
+    materialSearchElapsedMs,
+    blueprintBindingElapsedMs,
+  }
 }
 
 async function invokeProbe(page, method, timeoutMs = 1_000) {
@@ -1989,6 +2106,56 @@ function makeLargeChineseFixture(targetBytes) {
   }
 
   return chunks.join('')
+}
+
+function makeStressReferenceFixture(sourceText) {
+  const sourceBytes = Buffer.byteLength(sourceText, 'utf8')
+  const sourceSegmentCount = Math.max(1_200, Math.ceil(sourceBytes / 4096))
+  const materialTotal = Math.max(1_200, sourceSegmentCount)
+  const anchorId = 1001
+  const chapterNumber = runConfig.stressChapterCount
+  const sourcePath = 'D:\\books\\stress-reference-10mb.md'
+
+  const anchor = {
+    anchor_id: anchorId,
+    novel_id: 42,
+    title: '10MB 自动分段参考源',
+    author: 'Phase 13 Stress Fixture',
+    source_path: sourcePath,
+    source_kind: 'markdown',
+    license_status: 'user_provided',
+    visibility: 'workspace',
+    source_trust: 'user_verified',
+    owner_scope: 'workspace_corpus',
+    owner_novel_id: null,
+    user_tags: ['10MB', '自动分段', '压力测试'],
+    source_file_hash: `hash-stress-${sourceBytes}`,
+    build_version: 'mock-reference-stress-v1',
+    status: 'ready',
+    created_at: '2026-07-05T12:00:00.000Z',
+    updated_at: '2026-07-05T12:00:00.000Z',
+  }
+
+  return {
+    anchor,
+    buildStatus: {
+      novel_id: 42,
+      anchor_id: anchorId,
+      status: 'ready',
+      stage: 'completed',
+      source_segment_count: sourceSegmentCount,
+      material_count: materialTotal,
+      slot_count: Math.ceil(materialTotal / 5),
+      vector_count: 0,
+      last_error: '',
+      updated_at: '2026-07-05T12:00:00.000Z',
+    },
+    sourceBytes,
+    sourceCharacters: sourceText.length,
+    materialTotal,
+    chapterNumber,
+    sourcePath,
+  }
 }
 
 function realisticWritingText() {
@@ -2870,6 +3037,27 @@ function installConfigurableAppMockBridge(options = {}) {
     'skills/节奏控制.md': '---\nname: 节奏控制\n---\n保持停顿和动作之间的张力。',
     '/builtin/skills/dialogue.md': '---\nname: 对话潜台词\n---\n用话外之意推动场景。',
   }
+  const defaultReferenceAnchors = [
+    {
+      anchor_id: 101,
+      novel_id: 42,
+      title: '全局雨夜参考',
+      author: 'Mock Author',
+      source_path: 'D:\\books\\rain-reference.md',
+      source_kind: 'markdown',
+      license_status: 'user_provided',
+      visibility: 'workspace',
+      source_trust: 'user_verified',
+      owner_scope: 'workspace_corpus',
+      owner_novel_id: null,
+      user_tags: ['雨夜', '全局语料'],
+      source_file_hash: 'hash-anchor-app-001',
+      build_version: 'mock-reference-v1',
+      status: 'ready',
+      created_at: now,
+      updated_at: now,
+    },
+  ]
   const state = {
     calls: [],
     emittedEvents: [],
@@ -2895,6 +3083,10 @@ function installConfigurableAppMockBridge(options = {}) {
     savedCovers: [],
     savedAvatars: [],
     createdReferenceAnchors: [],
+    referenceAnchors: options.referenceAnchors ?? defaultReferenceAnchors,
+    referenceBuildStatuses: options.referenceBuildStatuses ?? {},
+    referenceBlueprints: {},
+    nextReferenceBlueprintId: 701,
     contentByPath: options.contentByPath ?? defaultContentByPath,
     initialized: options.initialized ?? true,
     novels: options.novels ?? [defaultNovel],
@@ -3228,9 +3420,17 @@ function installConfigurableAppMockBridge(options = {}) {
       case 'GetEmbeddingConfig': return embeddingConfig()
       case 'GetSqliteVecStatus': return sqliteVecStatus()
       case 'GetReferenceAnchors': return referenceAnchors()
+      case 'GetReferenceAnchorBuildStatus': return referenceBuildStatus(args[1])
       case 'PickReferenceSourceFile': return options.pickedReferenceSourceFile ?? null
       case 'CreateReferenceAnchor': return createReferenceAnchor(args[0])
-      case 'GetReferenceChapterBlueprints': return []
+      case 'RebuildReferenceAnchor': return rebuildReferenceAnchor(args[1])
+      case 'SearchReferenceMaterials': return searchReferenceMaterials(args[0])
+      case 'GetReferenceChapterBlueprints': return Object.values(state.referenceBlueprints).map(toReferenceBlueprintSummary)
+      case 'GetReferenceChapterBlueprint': return state.referenceBlueprints[String(args[1])] ?? null
+      case 'GenerateReferenceChapterBlueprint': return generateReferenceBlueprint(args[0])
+      case 'ReviewReferenceChapterBlueprint': return reviewReferenceBlueprint(args[0])
+      case 'ApproveReferenceChapterBlueprint': return approveReferenceBlueprint(args[0])
+      case 'BindReferenceBlueprintMaterials': return bindReferenceBlueprintMaterials(args[0])
       case 'GetReferenceOrchestrationRuns': return []
       case 'GetReferenceOrchestrationRunEvents': return []
       default:
@@ -4071,25 +4271,7 @@ function installConfigurableAppMockBridge(options = {}) {
 
   function referenceAnchors() {
     return [
-      {
-        anchor_id: 101,
-        novel_id: 42,
-        title: '全局雨夜参考',
-        author: 'Mock Author',
-        source_path: 'D:\\books\\rain-reference.md',
-        source_kind: 'markdown',
-        license_status: 'user_provided',
-        visibility: 'workspace',
-        source_trust: 'user_verified',
-        owner_scope: 'workspace_corpus',
-        owner_novel_id: null,
-        user_tags: ['雨夜', '全局语料'],
-        source_file_hash: 'hash-anchor-app-001',
-        build_version: 'mock-reference-v1',
-        status: 'ready',
-        created_at: now,
-        updated_at: now,
-      },
+      ...state.referenceAnchors,
       ...state.createdReferenceAnchors,
     ]
   }
@@ -4118,6 +4300,312 @@ function installConfigurableAppMockBridge(options = {}) {
     return anchor
   }
 
+  function referenceBuildStatus(anchorId) {
+    const key = String(anchorId)
+    if (state.referenceBuildStatuses[key]) {
+      return state.referenceBuildStatuses[key]
+    }
+
+    return {
+      novel_id: 42,
+      anchor_id: anchorId,
+      status: 'ready',
+      stage: 'completed',
+      source_segment_count: 3,
+      material_count: 6,
+      slot_count: 2,
+      vector_count: 0,
+      last_error: '',
+      updated_at: now,
+    }
+  }
+
+  function rebuildReferenceAnchor(anchorId) {
+    const status = referenceBuildStatus(anchorId)
+    state.referenceBuildStatuses[String(anchorId)] = status
+    state.referenceAnchors = state.referenceAnchors.map(anchor =>
+      anchor.anchor_id === anchorId ? { ...anchor, status: 'ready', updated_at: now } : anchor)
+    state.createdReferenceAnchors = state.createdReferenceAnchors.map(anchor =>
+      anchor.anchor_id === anchorId ? { ...anchor, status: 'ready', updated_at: now } : anchor)
+    return status
+  }
+
+  function searchReferenceMaterials(input = {}) {
+    if (options.referenceStress) {
+      return searchStressReferenceMaterials(input)
+    }
+
+    return pageResult([])
+  }
+
+  function searchStressReferenceMaterials(input = {}) {
+    const page = Math.max(1, Number(input.page ?? 1))
+    const size = Math.max(1, Number(input.size ?? 10))
+    const total = options.referenceStress.materialTotal
+    const anchorIds = Array.isArray(input.anchor_ids) ? input.anchor_ids : []
+    const anchorScopedPreview = anchorIds.length === 1 && size === 5
+    const startIndex = (page - 1) * size + 1
+    const endIndex = Math.min(total, startIndex + size - 1)
+    const items = []
+
+    if (startIndex <= total) {
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        items.push(stressReferenceMaterial(index))
+      }
+    }
+
+    return pagedResult(items, page, size, anchorScopedPreview ? total : total)
+  }
+
+  function stressReferenceMaterial(index) {
+    const padded = String(index).padStart(4, '0')
+    const anchorId = options.referenceStress.anchor.anchor_id
+    return {
+      material_id: `stress-mat-${padded}`,
+      anchor_id: anchorId,
+      source_segment_id: `stress-seg-${padded}`,
+      material_type: index % 5 === 0 ? 'passage' : 'sentence',
+      function_tag: index % 3 === 0 ? 'environment' : 'emotion_evidence',
+      emotion_tag: 'restrained',
+      scene_tag: 'rain_threshold',
+      pov_tag: 'close',
+      technique_tag: index % 2 === 0 ? 'delayed_reaction' : 'subtext',
+      function_confidence: 0.94,
+      emotion_confidence: 0.91,
+      pov_confidence: 0.9,
+      text: `10MB 水痕参考材料 ${padded}：雨声压着旧城门，林岚只记录杯底半圈水痕、灯影和门缝停顿，不提前确认门外身份。`,
+      source_hash: `hash-stress-material-${padded}`,
+      extractor_version: 'mock-stress-extractor-v1',
+      user_verified: index % 7 === 0,
+      created_at: now,
+      score_components: {
+        lexical: index === 1 ? 0.97 : 0.84,
+        function: index === 1 ? 0.92 : 0.81,
+        prose_duty: index === 1 ? 0.9 : 0.78,
+        feedback_boost: 0.1,
+      },
+    }
+  }
+
+  function generateReferenceBlueprint(input = {}) {
+    const blueprint = makeReferenceBlueprint(state.nextReferenceBlueprintId++, {
+      chapter_number: input.chapter_number,
+      title: input.title || '10MB 材料绑定验收',
+      known_facts: input.known_facts ?? [],
+      forbidden_facts: input.forbidden_facts ?? [],
+      primary_anchor_id: input.anchor_ids?.[0] ?? options.referenceStress?.anchor.anchor_id ?? 0,
+      status: 'draft',
+      latest_review: null,
+    })
+    state.referenceBlueprints[String(blueprint.blueprint_id)] = blueprint
+    return blueprint
+  }
+
+  function reviewReferenceBlueprint(input = {}) {
+    const blueprint = cloneReferenceBlueprint(input.blueprint_id)
+    blueprint.status = 'reviewed'
+    blueprint.latest_review = makeReferenceReview(blueprint.blueprint_id, `review-${blueprint.blueprint_id}`)
+    blueprint.updated_at = now
+    state.referenceBlueprints[String(blueprint.blueprint_id)] = blueprint
+    return blueprint.latest_review
+  }
+
+  function approveReferenceBlueprint(input = {}) {
+    const blueprint = cloneReferenceBlueprint(input.blueprint_id)
+    blueprint.status = 'approved'
+    blueprint.updated_at = now
+    state.referenceBlueprints[String(blueprint.blueprint_id)] = blueprint
+    return blueprint
+  }
+
+  function bindReferenceBlueprintMaterials(input = {}) {
+    const blueprint = cloneReferenceBlueprint(input.blueprint_id)
+    blueprint.status = 'material_bound'
+    blueprint.updated_at = now
+    state.referenceBlueprints[String(blueprint.blueprint_id)] = blueprint
+    return {
+      blueprint_id: blueprint.blueprint_id,
+      links: [{
+        link_id: `stress-link-${blueprint.blueprint_id}-001`,
+        blueprint_id: blueprint.blueprint_id,
+        beat_id: blueprint.beats[0].beat_id,
+        material_id: 'stress-mat-0001',
+        intended_use: 'source-backed detail from the 10MB segmented reference source',
+        max_rewrite_level: 'L1',
+        selected: true,
+        score: 0.96,
+        score_components: {
+          lexical: 0.97,
+          function: 0.92,
+          prose_duty: 0.9,
+        },
+        fit_explanation: 'Uses generated material with stable source segment and hash provenance.',
+        created_at: now,
+      }],
+    }
+  }
+
+  function makeReferenceBlueprint(blueprintId, overrides = {}) {
+    const beat = makeReferenceBeat()
+    return {
+      blueprint_id: blueprintId,
+      novel_id: 42,
+      chapter_number: overrides.chapter_number ?? 1,
+      title: overrides.title ?? '10MB 材料绑定验收',
+      status: overrides.status ?? 'draft',
+      source_plan_scope: 'chapter',
+      source_plan_hash: `stress-plan-${blueprintId}`,
+      context_hash: `stress-context-${blueprintId}`,
+      analysis_contract_hash: `stress-contract-${blueprintId}`,
+      blueprint_version: 1,
+      build_version: 'mock-stress-blueprint-v1',
+      parent_blueprint_id: 0,
+      primary_anchor_id: overrides.primary_anchor_id ?? 0,
+      chapter_function: '验证大体量参考源可以进入参考写作链路。',
+      logic_analysis: referenceTrack('logic', ['从10MB参考源检索材料', '保持事实边界']),
+      emotion_analysis: referenceTrack('emotion', ['警觉', '克制']),
+      narration_analysis: referenceTrack('narration', ['close POV', '来源可审计细节']),
+      character_analysis: referenceTrack('character', ['林岚只记录可见证据']),
+      reference_analysis: referenceTrack('reference', ['绑定自动分段材料']),
+      transition_plan: referenceTrack('transition', ['从材料搜索转入蓝图节拍']),
+      execution_contract: {
+        track: 'execution',
+        summary: '使用自动分段材料的水痕细节完成候选节拍。',
+        paragraph_intentions: [beat.paragraph_intention],
+        execution_modes: [beat.execution_mode],
+        anti_screenplay_duties: [beat.anti_screenplay_duty],
+        source_backed_detail_targets: [beat.source_backed_detail_target],
+        candidate_rejection_rules: [beat.candidate_rejection_rule],
+      },
+      previous_state: '大体量参考源已导入。',
+      final_state: '蓝图可绑定来源材料。',
+      final_hook: '继续候选段落前仍停在审批边界。',
+      global_pov: '林岚',
+      global_narrative_distance: 'close',
+      known_facts: overrides.known_facts ?? ['只使用10MB参考源可审计材料'],
+      forbidden_facts: overrides.forbidden_facts ?? ['未经来源支持的门外身份'],
+      risk_flags: [],
+      beats: [beat],
+      latest_review: overrides.latest_review ?? null,
+      created_at: now,
+      updated_at: now,
+    }
+  }
+
+  function makeReferenceBeat() {
+    return {
+      beat_id: 'stress-beat-001',
+      beat_index: 1,
+      scene_index: 1,
+      beat_type: 'scene',
+      narrative_function: '用大体量参考源中的水痕细节承载压力。',
+      logic_premise: '材料来自自动分段的10MB参考源。',
+      conflict_pressure: '不能越过来源材料推断门外身份。',
+      causality_in: '检索到水痕材料。',
+      causality_out: '蓝图保留受限视角。',
+      transition_in: '材料浏览完成。',
+      transition_out: '绑定到节拍。',
+      pov_character: '林岚',
+      narrative_distance: 'close',
+      viewpoint_allowed_knowledge: ['水痕', '灯影', '门缝停顿'],
+      viewpoint_forbidden_knowledge: ['门外身份'],
+      character_states_before: ['警觉'],
+      character_states_after: ['克制'],
+      character_goals: ['确认可见证据'],
+      character_misbeliefs: ['门外动静可能只是雨声'],
+      relationship_pressure: ['不能暴露判断'],
+      emotion_trigger: '杯底水痕',
+      emotion_before: '警觉',
+      emotion_after: '克制',
+      suppressed_reaction: '没有立刻抬头',
+      external_evidence: '杯底半圈水痕',
+      narration_strategy: 'close POV, sensory evidence only.',
+      rhythm_strategy: '先停顿，再动作。',
+      paragraph_intention: '用10MB参考源材料支撑受限视角细节。',
+      execution_mode: 'delayed_reaction',
+      anti_screenplay_duty: '避免纯动作走位。',
+      sensory_anchor_target: '雨声',
+      subtext_plan: '水痕暗示刚有人离开。',
+      source_backed_detail_target: '杯底半圈水痕',
+      candidate_rejection_rule: '拒绝无来源身份揭示。',
+      scene_facts: ['桌上有杯子', '雨声很大'],
+      forbidden_facts: ['门外身份'],
+      reference_query: {
+        query: '10MB 水痕 受限视角',
+        material_types: ['sentence', 'passage'],
+        emotion_tags: ['restrained'],
+        function_tags: ['emotion_evidence'],
+        pov_tags: ['close'],
+        technique_tags: ['subtext'],
+        max_results: 3,
+      },
+      required_material_types: ['sentence'],
+      max_rewrite_level: 'L1',
+      slot_plan: [{ slot_name: 'object', value: '杯底水痕' }],
+      locked_phrase_policy: '不锁定原句。',
+      no_reuse_reason: '',
+      prose_duties: ['source_backed_detail', 'subtext'],
+      risk_flags: [],
+    }
+  }
+
+  function referenceTrack(name, points) {
+    return {
+      track: name,
+      summary: `${name} stress summary`,
+      points,
+    }
+  }
+
+  function makeReferenceReview(blueprintId, reviewId) {
+    return {
+      review_id: reviewId,
+      blueprint_id: blueprintId,
+      context_hash: `stress-context-${blueprintId}`,
+      source_plan_hash: `stress-plan-${blueprintId}`,
+      analysis_contract_hash: `stress-contract-${blueprintId}`,
+      review_version: 1,
+      status: 'passed',
+      score: 0.95,
+      logic_errors: [],
+      causality_errors: [],
+      emotion_errors: [],
+      narration_errors: [],
+      execution_errors: [],
+      character_state_errors: [],
+      pov_errors: [],
+      continuity_errors: [],
+      transition_errors: [],
+      forbidden_fact_errors: [],
+      reference_binding_errors: [],
+      material_fit_errors: [],
+      screenplay_drift_risks: [],
+      ai_prose_risks: [],
+      novelistic_narration_errors: [],
+      required_fixes: [],
+      defects: [],
+      reviewed_at: now,
+    }
+  }
+
+  function cloneReferenceBlueprint(blueprintId) {
+    const blueprint = state.referenceBlueprints[String(blueprintId)]
+    if (!blueprint) throw new Error(`Unknown reference blueprint ${blueprintId}`)
+    return JSON.parse(JSON.stringify(blueprint))
+  }
+
+  function toReferenceBlueprintSummary(blueprint) {
+    return {
+      blueprint_id: blueprint.blueprint_id,
+      novel_id: blueprint.novel_id,
+      chapter_number: blueprint.chapter_number,
+      title: blueprint.title,
+      status: blueprint.status,
+      source_plan_hash: blueprint.source_plan_hash,
+      updated_at: blueprint.updated_at,
+    }
+  }
+
   function pageResult(items) {
     return {
       items,
@@ -4125,6 +4613,16 @@ function installConfigurableAppMockBridge(options = {}) {
       page: 1,
       size: Math.max(items.length, 1),
       total_pages: 1,
+    }
+  }
+
+  function pagedResult(items, page, size, total) {
+    return {
+      items,
+      total,
+      page,
+      size,
+      total_pages: Math.max(1, Math.ceil(total / size)),
     }
   }
 
