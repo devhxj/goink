@@ -1037,8 +1037,18 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
 
                     {turn.status === 'failed' && turn.errorMessage && (
                       <div className="flex justify-start">
-                        <div className="bg-danger-bg border border-danger-border rounded-lg px-3 py-2 text-xs text-red-600 max-w-[80%]">
-                          {turn.errorMessage}
+                        <div className="bg-danger-bg border border-danger-border rounded-lg px-3 py-2 text-xs text-red-600 max-w-[80%] flex flex-col gap-2">
+                          <span>{turn.errorMessage}</span>
+                          {turn.userMessage && (
+                            <button
+                              type="button"
+                              disabled={isLoading}
+                              onClick={() => handleSend(turn.userMessage)}
+                              className="self-start rounded-md border border-danger-border bg-background/70 px-2 py-1 text-xs text-red-600 hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              重试
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}

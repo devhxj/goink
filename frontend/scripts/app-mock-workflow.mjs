@@ -1020,6 +1020,8 @@ async function verifySearchWorkflow(page) {
 }
 
 async function verifyChatWorkflow(page) {
+  const chapterContentBefore = await page.evaluate(() => window.__appMockState.contentByPath['chapters/1.md'])
+  const saveContentBefore = await bridgeCallCount(page, 'SaveContent')
   const input = page.getByPlaceholder('输入消息，按 / 调用技能...')
   await input.fill('检查雨夜线索这一章的约束')
   await input.press('Enter')
@@ -1027,6 +1029,10 @@ async function verifyChatWorkflow(page) {
   await expectVisible(page.getByText('检查雨夜线索这一章的约束'), 'user chat message')
   await expectVisible(page.getByText('读取章节列表').first(), 'tool card')
   await expectVisible(page.getByText('搜索完成').first(), 'web search card')
+  await expectVisible(page.getByText('Mock source'), 'web search source title')
+  await expectVisible(page.getByText('https://example.com/mock-source'), 'web search source URL')
+  await page.getByRole('button', { name: '搜索结果总结' }).click()
+  await expectVisible(page.getByText('检索结果只用于对照氛围，不写入章节。'), 'web search summary')
   await expectVisible(page.getByText('建议先保留受限视角').first(), 'assistant message')
 
   await input.fill('停止生成这个回复')
@@ -1041,6 +1047,32 @@ async function verifyChatWorkflow(page) {
   await input.press('Enter')
   await expectVisible(page.getByText('触发失败态'), 'failing chat prompt')
   await expectVisible(page.getByText('模拟模型失败，请重试'), 'chat failure state')
+  await page.locator('aside').getByRole('button', { name: '重试' }).click()
+  await expectVisible(page.getByText('重试后恢复：模型返回稳定结果，未修改章节正文。'), 'chat retry recovery')
+
+  await input.fill('生成长文本 Markdown 报告')
+  await input.press('Enter')
+  await expectVisible(page.getByText('生成长文本 Markdown 报告'), 'long markdown prompt')
+  await expectVisible(page.getByRole('button', { name: '停止生成' }), 'streaming control during long chat')
+  await expectVisible(page.getByRole('heading', { name: '约束检查' }), 'streamed markdown heading')
+  await expectVisible(page.getByRole('button', { name: '停止生成' }), 'streaming control after partial markdown render')
+  await expectVisible(page.getByText('不要直接写入章节正文'), 'markdown bullet content')
+  await expectVisible(page.getByText('scene_guard:'), 'markdown code block')
+  await expectVisible(page.getByRole('button', { name: '复制代码' }).first(), 'markdown code copy affordance')
+  await expectVisible(page.getByText('第十二段：雨声压住脚步声，回复仍保持可读宽度。'), 'long generated text tail')
+  await expectVisible(page.getByText('最终建议：先读后改，不越过审批。'), 'long markdown final marker')
+  const longMarkdownContentEvents = await page.evaluate(() =>
+    window.__appMockState.emittedEvents.filter((event) =>
+      event.name.startsWith('agent:') &&
+      event.payload?.type === 2 &&
+      (String(event.payload?.data ?? '').includes('约束检查') ||
+        String(event.payload?.data ?? '').includes('最终建议'))).length)
+  assert(longMarkdownContentEvents >= 2, `Expected streamed markdown content events, got ${longMarkdownContentEvents}.`)
+
+  await assertBridgeCallCount(page, 'SaveContent', saveContentBefore)
+  const chapterContentAfter = await page.evaluate(() => window.__appMockState.contentByPath['chapters/1.md'])
+  assert.equal(chapterContentAfter, chapterContentBefore, 'Chat workflow must not mutate chapter content.')
+  await assertBridgeCallCount(page, 'runtime.shell.openExternal', 0)
 }
 
 async function verifySettingsWorkflow(page) {
@@ -2232,6 +2264,7 @@ function installConfigurableAppMockBridge(options = {}) {
   }
   const state = {
     calls: [],
+    emittedEvents: [],
     appliedFaults: [],
     activeNovelId: options.settings?.last_novel_id ?? defaultSettings.last_novel_id,
     nextNovelId: 43,
@@ -2246,6 +2279,7 @@ function installConfigurableAppMockBridge(options = {}) {
     nextSessionId: 1,
     nextTurnId: 101,
     searchFailureRecovered: false,
+    chatFailureRecovered: false,
     failNextSaveContent: false,
     savedLLMConfig: null,
     savedEmbeddingConfig: null,
@@ -2364,6 +2398,7 @@ function installConfigurableAppMockBridge(options = {}) {
   }
 
   function emit(name, payload) {
+    state.emittedEvents.push({ name, payload })
     respond({ kind: 'event', name, payload })
   }
 
@@ -2726,7 +2761,8 @@ function installConfigurableAppMockBridge(options = {}) {
       }
     }
 
-    if (message.includes('触发失败态')) {
+    if (message.includes('触发失败态') && !state.chatFailureRecovered) {
+      state.chatFailureRecovered = true
       await wait(50)
       emit(`agent:${turnId}`, agentEvent(turnId, 1, {
         type: 5,
@@ -2737,6 +2773,74 @@ function installConfigurableAppMockBridge(options = {}) {
         session_id: sessionId,
         turn_id: turnId,
         final_text: '',
+      }
+    }
+
+    if (message.includes('触发失败态')) {
+      await wait(80)
+      const retryText = '重试后恢复：模型返回稳定结果，未修改章节正文。'
+      emit(`agent:${turnId}`, agentEvent(turnId, 1, {
+        type: 2,
+        data: retryText,
+      }))
+      await wait(40)
+      return {
+        session_id: sessionId,
+        turn_id: turnId,
+        final_text: retryText,
+      }
+    }
+
+    if (message.includes('长文本 Markdown')) {
+      const chunks = longMarkdownChatChunks()
+      emit(`agent:${turnId}`, agentEvent(turnId, 1, {
+        type: 0,
+        data: '先检查章节约束、工具结果和是否需要写入正文。',
+      }))
+      await wait(80)
+      emit(`agent:${turnId}`, agentEvent(turnId, 2, {
+        type: 1,
+      }))
+      emit(`agent:${turnId}`, agentEvent(turnId, 3, {
+        type: 3,
+        tool_name: 'inspect_story_constraints',
+        tool_id: 'tool-story-constraints-001',
+        phase: 'completed',
+        display_text: '检查章节约束',
+        activity_kind: 'review',
+        metadata: { chapter_path: 'chapters/1.md', can_mutate: false },
+      }))
+      for (let index = 0; index < chunks.length; index += 1) {
+        emit(`agent:${turnId}`, agentEvent(turnId, index + 4, {
+          type: 2,
+          data: chunks[index],
+        }))
+        await wait(index === 0 ? 1800 : 120)
+      }
+      const finalText = chunks.join('')
+      emit(`agent:${turnId}`, agentEvent(turnId, chunks.length + 4, {
+        type: 4,
+        usage: {
+          prompt_tokens: 420,
+          completion_tokens: 980,
+          total_tokens: 1400,
+          prompt_cache_hit_tokens: 320,
+          prompt_cache_miss_tokens: 100,
+          cache_hit_ratio: 76.2,
+          context_window: 128000,
+          usage_ratio: 1.1,
+          detail: {
+            system: 160,
+            user: 260,
+            assistant: 980,
+            tool: 0,
+          },
+        },
+      }))
+      return {
+        session_id: sessionId,
+        turn_id: turnId,
+        final_text: finalText,
       }
     }
 
@@ -2801,6 +2905,22 @@ function installConfigurableAppMockBridge(options = {}) {
       turn_id: turnId,
       final_text: '已读取《雨夜线索》的章节列表，建议先保留受限视角。',
     }
+  }
+
+  function longMarkdownChatChunks() {
+    const body = Array.from({ length: 12 }, (_, index) =>
+      `第${toChineseOrdinal(index + 1)}段：雨声压住脚步声，回复仍保持可读宽度。`).join('\n\n')
+    return [
+      '### 约束检查\n\n',
+      '- 不要直接写入章节正文。\n- 保留受限视角，不提前揭示门外身份。\n\n',
+      '```yaml\nscene_guard: no_implicit_chapter_mutation\napproval_required: true\n```\n\n',
+      `${body}\n\n最终建议：先读后改，不越过审批。`,
+    ]
+  }
+
+  function toChineseOrdinal(value) {
+    const values = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二']
+    return values[value - 1] ?? String(value)
   }
 
   function agentEvent(turnId, seq, patch) {
