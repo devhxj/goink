@@ -2388,6 +2388,157 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateMaterialsTagsBulkMarksSelectedMaterialsAsUserVerified()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("批量标签校正测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "bulk-tags.md",
+            """
+            他在门口停了很久。
+
+            雨声压低了整条街的呼吸。
+            """);
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "批量标签参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var materials = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        var selectedMaterialIds = materials.Items.Take(2).Select(material => material.MaterialId).ToArray();
+        Assert.Equal(2, selectedMaterialIds.Length);
+
+        var updated = await service.UpdateMaterialsTagsAsync(
+            new UpdateReferenceMaterialsTagsPayload(
+                novel.Id,
+                selectedMaterialIds,
+                FunctionTag: "environment",
+                EmotionTag: "contained_tension",
+                SceneTag: "rain_threshold",
+                PovTag: "limited_close",
+                TechniqueTag: "sensory_detail",
+                Origin: "user",
+                Note: "current page bulk correction"),
+            CancellationToken.None);
+
+        Assert.Equal(selectedMaterialIds, updated.Select(material => material.MaterialId).ToArray());
+        Assert.All(updated, material =>
+        {
+            Assert.Equal("environment", material.FunctionTag);
+            Assert.Equal("contained_tension", material.EmotionTag);
+            Assert.Equal("rain_threshold", material.SceneTag);
+            Assert.Equal("limited_close", material.PovTag);
+            Assert.Equal("sensory_detail", material.TechniqueTag);
+            Assert.True(material.UserVerified);
+        });
+
+        var corrected = await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                EmotionTags: ["contained_tension"],
+                FunctionTags: ["environment"],
+                PovTags: ["limited_close"],
+                TechniqueTags: ["sensory_detail"],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+        Assert.Equal(selectedMaterialIds.Order(StringComparer.Ordinal), corrected.Items.Select(material => material.MaterialId).Order(StringComparer.Ordinal));
+        Assert.All(corrected.Items, material => Assert.True(material.UserVerified));
+    }
+
+    [Fact]
+    public async Task UpdateMaterialsTagsBulkRollsBackWhenAnyMaterialIsNotAccessible()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var targetNovel = await novels.CreateNovelAsync(new CreateNovelPayload("批量标签目标", "", ""), CancellationToken.None);
+        var otherNovel = await novels.CreateNovelAsync(new CreateNovelPayload("批量标签其他小说", "", ""), CancellationToken.None);
+        var targetPath = CreateSourceFile("bulk-tags-target.md", "目标小说材料。");
+        var privatePath = CreateSourceFile("bulk-tags-private.md", "其他小说私有材料。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var targetAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(targetNovel.Id, "目标参考", null, targetPath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var privateAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(otherNovel.Id, "其他私有参考", null, privatePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var targetMaterial = Assert.Single((await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                targetNovel.Id,
+                [targetAnchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None)).Items);
+        var privateMaterial = Assert.Single((await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                otherNovel.Id,
+                [privateAnchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None)).Items);
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.UpdateMaterialsTagsAsync(
+                new UpdateReferenceMaterialsTagsPayload(
+                    targetNovel.Id,
+                    [targetMaterial.MaterialId, privateMaterial.MaterialId],
+                    FunctionTag: "interiority",
+                    EmotionTag: "unease",
+                    SceneTag: null,
+                    PovTag: null,
+                    TechniqueTag: null,
+                    Origin: "user",
+                    Note: "must roll back"),
+                CancellationToken.None));
+
+        var unchanged = Assert.Single((await service.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                targetNovel.Id,
+                [targetAnchor.AnchorId],
+                "",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None)).Items);
+        Assert.Equal(targetMaterial.FunctionTag, unchanged.FunctionTag);
+        Assert.Equal(targetMaterial.EmotionTag, unchanged.EmotionTag);
+        Assert.False(unchanged.UserVerified);
+    }
+
+    [Fact]
     public async Task RebuildAnchorPreservesUserVerifiedTagsWhenMaterialHashIsUnchanged()
     {
         var options = CreateOptions();

@@ -70,6 +70,16 @@ public sealed class ReferenceBridgeHandlerRoutingTests
             "afterbeat",
             "user",
             "verified"));
+        await AssertOkAsync(dispatcher, "UpdateReferenceMaterialsTags", new UpdateReferenceMaterialsTagsPayload(
+            42,
+            ["material-2", "material-3"],
+            "object_subtext",
+            "contained_tension",
+            "rain_threshold",
+            "limited_close",
+            "delayed_reaction",
+            "ui",
+            "bulk verified"));
         await AssertOkAsync(dispatcher, "AdaptReferenceMaterial", new AdaptReferenceMaterialPayload(
             42,
             "material-1",
@@ -114,6 +124,7 @@ public sealed class ReferenceBridgeHandlerRoutingTests
                 "GetBuildStatus:42:99",
                 "SearchMaterials:42:99:fog:passage:unease:interiority:close:afterbeat:2:10:source_backed_detail",
                 "UpdateMaterialTags:42:material-1:interiority:unease:threshold:close:afterbeat:user:verified",
+                "UpdateMaterialsTags:42:material-2,material-3:object_subtext:contained_tension:rain_threshold:limited_close:delayed_reaction:ui:bulk verified",
                 "AdaptMaterial:42:material-1:object=door:L2:door exists",
                 "AuditCandidate:42:material-1:candidate text:L2:door exists",
                 "RecordUserFeedback:42:reuse_candidate:candidate-1:edited:material-1:candidate-1:501:beat-1:too_ai_flavored:kept pressure image:edited text:user",
@@ -383,6 +394,15 @@ public sealed class ReferenceBridgeHandlerRoutingTests
             cancellationToken.ThrowIfCancellationRequested();
             Calls.Add($"UpdateMaterialTags:{input.NovelId}:{input.MaterialId}:{input.FunctionTag}:{input.EmotionTag}:{input.SceneTag}:{input.PovTag}:{input.TechniqueTag}:{input.Origin}:{input.Note}");
             return ValueTask.FromResult<ReferenceMaterialPayload>(null!);
+        }
+
+        public ValueTask<IReadOnlyList<ReferenceMaterialPayload>> UpdateMaterialsTagsAsync(
+            UpdateReferenceMaterialsTagsPayload input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls.Add($"UpdateMaterialsTags:{input.NovelId}:{string.Join(',', input.MaterialIds)}:{input.FunctionTag}:{input.EmotionTag}:{input.SceneTag}:{input.PovTag}:{input.TechniqueTag}:{input.Origin}:{input.Note}");
+            return ValueTask.FromResult<IReadOnlyList<ReferenceMaterialPayload>>([]);
         }
 
         public ValueTask<AdaptReferenceMaterialResultPayload> AdaptMaterialAsync(

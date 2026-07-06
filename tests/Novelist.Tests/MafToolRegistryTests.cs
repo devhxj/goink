@@ -1094,6 +1094,33 @@ public sealed class MafToolRegistryTests
                 DateTimeOffset.UtcNow));
         }
 
+        public ValueTask<IReadOnlyList<ReferenceMaterialPayload>> UpdateMaterialsTagsAsync(
+            UpdateReferenceMaterialsTagsPayload input,
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<IReadOnlyList<ReferenceMaterialPayload>>(
+                input.MaterialIds
+                    .Select(materialId => new ReferenceMaterialPayload(
+                        materialId,
+                        7,
+                        "seg-1",
+                        ReferenceMaterialTypes.Sentence,
+                        input.FunctionTag ?? "environment",
+                        input.EmotionTag ?? "pressure",
+                        input.SceneTag ?? "rain",
+                        input.PovTag ?? "close",
+                        input.TechniqueTag ?? "sensory",
+                        1,
+                        1,
+                        1,
+                        "雨声压低了整条街的呼吸。",
+                        "hash",
+                        "test",
+                        true,
+                        DateTimeOffset.UtcNow))
+                    .ToArray());
+        }
+
         public ValueTask<AdaptReferenceMaterialResultPayload> AdaptMaterialAsync(
             AdaptReferenceMaterialPayload input,
             CancellationToken cancellationToken)

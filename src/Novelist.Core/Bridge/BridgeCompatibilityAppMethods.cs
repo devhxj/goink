@@ -119,6 +119,7 @@ public static class BridgeCompatibilityAppMethods
         "UpdateReaderPerspective",
         "UpdateReferenceAnchorMetadata",
         "UpdateReferenceMaterialTags",
+        "UpdateReferenceMaterialsTags",
         "UpdateStoryArc",
         "UpdateTimelineEntry"
     ];

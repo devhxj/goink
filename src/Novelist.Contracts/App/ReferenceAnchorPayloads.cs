@@ -275,6 +275,17 @@ public sealed record UpdateReferenceMaterialTagsPayload(
     [property: JsonPropertyName("origin")] string? Origin,
     [property: JsonPropertyName("note")] string? Note);
 
+public sealed record UpdateReferenceMaterialsTagsPayload(
+    [property: JsonPropertyName("novel_id")] long NovelId,
+    [property: JsonPropertyName("material_ids")] IReadOnlyList<string> MaterialIds,
+    [property: JsonPropertyName("function_tag")] string? FunctionTag,
+    [property: JsonPropertyName("emotion_tag")] string? EmotionTag,
+    [property: JsonPropertyName("scene_tag")] string? SceneTag,
+    [property: JsonPropertyName("pov_tag")] string? PovTag,
+    [property: JsonPropertyName("technique_tag")] string? TechniqueTag,
+    [property: JsonPropertyName("origin")] string? Origin,
+    [property: JsonPropertyName("note")] string? Note);
+
 public sealed record ReferenceMaterialQueryPayload(
     [property: JsonPropertyName("query")] string Query,
     [property: JsonPropertyName("material_types")] IReadOnlyList<string> MaterialTypes,

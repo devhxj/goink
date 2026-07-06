@@ -78,6 +78,11 @@ public static class ReferenceAnchorBridgeHandlers
                 ReadObjectArg<UpdateReferenceMaterialTagsPayload>(context.Payload, 0, "input"),
                 cancellationToken));
 
+        dispatcher.Register("UpdateReferenceMaterialsTags", async (context, cancellationToken) =>
+            await service.UpdateMaterialsTagsAsync(
+                ReadObjectArg<UpdateReferenceMaterialsTagsPayload>(context.Payload, 0, "input"),
+                cancellationToken));
+
         dispatcher.Register("AdaptReferenceMaterial", async (context, cancellationToken) =>
             await service.AdaptMaterialAsync(
                 ReadObjectArg<AdaptReferenceMaterialPayload>(context.Payload, 0, "input"),

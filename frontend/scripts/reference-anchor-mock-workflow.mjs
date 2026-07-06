@@ -156,6 +156,19 @@ async function createRebuildAndSearchReferenceMaterial(page) {
   await expectVisible(firstMaterial.getByText('limited_close'), 'corrected material pov tag')
   await expectVisible(page.getByText('第 1 / 2 页 · 共 6 条'), 'anchor material preview pagination summary')
 
+  await page.getByRole('button', { name: '选择当前材料' }).click()
+  await expectVisible(page.getByText('已选 5 条材料'), 'selected current material page count')
+  await page.getByLabel('批量材料功能标签').fill('spatial_pressure')
+  await page.getByLabel('批量材料情绪标签').fill('coiled_alarm')
+  await page.getByLabel('批量材料场景标签').fill('threshold_room')
+  await page.getByLabel('批量材料 POV 标签').fill('shared_close')
+  await page.getByLabel('批量材料技法标签').fill('object_afterbeat')
+  await page.getByRole('button', { name: /^批量保存标签$/ }).click()
+  await expectVisible(page.getByText('已批量校正 5 条材料标签'), 'bulk material tag update message')
+  await expectVisible(page.getByText('已选 0 条材料'), 'bulk material selection cleared')
+  await expectVisible(firstMaterial.getByText('spatial_pressure'), 'bulk corrected material function tag')
+  await expectVisible(firstMaterial.getByText('shared_close'), 'bulk corrected material pov tag')
+
   await page.getByLabel('材料筛选').fill('杯子')
   await expectVisible(firstMaterial.getByText('mat-001'), 'filtered anchor material preview id')
   await expectHidden(materialPreview.getByText('mat-002'), 'filtered anchor material hides non-matching row')
@@ -305,6 +318,7 @@ async function verifyBridgeCalls(page) {
     'PromoteReferenceAnchorsToWorkspaceCorpus',
     'UpdateReferenceAnchorMetadata',
     'UpdateReferenceMaterialTags',
+    'UpdateReferenceMaterialsTags',
     'DeleteReferenceAnchors',
     'RebuildReferenceAnchor',
     'SearchReferenceMaterials',
@@ -366,6 +380,18 @@ async function verifyBridgeCalls(page) {
   assert.equal(materialTagCall.args[0].technique_tag, 'delayed_reaction', 'material tag update payload must include technique tag')
   assert.equal(materialTagCall.args[0].origin, 'ui', 'material tag update payload must mark UI origin')
   assert.equal(materialTagCall.args[0].note, 'corpus material browser correction', 'material tag update payload must include correction note')
+
+  const bulkMaterialTagCall = calls.find((call) => call.method === 'UpdateReferenceMaterialsTags')
+  assert(bulkMaterialTagCall, 'missing UpdateReferenceMaterialsTags call')
+  assert.equal(bulkMaterialTagCall.args[0].novel_id, 42, 'bulk material tag update payload must include novel id')
+  assert.deepEqual(bulkMaterialTagCall.args[0].material_ids, ['mat-001', 'mat-002', 'mat-003', 'mat-004', 'mat-005'], 'bulk material tag update payload must include selected current-page material ids')
+  assert.equal(bulkMaterialTagCall.args[0].function_tag, 'spatial_pressure', 'bulk material tag update payload must include function tag')
+  assert.equal(bulkMaterialTagCall.args[0].emotion_tag, 'coiled_alarm', 'bulk material tag update payload must include emotion tag')
+  assert.equal(bulkMaterialTagCall.args[0].scene_tag, 'threshold_room', 'bulk material tag update payload must include scene tag')
+  assert.equal(bulkMaterialTagCall.args[0].pov_tag, 'shared_close', 'bulk material tag update payload must include pov tag')
+  assert.equal(bulkMaterialTagCall.args[0].technique_tag, 'object_afterbeat', 'bulk material tag update payload must include technique tag')
+  assert.equal(bulkMaterialTagCall.args[0].origin, 'ui', 'bulk material tag update payload must mark UI origin')
+  assert.equal(bulkMaterialTagCall.args[0].note, 'corpus material browser bulk correction', 'bulk material tag update payload must include correction note')
 
   const startCall = calls.find((call) => call.method === 'StartReferenceOrchestrationRun')
   assert(startCall, 'missing StartReferenceOrchestrationRun call')
@@ -626,6 +652,7 @@ function installReferenceAnchorMockBridge() {
       case 'DeleteReferenceAnchor': return deleteReferenceAnchor(args[0], args[1])
       case 'DeleteReferenceAnchors': return deleteReferenceAnchors(args[0])
       case 'UpdateReferenceMaterialTags': return updateReferenceMaterialTags(args[0])
+      case 'UpdateReferenceMaterialsTags': return updateReferenceMaterialsTags(args[0])
       case 'RebuildReferenceAnchor': return rebuildReferenceAnchor(args[1])
       case 'SearchReferenceMaterials': return searchReferenceMaterials(args[0])
       case 'GetReferenceChapterBlueprints': return Object.values(state.blueprints).map(toBlueprintSummary)
@@ -829,6 +856,18 @@ function installReferenceAnchorMockBridge() {
       technique_tag: input.technique_tag ?? 'subtext',
       user_verified: true,
     }
+  }
+
+  function updateReferenceMaterialsTags(input) {
+    return input.material_ids.map((materialId) => ({
+      ...materialById(materialId),
+      function_tag: input.function_tag ?? 'emotion_evidence',
+      emotion_tag: input.emotion_tag ?? 'restrained',
+      scene_tag: input.scene_tag ?? 'rain_room',
+      pov_tag: input.pov_tag ?? 'close',
+      technique_tag: input.technique_tag ?? 'subtext',
+      user_verified: true,
+    }))
   }
 
   function materialById(materialId) {

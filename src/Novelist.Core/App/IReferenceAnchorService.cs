@@ -30,6 +30,10 @@ public interface IReferenceAnchorService
         UpdateReferenceMaterialTagsPayload input,
         CancellationToken cancellationToken);
 
+    ValueTask<IReadOnlyList<ReferenceMaterialPayload>> UpdateMaterialsTagsAsync(
+        UpdateReferenceMaterialsTagsPayload input,
+        CancellationToken cancellationToken);
+
     ValueTask<AdaptReferenceMaterialResultPayload> AdaptMaterialAsync(
         AdaptReferenceMaterialPayload input,
         CancellationToken cancellationToken);

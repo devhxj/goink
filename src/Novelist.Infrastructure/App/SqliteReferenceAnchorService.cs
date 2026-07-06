@@ -487,16 +487,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         var techniqueTag = NormalizeOptionalText(input.TechniqueTag, nameof(input.TechniqueTag), maxLength: 128);
         _ = NormalizeOptionalText(input.Origin, nameof(input.Origin), maxLength: 128);
         _ = NormalizeOptionalText(input.Note, nameof(input.Note), maxLength: 2_000);
-
-        var hasTagOverride = functionTag.Length > 0 ||
-            emotionTag.Length > 0 ||
-            sceneTag.Length > 0 ||
-            povTag.Length > 0 ||
-            techniqueTag.Length > 0;
-        if (!hasTagOverride)
-        {
-            throw new ArgumentException("At least one material tag must be provided.", nameof(input));
-        }
+        EnsureMaterialTagOverride(functionTag, emotionTag, sceneTag, povTag, techniqueTag, nameof(input));
 
         await _mutex.WaitAsync(cancellationToken);
         try
@@ -504,22 +495,77 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             var databasePath = await DatabasePathAsync(cancellationToken);
             await EnsureSchemaAsync(databasePath, cancellationToken);
             await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
             var material = await ReadMaterialAsync(connection, input.NovelId, materialId, cancellationToken)
                 ?? throw new ArgumentException("Reference material does not exist.", nameof(input));
-            var updated = material with
-            {
-                FunctionTag = functionTag.Length > 0 ? functionTag : material.FunctionTag,
-                EmotionTag = emotionTag.Length > 0 ? emotionTag : material.EmotionTag,
-                SceneTag = sceneTag.Length > 0 ? sceneTag : material.SceneTag,
-                PovTag = povTag.Length > 0 ? povTag : material.PovTag,
-                TechniqueTag = techniqueTag.Length > 0 ? techniqueTag : material.TechniqueTag,
-                FunctionConfidence = functionTag.Length > 0 ? 1.0 : material.FunctionConfidence,
-                EmotionConfidence = emotionTag.Length > 0 ? 1.0 : material.EmotionConfidence,
-                PovConfidence = povTag.Length > 0 ? 1.0 : material.PovConfidence,
-                UserVerified = true
-            };
 
-            await UpdateMaterialTagsAsync(connection, input.NovelId, updated, cancellationToken);
+            var updated = ApplyMaterialTagOverride(
+                material,
+                functionTag,
+                emotionTag,
+                sceneTag,
+                povTag,
+                techniqueTag);
+            await UpdateMaterialTagsAsync(connection, transaction, input.NovelId, updated, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return updated;
+        }
+        finally
+        {
+            _mutex.Release();
+        }
+    }
+
+    public async ValueTask<IReadOnlyList<ReferenceMaterialPayload>> UpdateMaterialsTagsAsync(
+        UpdateReferenceMaterialsTagsPayload input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ValidateNovelId(input.NovelId);
+        await EnsureNovelExistsAsync(input.NovelId, cancellationToken);
+        if (input.MaterialIds.Count == 0)
+        {
+            throw new ArgumentException("At least one reference material must be selected.", nameof(input));
+        }
+
+        var materialIds = input.MaterialIds
+            .Select(materialId => NormalizeRequiredText(materialId, nameof(input.MaterialIds), maxLength: 256))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var functionTag = NormalizeOptionalText(input.FunctionTag, nameof(input.FunctionTag), maxLength: 128);
+        var emotionTag = NormalizeOptionalText(input.EmotionTag, nameof(input.EmotionTag), maxLength: 128);
+        var sceneTag = NormalizeOptionalText(input.SceneTag, nameof(input.SceneTag), maxLength: 128);
+        var povTag = NormalizeOptionalText(input.PovTag, nameof(input.PovTag), maxLength: 128);
+        var techniqueTag = NormalizeOptionalText(input.TechniqueTag, nameof(input.TechniqueTag), maxLength: 128);
+        _ = NormalizeOptionalText(input.Origin, nameof(input.Origin), maxLength: 128);
+        _ = NormalizeOptionalText(input.Note, nameof(input.Note), maxLength: 2_000);
+        EnsureMaterialTagOverride(functionTag, emotionTag, sceneTag, povTag, techniqueTag, nameof(input));
+
+        await _mutex.WaitAsync(cancellationToken);
+        try
+        {
+            var databasePath = await DatabasePathAsync(cancellationToken);
+            await EnsureSchemaAsync(databasePath, cancellationToken);
+            await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            var updated = new List<ReferenceMaterialPayload>(materialIds.Length);
+
+            foreach (var materialId in materialIds)
+            {
+                var material = await ReadMaterialAsync(connection, input.NovelId, materialId, cancellationToken)
+                    ?? throw new ArgumentException("Reference material does not exist.", nameof(input));
+                var corrected = ApplyMaterialTagOverride(
+                    material,
+                    functionTag,
+                    emotionTag,
+                    sceneTag,
+                    povTag,
+                    techniqueTag);
+                await UpdateMaterialTagsAsync(connection, transaction, input.NovelId, corrected, cancellationToken);
+                updated.Add(corrected);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
             return updated;
         }
         finally
@@ -1803,13 +1849,56 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             .ToArray();
     }
 
+    private static void EnsureMaterialTagOverride(
+        string functionTag,
+        string emotionTag,
+        string sceneTag,
+        string povTag,
+        string techniqueTag,
+        string argumentName)
+    {
+        var hasTagOverride = functionTag.Length > 0 ||
+            emotionTag.Length > 0 ||
+            sceneTag.Length > 0 ||
+            povTag.Length > 0 ||
+            techniqueTag.Length > 0;
+        if (!hasTagOverride)
+        {
+            throw new ArgumentException("At least one material tag must be provided.", argumentName);
+        }
+    }
+
+    private static ReferenceMaterialPayload ApplyMaterialTagOverride(
+        ReferenceMaterialPayload material,
+        string functionTag,
+        string emotionTag,
+        string sceneTag,
+        string povTag,
+        string techniqueTag)
+    {
+        return material with
+        {
+            FunctionTag = functionTag.Length > 0 ? functionTag : material.FunctionTag,
+            EmotionTag = emotionTag.Length > 0 ? emotionTag : material.EmotionTag,
+            SceneTag = sceneTag.Length > 0 ? sceneTag : material.SceneTag,
+            PovTag = povTag.Length > 0 ? povTag : material.PovTag,
+            TechniqueTag = techniqueTag.Length > 0 ? techniqueTag : material.TechniqueTag,
+            FunctionConfidence = functionTag.Length > 0 ? 1.0 : material.FunctionConfidence,
+            EmotionConfidence = emotionTag.Length > 0 ? 1.0 : material.EmotionConfidence,
+            PovConfidence = povTag.Length > 0 ? 1.0 : material.PovConfidence,
+            UserVerified = true
+        };
+    }
+
     private static async ValueTask UpdateMaterialTagsAsync(
         SqliteConnection connection,
+        SqliteTransaction transaction,
         long novelId,
         ReferenceMaterialPayload material,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = $$"""
             UPDATE reference_materials
             SET function_tag = $function_tag,

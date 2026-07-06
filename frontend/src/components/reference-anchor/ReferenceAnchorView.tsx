@@ -12,6 +12,7 @@ import {
   Search,
   Share2,
   SlidersHorizontal,
+  Tags,
   Trash2,
   Wand2,
   X,
@@ -85,6 +86,14 @@ type MaterialTagForm = {
   sceneTag: string
   povTag: string
   techniqueTag: string
+}
+
+const EMPTY_MATERIAL_TAG_FORM: MaterialTagForm = {
+  functionTag: '',
+  emotionTag: '',
+  sceneTag: '',
+  povTag: '',
+  techniqueTag: '',
 }
 
 const EMPTY_ANCHOR_FORM: CreateAnchorForm = {
@@ -223,6 +232,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [anchorMaterialSort, setAnchorMaterialSort] = useState<MaterialPreviewSort>('default')
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const [materialTagForm, setMaterialTagForm] = useState<MaterialTagForm | null>(null)
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([])
+  const [bulkMaterialTagForm, setBulkMaterialTagForm] = useState<MaterialTagForm>(EMPTY_MATERIAL_TAG_FORM)
   const [blueprintForm, setBlueprintForm] = useState<BlueprintForm>(EMPTY_BLUEPRINT_FORM)
   const [revisionForm, setRevisionForm] = useState<BlueprintRevisionForm>(EMPTY_REVISION_FORM)
   const [materialFilters, setMaterialFilters] = useState<MaterialSearchFilters>(EMPTY_MATERIAL_FILTERS)
@@ -262,6 +273,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const selectedVisibleAnchorIds = useMemo(() => visibleAnchors.map(anchor => anchor.anchor_id), [visibleAnchors])
   const selectedNovelAnchors = useMemo(() => selectedAnchors.filter(anchor => anchor.owner_scope === 'novel'), [selectedAnchors])
   const selectedWorkspaceAnchors = useMemo(() => selectedAnchors.filter(anchor => anchor.owner_scope === 'workspace_corpus'), [selectedAnchors])
+  const selectedMaterialSet = useMemo(() => new Set(selectedMaterialIds), [selectedMaterialIds])
   const visibleAnchorMaterialItems = useMemo(() => {
     const indexedItems = anchorMaterialPreview.items
       .map((material, index) => ({ material, index }))
@@ -279,6 +291,18 @@ export default function ReferenceAnchorView({ novelId }: Props) {
 
     return indexedItems.map(({ material }) => material)
   }, [anchorMaterialPreview.items, anchorMaterialQuery, anchorMaterialSort])
+  const visibleAnchorMaterialIds = useMemo(
+    () => visibleAnchorMaterialItems.map(material => material.material_id),
+    [visibleAnchorMaterialItems],
+  )
+  const selectedVisibleMaterialCount = useMemo(
+    () => visibleAnchorMaterialIds.filter(id => selectedMaterialSet.has(id)).length,
+    [visibleAnchorMaterialIds, selectedMaterialSet],
+  )
+  const hasBulkMaterialTagOverride = useMemo(
+    () => Object.values(bulkMaterialTagForm).some(value => value.trim().length > 0),
+    [bulkMaterialTagForm],
+  )
   const hasAnchorMaterialQuery = anchorMaterialQuery.trim().length > 0
 
   const loadAnchors = useCallback(async () => {
@@ -472,6 +496,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       setAnchorMaterialSort('default')
       setEditingMaterialId(null)
       setMaterialTagForm(null)
+      setSelectedMaterialIds([])
+      setBulkMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
     }
     if (editingAnchorId === anchor.anchor_id) {
       cancelEditAnchor()
@@ -509,6 +535,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       setAnchorMaterialSort('default')
       setEditingMaterialId(null)
       setMaterialTagForm(null)
+      setSelectedMaterialIds([])
+      setBulkMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
     }
     if (editingAnchorId !== null && anchorIdSet.has(editingAnchorId)) {
       cancelEditAnchor()
@@ -557,6 +585,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       setAnchorMaterialSort('default')
       setEditingMaterialId(null)
       setMaterialTagForm(null)
+      setSelectedMaterialIds([])
+      setBulkMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
       return
     }
 
@@ -585,6 +615,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       setExpandedAnchorMaterialId(anchor.anchor_id)
       setEditingMaterialId(null)
       setMaterialTagForm(null)
+      setSelectedMaterialIds([])
+      setBulkMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
       setAnchorMaterialPreview({
         items: result.items ?? [],
         page: result.page,
@@ -603,6 +635,16 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   function cancelEditMaterialTags() {
     setEditingMaterialId(null)
     setMaterialTagForm(null)
+  }
+
+  function toggleMaterialSelection(materialId: string, checked: boolean) {
+    setSelectedMaterialIds(ids => {
+      if (checked) {
+        return ids.includes(materialId) ? ids : [...ids, materialId]
+      }
+
+      return ids.filter(id => id !== materialId)
+    })
   }
 
   async function saveMaterialTags(material: reference.Material) {
@@ -624,6 +666,32 @@ export default function ReferenceAnchorView({ novelId }: Props) {
         ...current,
         items: current.items.map(item => item.material_id === updated.material_id ? updated : item),
       }))
+      cancelEditMaterialTags()
+    }
+  }
+
+  async function saveBulkMaterialTags() {
+    if (selectedMaterialIds.length === 0 || !hasBulkMaterialTagOverride) return
+    const updated = await run(() => app.UpdateReferenceMaterialsTags({
+      novel_id: novelId,
+      material_ids: selectedMaterialIds,
+      function_tag: bulkMaterialTagForm.functionTag.trim() || null,
+      emotion_tag: bulkMaterialTagForm.emotionTag.trim() || null,
+      scene_tag: bulkMaterialTagForm.sceneTag.trim() || null,
+      pov_tag: bulkMaterialTagForm.povTag.trim() || null,
+      technique_tag: bulkMaterialTagForm.techniqueTag.trim() || null,
+      origin: 'ui',
+      note: 'corpus material browser bulk correction',
+    }), `已批量校正 ${selectedMaterialIds.length} 条材料标签`)
+
+    if (updated) {
+      const updatedById = new Map(updated.map(material => [material.material_id, material]))
+      setAnchorMaterialPreview(current => ({
+        ...current,
+        items: current.items.map(item => updatedById.get(item.material_id) ?? item),
+      }))
+      setSelectedMaterialIds([])
+      setBulkMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)
       cancelEditMaterialTags()
     }
   }
@@ -1377,79 +1445,157 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                               {visibleAnchorMaterialItems.length === 0 ? (
                                 <p className="text-[11px] text-muted-foreground">{hasAnchorMaterialQuery ? '没有匹配材料' : '暂无可浏览材料'}</p>
                               ) : (
-                                <div className="space-y-2" aria-label={`${anchor.title} 材料预览`}>
-                                  {visibleAnchorMaterialItems.map(material => (
-                                    <div key={material.material_id} className="rounded border border-border bg-card px-2.5 py-2">
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="min-w-0 truncate text-[11px] text-muted-foreground">
-                                          {material.material_id} · {material.material_type} · {material.function_tag || 'untagged'} · {material.pov_tag || 'unknown'}
-                                        </span>
-                                        <span className="flex shrink-0 items-center gap-1">
-                                          {material.user_verified && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">已校正</span>}
-                                          <button
-                                            type="button"
-                                            onClick={() => beginEditMaterialTags(material)}
-                                            disabled={loading}
-                                            className="rounded px-1.5 py-1 text-[11px] leading-none text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
-                                            aria-label={`校正 ${material.material_id} 的材料标签`}
-                                          >
-                                            校正
-                                          </button>
-                                        </span>
-                                      </div>
-                                      <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-foreground">{material.text}</p>
-                                      {editingMaterialId === material.material_id && materialTagForm && (
-                                        <div className="mt-2 space-y-2 rounded border border-border bg-background p-2">
-                                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                            <Field label="功能">
-                                              <input value={materialTagForm.functionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, functionTag: event.target.value }) : form)} className={inputClass} aria-label="材料功能标签" />
-                                            </Field>
-                                            <Field label="情绪">
-                                              <input value={materialTagForm.emotionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, emotionTag: event.target.value }) : form)} className={inputClass} aria-label="材料情绪标签" />
-                                            </Field>
-                                            <Field label="场景">
-                                              <input value={materialTagForm.sceneTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, sceneTag: event.target.value }) : form)} className={inputClass} aria-label="材料场景标签" />
-                                            </Field>
-                                            <Field label="POV">
-                                              <input value={materialTagForm.povTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, povTag: event.target.value }) : form)} className={inputClass} aria-label="材料 POV 标签" />
-                                            </Field>
-                                            <Field label="技法">
-                                              <input value={materialTagForm.techniqueTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, techniqueTag: event.target.value }) : form)} className={inputClass} aria-label="材料技法标签" />
-                                            </Field>
-                                          </div>
-                                          <div className="flex items-center gap-1">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                void saveMaterialTags(material)
-                                              }}
-                                              disabled={loading}
-                                              className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                                            >
-                                              <Check className="h-3.5 w-3.5" />保存标签
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={cancelEditMaterialTags}
-                                              className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80"
-                                            >
-                                              <X className="h-3.5 w-3.5" />取消
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-                                      {materialScoreComponents(material).length > 0 && (
-                                        <div className="mt-2 flex flex-wrap gap-1">
-                                          {materialScoreComponents(material).slice(0, 4).map(([name, value]) => (
-                                            <span key={name} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                                              {name} {value.toFixed(2)}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
+                                <>
+                                  <div className="mb-2 space-y-2 rounded border border-border bg-background p-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+                                        <Tags className="h-3.5 w-3.5 text-muted-foreground" />
+                                        已选 {selectedMaterialIds.length} 条材料
+                                        {selectedVisibleMaterialCount !== selectedMaterialIds.length && selectedMaterialIds.length > 0
+                                          ? ` · 当前页 ${selectedVisibleMaterialCount} 条`
+                                          : ''}
+                                      </span>
+                                      <span className="flex flex-wrap items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedMaterialIds(visibleAnchorMaterialIds)}
+                                          disabled={loading || visibleAnchorMaterialIds.length === 0}
+                                          className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                                        >
+                                          选择当前材料
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedMaterialIds([])}
+                                          disabled={loading || selectedMaterialIds.length === 0}
+                                          className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                                        >
+                                          清除材料选择
+                                        </button>
+                                      </span>
                                     </div>
-                                  ))}
-                                </div>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                                      <Field label="批量功能">
+                                        <input value={bulkMaterialTagForm.functionTag} onChange={event => setBulkMaterialTagForm(form => ({ ...form, functionTag: event.target.value }))} className={inputClass} aria-label="批量材料功能标签" />
+                                      </Field>
+                                      <Field label="批量情绪">
+                                        <input value={bulkMaterialTagForm.emotionTag} onChange={event => setBulkMaterialTagForm(form => ({ ...form, emotionTag: event.target.value }))} className={inputClass} aria-label="批量材料情绪标签" />
+                                      </Field>
+                                      <Field label="批量场景">
+                                        <input value={bulkMaterialTagForm.sceneTag} onChange={event => setBulkMaterialTagForm(form => ({ ...form, sceneTag: event.target.value }))} className={inputClass} aria-label="批量材料场景标签" />
+                                      </Field>
+                                      <Field label="批量 POV">
+                                        <input value={bulkMaterialTagForm.povTag} onChange={event => setBulkMaterialTagForm(form => ({ ...form, povTag: event.target.value }))} className={inputClass} aria-label="批量材料 POV 标签" />
+                                      </Field>
+                                      <Field label="批量技法">
+                                        <input value={bulkMaterialTagForm.techniqueTag} onChange={event => setBulkMaterialTagForm(form => ({ ...form, techniqueTag: event.target.value }))} className={inputClass} aria-label="批量材料技法标签" />
+                                      </Field>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          void saveBulkMaterialTags()
+                                        }}
+                                        disabled={loading || selectedMaterialIds.length === 0 || !hasBulkMaterialTagOverride}
+                                        className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                      >
+                                        <Check className="h-3.5 w-3.5" />批量保存标签
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setBulkMaterialTagForm(EMPTY_MATERIAL_TAG_FORM)}
+                                        disabled={loading || !hasBulkMaterialTagOverride}
+                                        className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                                      >
+                                        <X className="h-3.5 w-3.5" />清空批量标签
+                                      </button>
+                                      <span className="text-[11px] text-muted-foreground">仅覆盖已填写字段</span>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2" aria-label={`${anchor.title} 材料预览`}>
+                                    {visibleAnchorMaterialItems.map(material => (
+                                      <div key={material.material_id} className="rounded border border-border bg-card px-2.5 py-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <label className="flex min-w-0 flex-1 items-center gap-2">
+                                            <input
+                                              type="checkbox"
+                                              checked={selectedMaterialSet.has(material.material_id)}
+                                              onChange={event => toggleMaterialSelection(material.material_id, event.target.checked)}
+                                              className="shrink-0"
+                                              aria-label={`选择 ${material.material_id} 做批量标签校正`}
+                                            />
+                                            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                                              {material.material_id} · {material.material_type} · {material.function_tag || 'untagged'} · {material.pov_tag || 'unknown'}
+                                            </span>
+                                          </label>
+                                          <span className="flex shrink-0 items-center gap-1">
+                                            {material.user_verified && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">已校正</span>}
+                                            <button
+                                              type="button"
+                                              onClick={() => beginEditMaterialTags(material)}
+                                              disabled={loading}
+                                              className="rounded px-1.5 py-1 text-[11px] leading-none text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+                                              aria-label={`校正 ${material.material_id} 的材料标签`}
+                                            >
+                                              校正
+                                            </button>
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-foreground">{material.text}</p>
+                                        {editingMaterialId === material.material_id && materialTagForm && (
+                                          <div className="mt-2 space-y-2 rounded border border-border bg-background p-2">
+                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                              <Field label="功能">
+                                                <input value={materialTagForm.functionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, functionTag: event.target.value }) : form)} className={inputClass} aria-label="材料功能标签" />
+                                              </Field>
+                                              <Field label="情绪">
+                                                <input value={materialTagForm.emotionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, emotionTag: event.target.value }) : form)} className={inputClass} aria-label="材料情绪标签" />
+                                              </Field>
+                                              <Field label="场景">
+                                                <input value={materialTagForm.sceneTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, sceneTag: event.target.value }) : form)} className={inputClass} aria-label="材料场景标签" />
+                                              </Field>
+                                              <Field label="POV">
+                                                <input value={materialTagForm.povTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, povTag: event.target.value }) : form)} className={inputClass} aria-label="材料 POV 标签" />
+                                              </Field>
+                                              <Field label="技法">
+                                                <input value={materialTagForm.techniqueTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, techniqueTag: event.target.value }) : form)} className={inputClass} aria-label="材料技法标签" />
+                                              </Field>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  void saveMaterialTags(material)
+                                                }}
+                                                disabled={loading}
+                                                className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                              >
+                                                <Check className="h-3.5 w-3.5" />保存标签
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={cancelEditMaterialTags}
+                                                className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80"
+                                              >
+                                                <X className="h-3.5 w-3.5" />取消
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {materialScoreComponents(material).length > 0 && (
+                                          <div className="mt-2 flex flex-wrap gap-1">
+                                            {materialScoreComponents(material).slice(0, 4).map(([name, value]) => (
+                                              <span key={name} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                                                {name} {value.toFixed(2)}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
                               )}
                             </>
                           )}

@@ -523,6 +523,18 @@ export namespace reference {
     note?: string | null
   }
 
+  export interface UpdateMaterialsTagsInput {
+    novel_id: number
+    material_ids: string[]
+    function_tag?: string | null
+    emotion_tag?: string | null
+    scene_tag?: string | null
+    pov_tag?: string | null
+    technique_tag?: string | null
+    origin?: string | null
+    note?: string | null
+  }
+
   export interface MaterialQuery {
     query: string
     material_types: string[]

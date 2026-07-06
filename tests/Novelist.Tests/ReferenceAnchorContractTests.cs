@@ -737,6 +737,36 @@ public sealed class ReferenceAnchorContractTests
     }
 
     [Fact]
+    public void ReferenceMaterialsTagUpdatePayloadUsesStableSnakeCaseJsonNames()
+    {
+        var input = new UpdateReferenceMaterialsTagsPayload(
+            NovelId: 42,
+            MaterialIds: ["material-1", "material-2"],
+            FunctionTag: "interiority",
+            EmotionTag: "unease",
+            SceneTag: "threshold",
+            PovTag: "close",
+            TechniqueTag: "afterbeat",
+            Origin: "user",
+            Note: "bulk correction after reviewing search results");
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(input, BridgeJson.SerializerOptions));
+        var root = json.RootElement;
+
+        Assert.Equal(42, root.GetProperty("novel_id").GetInt64());
+        Assert.Equal(["material-1", "material-2"], root.GetProperty("material_ids").EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray());
+        Assert.Equal("interiority", root.GetProperty("function_tag").GetString());
+        Assert.Equal("unease", root.GetProperty("emotion_tag").GetString());
+        Assert.Equal("threshold", root.GetProperty("scene_tag").GetString());
+        Assert.Equal("close", root.GetProperty("pov_tag").GetString());
+        Assert.Equal("afterbeat", root.GetProperty("technique_tag").GetString());
+        Assert.Equal("user", root.GetProperty("origin").GetString());
+        Assert.Equal("bulk correction after reviewing search results", root.GetProperty("note").GetString());
+        Assert.False(root.TryGetProperty("NovelId", out _));
+        Assert.False(root.TryGetProperty("MaterialIds", out _));
+    }
+
+    [Fact]
     public void ReferenceConstantsDocumentInitialStateAndRewriteVocabulary()
     {
         Assert.Equal("L0", ReferenceRewriteLevels.L0);
@@ -815,6 +845,7 @@ public sealed class ReferenceAnchorContractTests
             "RecordReferenceUserFeedback",
             "GetReferenceUserFeedback",
             "UpdateReferenceMaterialTags",
+            "UpdateReferenceMaterialsTags",
             "GenerateReferenceChapterBlueprint",
             "GetReferenceChapterBlueprints",
             "GetReferenceChapterBlueprint",
