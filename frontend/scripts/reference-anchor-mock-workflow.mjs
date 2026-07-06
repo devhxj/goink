@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(frontendRoot, '..')
-const outputDir = path.join(repoRoot, 'output', 'playwright')
+const outputDir = path.join(repoRoot, 'output', 'playwright', 'phase13', 'reference-anchor')
 
 const now = '2026-07-05T12:00:00.000Z'
 
