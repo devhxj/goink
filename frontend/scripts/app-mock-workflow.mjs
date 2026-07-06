@@ -69,6 +69,9 @@ async function runSmokeSuite(browser, url) {
   logStep('checking bootstrap states')
   await verifyBootstrapStates(browser, url, consoleErrors, pageErrors)
 
+  logStep('checking fixture fault modes')
+  await verifyFixtureFaultModes(browser, url, consoleErrors, pageErrors)
+
   logStep('loading workspace')
   const page = await newAppPage(browser, consoleErrors, pageErrors, { initialized: true }, undefined, 'smoke-shell')
   await page.goto(url, { waitUntil: 'domcontentloaded' })
@@ -93,6 +96,9 @@ async function runFullSuite(browser, url) {
 
   logStep('checking bootstrap states')
   await verifyBootstrapStates(browser, url, consoleErrors, pageErrors)
+
+  logStep('checking fixture fault modes')
+  await verifyFixtureFaultModes(browser, url, consoleErrors, pageErrors)
 
   logStep('loading workspace')
   const page = await newAppPage(browser, consoleErrors, pageErrors, { initialized: true }, undefined, 'full-shell')
@@ -304,6 +310,61 @@ async function verifyBootstrapStates(browser, url, consoleErrors, pageErrors) {
   await bridgeUnavailablePage.close()
 }
 
+async function verifyFixtureFaultModes(browser, url, consoleErrors, pageErrors) {
+  const faultPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      FaultSlowProbe: { delayMs: 80 },
+      FaultValidationProbe: { mode: 'validation', message: '模拟校验错误' },
+      FaultStorageProbe: { mode: 'storage', message: '模拟存储错误' },
+      FaultMalformedProbe: { mode: 'malformed-response' },
+      FaultTimeoutProbe: { mode: 'timeout' },
+      FaultResetProbe: { mode: 'validation', message: '一次性 fixture 错误' },
+    },
+  }, undefined, 'fixture-fault-modes')
+
+  await faultPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(faultPage.getByText('全局回归小说'), 'fixture fault workspace')
+
+  const success = await invokeProbe(faultPage, 'FaultSuccessProbe')
+  assert.equal(success.ok, true, 'default fixture path should succeed')
+
+  const slow = await invokeProbe(faultPage, 'FaultSlowProbe')
+  assert.equal(slow.ok, true, 'slow fixture path should still succeed')
+  assert(slow.elapsedMs >= 40, `slow fixture should delay the response, got ${slow.elapsedMs}ms`)
+
+  const validation = await invokeProbe(faultPage, 'FaultValidationProbe')
+  assert.equal(validation.ok, false, 'validation fixture should reject')
+  assert.equal(validation.code, 'VALIDATION_ERROR')
+  assert.match(validation.message, /模拟校验错误/)
+
+  const storage = await invokeProbe(faultPage, 'FaultStorageProbe')
+  assert.equal(storage.ok, false, 'storage fixture should reject')
+  assert.equal(storage.code, 'STORAGE_ERROR')
+  assert.match(storage.message, /模拟存储错误/)
+
+  const malformed = await invokeProbe(faultPage, 'FaultMalformedProbe')
+  assert.equal(malformed.ok, false, 'malformed fixture response should reject')
+  assert.equal(malformed.code, 'INVALID_BRIDGE_RESPONSE')
+  assert.match(malformed.message, /missing an ok flag/)
+
+  const timeout = await invokeProbe(faultPage, 'FaultTimeoutProbe', 20)
+  assert.equal(timeout.ok, false, 'timeout fixture should reject')
+  assert.equal(timeout.code, 'REQUEST_TIMEOUT')
+  assert.equal(timeout.retryable, true)
+
+  const resetFailure = await invokeProbe(faultPage, 'FaultResetProbe')
+  assert.equal(resetFailure.ok, false, 'reset probe should fail in the faulted page')
+  await faultPage.close()
+
+  const resetPage = await newAppPage(browser, consoleErrors, pageErrors, { initialized: true }, undefined, 'fixture-reset')
+  await resetPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(resetPage.getByText('全局回归小说'), 'fixture reset workspace')
+  const resetSuccess = await invokeProbe(resetPage, 'FaultResetProbe')
+  assert.equal(resetSuccess.ok, true, 'fixture state must reset for a new page')
+  await resetPage.close()
+}
+
 async function newAppPage(
   browser,
   consoleErrors,
@@ -371,7 +432,11 @@ async function writePageDiagnostics(page, artifactLabel) {
   const bridgeStates = await page.evaluate(() => {
     const states = []
     if (window.__appMockState?.calls) {
-      states.push({ name: 'app', calls: window.__appMockState.calls })
+      states.push({
+        name: 'app',
+        calls: window.__appMockState.calls,
+        appliedFaults: window.__appMockState.appliedFaults ?? [],
+      })
     }
     return states
   }).catch(() => [])
@@ -379,7 +444,7 @@ async function writePageDiagnostics(page, artifactLabel) {
   for (const state of bridgeStates) {
     await fs.writeFile(
       path.join(outputDir, 'bridge-calls', `${artifactLabel}-${state.name}.json`),
-      `${JSON.stringify(state.calls, null, 2)}\n`,
+      `${JSON.stringify({ calls: state.calls, appliedFaults: state.appliedFaults }, null, 2)}\n`,
       'utf8',
     )
   }
@@ -1105,6 +1170,32 @@ async function verifyStressGuardrails(page) {
   assert(!methods.includes('runtime.shell.openExternal'), 'stress workflow must not open external URLs')
 }
 
+async function invokeProbe(page, method, timeoutMs = 1_000) {
+  return await page.evaluate(
+    async ({ method, timeoutMs }) => {
+      const startedAt = performance.now()
+      try {
+        const result = await window.novelist.invoke(method, {}, { timeoutMs })
+        return {
+          ok: true,
+          result,
+          elapsedMs: performance.now() - startedAt,
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          name: error instanceof Error ? error.name : '',
+          message: error instanceof Error ? error.message : String(error),
+          code: typeof error === 'object' && error !== null && 'code' in error ? error.code : '',
+          retryable: typeof error === 'object' && error !== null && 'retryable' in error ? error.retryable : false,
+          elapsedMs: performance.now() - startedAt,
+        }
+      }
+    },
+    { method, timeoutMs },
+  )
+}
+
 function makeStressChapters(count, stressTitle) {
   return Array.from({ length: count }, (_, index) => {
     const chapterNumber = index + 1
@@ -1712,6 +1803,7 @@ function installConfigurableAppMockBridge(options = {}) {
   }
   const state = {
     calls: [],
+    appliedFaults: [],
     activeNovelId: options.settings?.last_novel_id ?? defaultSettings.last_novel_id,
     nextNovelId: 43,
     nextChapterId: 3,
@@ -1749,6 +1841,7 @@ function installConfigurableAppMockBridge(options = {}) {
     writingStats: options.writingStats ?? defaultWritingStats,
     skills: options.skills ?? defaultSkills,
   }
+  const faultQueues = normalizeFaultQueues(options.faults ?? {})
 
   window.localStorage.removeItem('novelist_tabs_all')
   window.localStorage.setItem('theme', 'light')
@@ -1780,12 +1873,36 @@ function installConfigurableAppMockBridge(options = {}) {
     try {
       const args = Array.isArray(envelope.payload?.args) ? envelope.payload.args : []
       state.calls.push({ method: envelope.method, args })
+      const fault = nextFault(envelope.method)
+
+      if (fault?.delayMs) {
+        await wait(fault.delayMs)
+      }
+
+      if (fault?.mode === 'timeout') {
+        return
+      }
+
+      if (fault?.mode === 'malformed-response') {
+        respond({ kind: 'response', id: envelope.id, result: fault.result ?? null })
+        return
+      }
+
+      if (fault?.mode === 'validation' || fault?.mode === 'storage' || fault?.mode === 'error') {
+        respond({
+          kind: 'response',
+          id: envelope.id,
+          ok: false,
+          error: faultErrorPayload(fault),
+        })
+        return
+      }
 
       if (envelope.method === 'SaveContent' && !options.allowSaveContent) {
         throw new Error('SaveContent is forbidden in the app-wide smoke unless the test explicitly edits content.')
       }
 
-      const result = await route(envelope.method, args)
+      const result = fault?.hasResult ? fault.result : await route(envelope.method, args)
       respond({ kind: 'response', id: envelope.id, ok: true, result })
     } catch (error) {
       respond({
@@ -1810,6 +1927,78 @@ function installConfigurableAppMockBridge(options = {}) {
 
   function emit(name, payload) {
     respond({ kind: 'event', name, payload })
+  }
+
+  function normalizeFaultQueues(faults) {
+    const queues = {}
+    for (const [method, fault] of Object.entries(faults)) {
+      queues[method] = Array.isArray(fault) ? [...fault] : [fault]
+    }
+    return queues
+  }
+
+  function nextFault(method) {
+    const queue = faultQueues[method]
+    if (!queue || queue.length === 0) return null
+
+    const fault = normalizeFault(queue[0])
+    if (fault.once !== false) {
+      queue.shift()
+    }
+
+    state.appliedFaults.push({
+      method,
+      mode: fault.mode,
+      delayMs: fault.delayMs,
+      code: fault.code,
+      message: fault.message,
+    })
+    return fault
+  }
+
+  function normalizeFault(fault) {
+    if (!fault || typeof fault !== 'object') {
+      return { mode: 'error', message: 'Mock fixture fault' }
+    }
+
+    return {
+      mode: String(fault.mode ?? 'success'),
+      delayMs: Math.max(0, Number(fault.delayMs ?? 0)),
+      code: typeof fault.code === 'string' ? fault.code : '',
+      message: typeof fault.message === 'string' ? fault.message : '',
+      retryable: fault.retryable === true,
+      details: fault.details,
+      result: fault.result,
+      hasResult: Object.hasOwn(fault, 'result'),
+      once: fault.once,
+    }
+  }
+
+  function faultErrorPayload(fault) {
+    if (fault.mode === 'validation') {
+      return {
+        code: fault.code || 'VALIDATION_ERROR',
+        message: fault.message || 'Mock validation error',
+        details: fault.details,
+        retryable: false,
+      }
+    }
+
+    if (fault.mode === 'storage') {
+      return {
+        code: fault.code || 'STORAGE_ERROR',
+        message: fault.message || 'Mock storage error',
+        details: fault.details,
+        retryable: fault.retryable,
+      }
+    }
+
+    return {
+      code: fault.code || 'MOCK_BRIDGE_ERROR',
+      message: fault.message || 'Mock bridge error',
+      details: fault.details,
+      retryable: fault.retryable,
+    }
   }
 
   async function route(method, args) {
