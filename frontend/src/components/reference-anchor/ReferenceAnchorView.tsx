@@ -69,6 +69,7 @@ type MaterialSearchFilters = {
 }
 
 type AnchorScopeFilter = 'all' | 'novel' | 'workspace_corpus'
+type MaterialPreviewSort = 'default' | 'score_desc' | 'material_id_asc'
 
 type MaterialPreviewState = {
   items: reference.Material[]
@@ -147,6 +148,10 @@ function materialScoreComponents(material: reference.Material): Array<[string, n
     .sort(([, left], [, right]) => right - left)
 }
 
+function materialBestScore(material: reference.Material): number {
+  return materialScoreComponents(material)[0]?.[1] ?? 0
+}
+
 function formFromAnchor(anchor: reference.Anchor): AnchorForm {
   return {
     title: anchor.title,
@@ -179,6 +184,23 @@ function anchorMatchesQuery(anchor: reference.Anchor, query: string): boolean {
   ].some(value => normalized(value).includes(needle))
 }
 
+function materialMatchesQuery(material: reference.Material, query: string): boolean {
+  const needle = normalized(query)
+  if (!needle) return true
+
+  return [
+    material.material_id,
+    material.source_segment_id,
+    material.material_type,
+    material.function_tag,
+    material.emotion_tag,
+    material.scene_tag,
+    material.pov_tag,
+    material.technique_tag,
+    material.text,
+  ].some(value => normalized(value).includes(needle))
+}
+
 export default function ReferenceAnchorView({ novelId }: Props) {
   const app = useApp()
 
@@ -197,6 +219,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [anchorEditForm, setAnchorEditForm] = useState<AnchorForm | null>(null)
   const [expandedAnchorMaterialId, setExpandedAnchorMaterialId] = useState<number | null>(null)
   const [anchorMaterialPreview, setAnchorMaterialPreview] = useState<MaterialPreviewState>(EMPTY_MATERIAL_PREVIEW)
+  const [anchorMaterialQuery, setAnchorMaterialQuery] = useState('')
+  const [anchorMaterialSort, setAnchorMaterialSort] = useState<MaterialPreviewSort>('default')
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const [materialTagForm, setMaterialTagForm] = useState<MaterialTagForm | null>(null)
   const [blueprintForm, setBlueprintForm] = useState<BlueprintForm>(EMPTY_BLUEPRINT_FORM)
@@ -234,6 +258,24 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     || anchorVisibilityFilter !== 'all'
     || anchorSourceTrustFilter !== 'all'
   const canClearAnchorFilters = hasAnchorListFilters || anchorScopeFilter !== 'all'
+  const visibleAnchorMaterialItems = useMemo(() => {
+    const indexedItems = anchorMaterialPreview.items
+      .map((material, index) => ({ material, index }))
+      .filter(({ material }) => materialMatchesQuery(material, anchorMaterialQuery))
+
+    if (anchorMaterialSort === 'score_desc') {
+      indexedItems.sort((left, right) => {
+        const scoreDelta = materialBestScore(right.material) - materialBestScore(left.material)
+        if (scoreDelta !== 0) return scoreDelta
+        return left.index - right.index
+      })
+    } else if (anchorMaterialSort === 'material_id_asc') {
+      indexedItems.sort((left, right) => left.material.material_id.localeCompare(right.material.material_id))
+    }
+
+    return indexedItems.map(({ material }) => material)
+  }, [anchorMaterialPreview.items, anchorMaterialQuery, anchorMaterialSort])
+  const hasAnchorMaterialQuery = anchorMaterialQuery.trim().length > 0
 
   const loadAnchors = useCallback(async () => {
     if (!novelId) {
@@ -396,6 +438,8 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     if (expandedAnchorMaterialId === anchor.anchor_id) {
       setExpandedAnchorMaterialId(null)
       setAnchorMaterialPreview(EMPTY_MATERIAL_PREVIEW)
+      setAnchorMaterialQuery('')
+      setAnchorMaterialSort('default')
       setEditingMaterialId(null)
       setMaterialTagForm(null)
     }
@@ -442,11 +486,15 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     if (expandedAnchorMaterialId === anchor.anchor_id) {
       setExpandedAnchorMaterialId(null)
       setAnchorMaterialPreview(EMPTY_MATERIAL_PREVIEW)
+      setAnchorMaterialQuery('')
+      setAnchorMaterialSort('default')
       setEditingMaterialId(null)
       setMaterialTagForm(null)
       return
     }
 
+    setAnchorMaterialQuery('')
+    setAnchorMaterialSort('default')
     await loadAnchorMaterialPreview(anchor, 1)
   }
 
@@ -1191,79 +1239,108 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                           {anchorMaterialPreview.items.length === 0 ? (
                             <p className="text-[11px] text-muted-foreground">暂无可浏览材料</p>
                           ) : (
-                            <div className="space-y-2" aria-label={`${anchor.title} 材料预览`}>
-                              {anchorMaterialPreview.items.map(material => (
-                                <div key={material.material_id} className="rounded border border-border bg-card px-2.5 py-2">
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="min-w-0 truncate text-[11px] text-muted-foreground">
-                                      {material.material_id} · {material.material_type} · {material.function_tag || 'untagged'} · {material.pov_tag || 'unknown'}
-                                    </span>
-                                    <span className="flex shrink-0 items-center gap-1">
-                                      {material.user_verified && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">已校正</span>}
-                                      <button
-                                        type="button"
-                                        onClick={() => beginEditMaterialTags(material)}
-                                        disabled={loading}
-                                        className="rounded px-1.5 py-1 text-[11px] leading-none text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
-                                        aria-label={`校正 ${material.material_id} 的材料标签`}
-                                      >
-                                        校正
-                                      </button>
-                                    </span>
-                                  </div>
-                                  <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-foreground">{material.text}</p>
-                                  {editingMaterialId === material.material_id && materialTagForm && (
-                                    <div className="mt-2 space-y-2 rounded border border-border bg-background p-2">
-                                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                        <Field label="功能">
-                                          <input value={materialTagForm.functionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, functionTag: event.target.value }) : form)} className={inputClass} aria-label="材料功能标签" />
-                                        </Field>
-                                        <Field label="情绪">
-                                          <input value={materialTagForm.emotionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, emotionTag: event.target.value }) : form)} className={inputClass} aria-label="材料情绪标签" />
-                                        </Field>
-                                        <Field label="场景">
-                                          <input value={materialTagForm.sceneTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, sceneTag: event.target.value }) : form)} className={inputClass} aria-label="材料场景标签" />
-                                        </Field>
-                                        <Field label="POV">
-                                          <input value={materialTagForm.povTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, povTag: event.target.value }) : form)} className={inputClass} aria-label="材料 POV 标签" />
-                                        </Field>
-                                        <Field label="技法">
-                                          <input value={materialTagForm.techniqueTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, techniqueTag: event.target.value }) : form)} className={inputClass} aria-label="材料技法标签" />
-                                        </Field>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            void saveMaterialTags(material)
-                                          }}
-                                          disabled={loading}
-                                          className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                                        >
-                                          <Check className="h-3.5 w-3.5" />保存标签
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={cancelEditMaterialTags}
-                                          className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80"
-                                        >
-                                          <X className="h-3.5 w-3.5" />取消
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {materialScoreComponents(material).length > 0 && (
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                      {materialScoreComponents(material).slice(0, 4).map(([name, value]) => (
-                                        <span key={name} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                                          {name} {value.toFixed(2)}
+                            <>
+                              <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_10rem]">
+                                <Field label="材料筛选">
+                                  <input
+                                    value={anchorMaterialQuery}
+                                    onChange={event => setAnchorMaterialQuery(event.target.value)}
+                                    className={inputClass}
+                                    placeholder="ID、文本或标签"
+                                    aria-label="材料筛选"
+                                  />
+                                </Field>
+                                <Field label="材料排序">
+                                  <select
+                                    value={anchorMaterialSort}
+                                    onChange={event => setAnchorMaterialSort(event.target.value as MaterialPreviewSort)}
+                                    className={inputClass}
+                                    aria-label="材料排序"
+                                  >
+                                    <option value="default">默认顺序</option>
+                                    <option value="score_desc">最高分优先</option>
+                                    <option value="material_id_asc">材料 ID</option>
+                                  </select>
+                                </Field>
+                              </div>
+                              {visibleAnchorMaterialItems.length === 0 ? (
+                                <p className="text-[11px] text-muted-foreground">{hasAnchorMaterialQuery ? '没有匹配材料' : '暂无可浏览材料'}</p>
+                              ) : (
+                                <div className="space-y-2" aria-label={`${anchor.title} 材料预览`}>
+                                  {visibleAnchorMaterialItems.map(material => (
+                                    <div key={material.material_id} className="rounded border border-border bg-card px-2.5 py-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                                          {material.material_id} · {material.material_type} · {material.function_tag || 'untagged'} · {material.pov_tag || 'unknown'}
                                         </span>
-                                      ))}
+                                        <span className="flex shrink-0 items-center gap-1">
+                                          {material.user_verified && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">已校正</span>}
+                                          <button
+                                            type="button"
+                                            onClick={() => beginEditMaterialTags(material)}
+                                            disabled={loading}
+                                            className="rounded px-1.5 py-1 text-[11px] leading-none text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+                                            aria-label={`校正 ${material.material_id} 的材料标签`}
+                                          >
+                                            校正
+                                          </button>
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-foreground">{material.text}</p>
+                                      {editingMaterialId === material.material_id && materialTagForm && (
+                                        <div className="mt-2 space-y-2 rounded border border-border bg-background p-2">
+                                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            <Field label="功能">
+                                              <input value={materialTagForm.functionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, functionTag: event.target.value }) : form)} className={inputClass} aria-label="材料功能标签" />
+                                            </Field>
+                                            <Field label="情绪">
+                                              <input value={materialTagForm.emotionTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, emotionTag: event.target.value }) : form)} className={inputClass} aria-label="材料情绪标签" />
+                                            </Field>
+                                            <Field label="场景">
+                                              <input value={materialTagForm.sceneTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, sceneTag: event.target.value }) : form)} className={inputClass} aria-label="材料场景标签" />
+                                            </Field>
+                                            <Field label="POV">
+                                              <input value={materialTagForm.povTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, povTag: event.target.value }) : form)} className={inputClass} aria-label="材料 POV 标签" />
+                                            </Field>
+                                            <Field label="技法">
+                                              <input value={materialTagForm.techniqueTag} onChange={event => setMaterialTagForm(form => form ? ({ ...form, techniqueTag: event.target.value }) : form)} className={inputClass} aria-label="材料技法标签" />
+                                            </Field>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                void saveMaterialTags(material)
+                                              }}
+                                              disabled={loading}
+                                              className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                            >
+                                              <Check className="h-3.5 w-3.5" />保存标签
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={cancelEditMaterialTags}
+                                              className="inline-flex items-center gap-1.5 rounded bg-secondary px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80"
+                                            >
+                                              <X className="h-3.5 w-3.5" />取消
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {materialScoreComponents(material).length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1">
+                                          {materialScoreComponents(material).slice(0, 4).map(([name, value]) => (
+                                            <span key={name} className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                                              {name} {value.toFixed(2)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
+                              )}
+                            </>
                           )}
                         </div>
                       )}

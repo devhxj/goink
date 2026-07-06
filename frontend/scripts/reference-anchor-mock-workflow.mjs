@@ -155,6 +155,18 @@ async function createRebuildAndSearchReferenceMaterial(page) {
   await expectVisible(firstMaterial.getByText('object_subtext'), 'corrected material function tag')
   await expectVisible(firstMaterial.getByText('limited_close'), 'corrected material pov tag')
   await expectVisible(page.getByText('第 1 / 2 页 · 共 6 条'), 'anchor material preview pagination summary')
+
+  await page.getByLabel('材料筛选').fill('杯子')
+  await expectVisible(firstMaterial.getByText('mat-001'), 'filtered anchor material preview id')
+  await expectHidden(materialPreview.getByText('mat-002'), 'filtered anchor material hides non-matching row')
+  await page.getByLabel('材料筛选').fill('不存在材料')
+  await expectVisible(page.getByText('没有匹配材料'), 'anchor material filtered empty state')
+  await page.getByLabel('材料筛选').fill('')
+  await page.getByLabel('材料排序').selectOption('score_desc')
+  await expectVisible(materialPreview.locator('.rounded').first().getByText('mat-004'), 'anchor material score sort first row')
+  await page.getByLabel('材料排序').selectOption('material_id_asc')
+  await expectVisible(materialPreview.locator('.rounded').first().getByText('mat-001'), 'anchor material id sort first row')
+
   await page.getByRole('button', { name: /下一页材料/ }).click()
   await expectVisible(page.getByText('mat-006'), 'anchor material preview second page id')
   await expectVisible(page.getByText('雨水从伞沿断续落下，像有人在门外迟疑。'), 'anchor material preview second page text')
@@ -802,9 +814,9 @@ function installReferenceAnchorMockBridge() {
       user_verified: true,
       created_at: now,
       score_components: {
-        lexical: 0.92,
-        function: 0.83,
-        prose_duty: 0.75,
+        lexical: index === 4 ? 0.98 : 0.92,
+        function: index === 4 ? 0.88 : 0.83,
+        prose_duty: index === 4 ? 0.8 : 0.75,
         feedback_boost: 0.18,
       },
     }
