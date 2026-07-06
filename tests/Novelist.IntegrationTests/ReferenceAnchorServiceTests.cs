@@ -797,6 +797,69 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LegacyPerNovelWorkspaceRowsAutoMigrateToNullableWorkspaceOwnership()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var sourceNovel = await novels.CreateNovelAsync(new CreateNovelPayload("自动迁移来源", "", ""), CancellationToken.None);
+        var consumingNovel = await novels.CreateNovelAsync(new CreateNovelPayload("自动迁移消费", "", ""), CancellationToken.None);
+        var workspacePath = CreateSourceFile("auto-migrate-workspace.md", "旧工作区语料应该自动变成共享材料。");
+        var privatePath = CreateSourceFile("auto-migrate-private.md", "私有语料仍只属于原小说。");
+        var restrictedPath = CreateSourceFile("auto-migrate-restricted.md", "受限语料仍只属于原小说。");
+        var service = new SqliteReferenceAnchorService(options, novels);
+        var workspaceAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(sourceNovel.Id, "旧工作区正数所有者", null, workspacePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var privateAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(sourceNovel.Id, "旧私有正数所有者", null, privatePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var restrictedAnchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(sourceNovel.Id, "旧受限正数所有者", null, restrictedPath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var beforeMaterials = await ReadMaterialRowsAsync(options, workspaceAnchor.AnchorId);
+        var beforeSegments = await ReadSourceSegmentsAsync(options, workspaceAnchor.AnchorId);
+        await SetAnchorVisibilityOnlyAsync(options, workspaceAnchor.AnchorId, ReferenceCorpusVisibilities.Workspace);
+        await SetAnchorVisibilityOnlyAsync(options, restrictedAnchor.AnchorId, ReferenceCorpusVisibilities.Restricted);
+        Assert.Equal(sourceNovel.Id, await ReadAnchorStoredNovelIdAsync(options, workspaceAnchor.AnchorId));
+        Assert.Equal(sourceNovel.Id, await ReadAnchorStoredNovelIdAsync(options, privateAnchor.AnchorId));
+        Assert.Equal(sourceNovel.Id, await ReadAnchorStoredNovelIdAsync(options, restrictedAnchor.AnchorId));
+
+        var migratedService = new SqliteReferenceAnchorService(options, novels);
+        var consumingAnchors = await migratedService.GetAnchorsAsync(consumingNovel.Id, CancellationToken.None);
+
+        var migrated = Assert.Single(consumingAnchors, item => item.AnchorId == workspaceAnchor.AnchorId);
+        Assert.Equal(0, migrated.NovelId);
+        Assert.Equal(ReferenceAnchorOwnerScopes.WorkspaceCorpus, migrated.OwnerScope);
+        Assert.Null(migrated.OwnerNovelId);
+        Assert.Equal(ReferenceCorpusVisibilities.Workspace, migrated.Visibility);
+        Assert.DoesNotContain(consumingAnchors, item => item.AnchorId == privateAnchor.AnchorId);
+        Assert.DoesNotContain(consumingAnchors, item => item.AnchorId == restrictedAnchor.AnchorId);
+        Assert.Null(await ReadAnchorStoredNovelIdAsync(options, workspaceAnchor.AnchorId));
+        Assert.Equal(sourceNovel.Id, await ReadAnchorStoredNovelIdAsync(options, privateAnchor.AnchorId));
+        Assert.Equal(sourceNovel.Id, await ReadAnchorStoredNovelIdAsync(options, restrictedAnchor.AnchorId));
+        Assert.Equal(beforeMaterials.Select(item => item.MaterialId), (await ReadMaterialRowsAsync(options, workspaceAnchor.AnchorId)).Select(item => item.MaterialId));
+        Assert.Equal(beforeSegments.Select(item => item.SegmentId), (await ReadSourceSegmentsAsync(options, workspaceAnchor.AnchorId)).Select(item => item.SegmentId));
+
+        var consumingSearch = await migratedService.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                consumingNovel.Id,
+                AnchorIds: [],
+                Query: "共享材料",
+                MaterialTypes: [ReferenceMaterialTypes.Sentence],
+                EmotionTags: [],
+                FunctionTags: [],
+                PovTags: [],
+                TechniqueTags: [],
+                Page: 1,
+                Size: 10),
+            CancellationToken.None);
+        Assert.Contains(consumingSearch.Items, item => item.AnchorId == workspaceAnchor.AnchorId);
+        Assert.DoesNotContain(consumingSearch.Items, item => item.AnchorId == privateAnchor.AnchorId);
+        Assert.DoesNotContain(consumingSearch.Items, item => item.AnchorId == restrictedAnchor.AnchorId);
+    }
+
+    [Fact]
     public async Task PromoteAnchorsToWorkspaceCorpusPromotesOwnedRowsAtomically()
     {
         var options = CreateOptions();
@@ -3999,6 +4062,33 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
         return Assert.IsType<string>(visibility);
     }
 
+    private static async ValueTask<long?> ReadAnchorStoredNovelIdAsync(
+        AppInitializationOptions options,
+        long anchorId)
+    {
+        var databasePath = Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT novel_id
+            FROM reference_anchors
+            WHERE anchor_id = $anchor_id;
+            """;
+        command.Parameters.AddWithValue("$anchor_id", anchorId);
+        var storedNovelId = await command.ExecuteScalarAsync();
+        if (storedNovelId is null || storedNovelId == DBNull.Value)
+        {
+            return null;
+        }
+
+        return Assert.IsType<long>(storedNovelId);
+    }
+
     private static async ValueTask<string?> ReadMaterialArchivedAtAsync(
         AppInitializationOptions options,
         string materialId)
@@ -4043,6 +4133,30 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
             UPDATE reference_anchors
             SET novel_id = 0,
                 corpus_visibility = $corpus_visibility
+            WHERE anchor_id = $anchor_id;
+            """;
+        command.Parameters.AddWithValue("$anchor_id", anchorId);
+        command.Parameters.AddWithValue("$corpus_visibility", visibility);
+        var updated = await command.ExecuteNonQueryAsync();
+        Assert.Equal(1, updated);
+    }
+
+    private static async ValueTask SetAnchorVisibilityOnlyAsync(
+        AppInitializationOptions options,
+        long anchorId,
+        string visibility)
+    {
+        var databasePath = Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE reference_anchors
+            SET corpus_visibility = $corpus_visibility
             WHERE anchor_id = $anchor_id;
             """;
         command.Parameters.AddWithValue("$anchor_id", anchorId);

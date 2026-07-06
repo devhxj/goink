@@ -179,7 +179,7 @@ workspace/global reference corpus
 **Acceptance criteria:**
 
 - [ ] Reference source libraries and extracted materials can exist without `novel_id` ownership.
-- [ ] Existing per-novel anchors migrate or are readable through a compatibility layer without losing source hashes, segment ids, material ids, user-verified tags, feedback, or audit provenance.
+- [ ] Existing per-novel anchors migrate or are readable through a compatibility layer without losing source hashes, segment ids, material ids, user-verified tags, feedback, or audit provenance. Current migration coverage includes legacy workspace-visible rows with positive owners being auto-promoted to nullable workspace-corpus ownership; broader automatic per-novel corpus migration remains pending.
 - [x] Corpus records include visibility, license status, source trust, and optional user-defined tags, but no required per-novel binding gate.
 - [ ] Material search accepts story-context inputs and returns globally sourced candidates that are filtered by license/status policy and scored by beat function, emotion, POV, prose duty, technique, lexical similarity, embeddings when available, and feedback boosts.
 - [ ] Retrieval gaps are explicit states, not silent free-drafting fallbacks: automatic query expansion may run first, weak matches must be marked low confidence and carry elevated draft-audit risk, optional no-reuse beats require approved reasons, and source-required beats must stop for user action.
@@ -193,7 +193,7 @@ workspace/global reference corpus
 
 **Verification:**
 
-- [ ] Migration tests from per-novel `reference_anchors` to shared corpus records or compatibility reads. Current coverage includes legacy schema rebuild to nullable workspace-corpus ownership plus explicit single-anchor and transactional selected-anchor promotion APIs; full automatic per-novel-to-shared corpus migration remains pending.
+- [ ] Migration tests from per-novel `reference_anchors` to shared corpus records or compatibility reads. Current coverage includes legacy schema rebuild to nullable workspace-corpus ownership, automatic promotion of legacy positive-owner rows that already carry `corpus_visibility = 'workspace'`, and explicit single-anchor plus transactional selected-anchor promotion APIs; full automatic per-novel-to-shared corpus migration remains pending.
 - [x] Service tests proving workspace-corpus compatibility materials can be searched from different novels without duplicating source import.
 - [x] Tests proving per-novel forbidden facts and POV boundaries still reject globally sourced materials/candidates.
 - [x] Tests proving license/visibility policy filters corpus results before AI selection.
@@ -209,6 +209,7 @@ Targeted Phase 12 thin-slice checks completed:
 - [x] Reference material read paths now include `reference_anchors.novel_id = 0` workspace-corpus compatibility anchors for listing, search, adaptation, audit, tag correction, and per-novel feedback validation, while still excluding private anchors from other novels.
 - [x] Workspace-corpus compatibility anchors now carry `corpus_visibility`, `source_trust`, and `user_tags_json`; read paths include only `novel_id = 0 AND corpus_visibility = 'workspace'`, explicit `anchor_ids` cannot bypass private/restricted workspace visibility, and legacy `novel_id = 0` rows are promoted to workspace-visible once during schema migration.
 - [x] SQLite storage now allows `reference_anchors.novel_id IS NULL` for workspace-corpus ownership while retaining `novel_id = 0` compatibility reads and bridge output; migration rebuilds legacy `reference_anchors` tables when needed so nullable ownership can be used without losing source hashes, segment ids, material ids, feedback, or audit provenance.
+- [x] Schema ensure now automatically promotes legacy rows that already have `corpus_visibility = 'workspace'` but still store a positive `novel_id` to nullable workspace-corpus ownership, while leaving `private` and `restricted` positive-owner rows bound to their original novel and preserving source segments/material ids.
 - [x] `ReferenceAnchorPayload` now exposes `owner_scope` and optional `owner_novel_id` so clients can distinguish per-novel anchors from workspace-corpus rows without relying on the legacy `novel_id = 0` sentinel.
 - [x] Creating an anchor with `visibility = "workspace"` now stores it directly as a nullable workspace-corpus record; another novel can search the same material ids immediately without a manual reparenting helper.
 - [x] `PromoteReferenceAnchorToWorkspaceCorpus` now provides an explicit bridge/service migration path from an owned per-novel anchor to nullable workspace-corpus ownership while preserving source hashes, source segment ids, material ids, build state, existing metadata when omitted, and per-novel feedback scope.
@@ -255,6 +256,8 @@ Targeted Phase 12 thin-slice checks completed:
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter CreateWorkspaceVisibleAnchorStoresAsSharedCorpusWithoutManualReparenting -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'ReferenceAnchorContractTests|ReferenceAnchorHandlersRouteEveryMethodToServiceOperations|MafToolRegistryTests' -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter 'PromotePerNovelAnchorToWorkspaceCorpusPreservesMaterialIdentityAndFeedbackScope|PromoteAnchorRequiresCurrentNovelOwnership|PromoteAnchorPreservesExistingCorpusMetadataWhenOptionalFieldsAreOmitted' -v minimal`
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter LegacyPerNovelWorkspaceRowsAutoMigrateToNullableWorkspaceOwnership -v minimal -p:UseSharedCompilation=false`
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter 'LegacyWorkspaceCorpusRowsMigrateToWorkspaceVisibleWithoutLosingMaterialIdentity|LegacyReferenceAnchorSchemaAllowsMigratingWorkspaceCorpusRowsToNullableOwnership|PromotePerNovelAnchorToWorkspaceCorpusPreservesMaterialIdentityAndFeedbackScope|PromoteAnchorsToWorkspaceCorpusPromotesOwnedRowsAtomically|WorkspaceCorpusVisibilityFiltersAnchorsBeforeSearchAdaptAuditTagAndFeedback' -v minimal -p:UseSharedCompilation=false`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'PromoteReferenceAnchorToWorkspaceCorpusPayloadUsesStableSnakeCaseJsonNames|ReferenceAnchorHandlersRouteEveryMethodToServiceOperations|CompatibilityRegistryIncludesReferenceAnchorMethods' -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'ReferenceOrchestrationAgentToolStartsRunWithoutApprovingHumanDecisions|ReferenceAnchorContractTests|MafToolRegistryTests' -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'CreateToolsIncludesReferenceToolsOnlyWhenServicesAreConfigured|ReferenceMaterialToolInjectsNovelContext' -v minimal`

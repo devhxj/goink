@@ -2607,6 +2607,7 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
             "ALTER TABLE reference_materials ADD COLUMN archived_at TEXT;",
             cancellationToken);
         await EnsureNullableAnchorNovelIdAsync(connection, cancellationToken);
+        await PromoteLegacyOwnedWorkspaceCorpusRowsAsync(connection, cancellationToken);
         await using var indexCommand = connection.CreateCommand();
         indexCommand.CommandText = """
             CREATE INDEX IF NOT EXISTS idx_reference_anchors_corpus_visibility
@@ -2750,6 +2751,23 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService
         command.Parameters.AddWithValue("$workspace_visibility", ReferenceCorpusVisibilities.Workspace);
         command.Parameters.AddWithValue("$private_visibility", ReferenceCorpusVisibilities.Private);
         command.Parameters.AddWithValue("$workspace_corpus_novel_id", WorkspaceCorpusNovelId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async ValueTask PromoteLegacyOwnedWorkspaceCorpusRowsAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE reference_anchors
+            SET novel_id = NULL
+            WHERE novel_id IS NOT NULL
+              AND novel_id <> $workspace_corpus_novel_id
+              AND corpus_visibility = $workspace_visibility;
+            """;
+        command.Parameters.AddWithValue("$workspace_corpus_novel_id", WorkspaceCorpusNovelId);
+        command.Parameters.AddWithValue("$workspace_visibility", ReferenceCorpusVisibilities.Workspace);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
