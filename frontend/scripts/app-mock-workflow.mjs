@@ -719,23 +719,44 @@ async function verifyEditorSaveWorkflow(browser, url, consoleErrors, pageErrors)
   await expectVisible(page.locator('.monaco-editor').first(), 'monaco editor render')
   await expectVisible(page.getByText('已保存'), 'initial saved status')
 
-  const savedText = '林岚在雨夜旧宅门前停住。\n\n她把显式保存片段留在正文里。'
+  const savedText = realisticWritingText()
   await replaceEditorText(page, savedText)
   await expectVisible(page.getByText('未保存'), 'dirty status after edit')
   await page.keyboard.press(shortcutKey('S'))
-  await waitForSaveContent(page, 'chapters/1.md', '显式保存片段')
+  await waitForSaveContent(page, 'chapters/1.md', '## 雨夜复盘')
   await expectVisible(page.getByText('已保存'), 'saved status after explicit save')
   await assertStoredContent(page, 'chapters/1.md', savedText)
   const saveCountAfterSuccess = await bridgeCallCount(page, 'SaveContent')
   assert(saveCountAfterSuccess >= 1, 'Expected edited chapter to be saved at least once.')
+
+  const undoRedoAppend = '\n\n补记：这行文字专门用于验证 Monaco 撤销与重做。'
+  await insertEditorText(page, undoRedoAppend)
+  await expectVisible(page.getByText('未保存'), 'dirty status after undo-redo insert')
+  await assertEditorContains(page, '验证 Monaco 撤销与重做')
+  await page.keyboard.press(shortcutKey('Z'))
+  await assertEditorNotContains(page, '验证 Monaco 撤销与重做')
+  await page.keyboard.press(shortcutKey('Y'))
+  await assertEditorContains(page, '验证 Monaco 撤销与重做')
+  await page.keyboard.press(shortcutKey('Z'))
+  await assertEditorNotContains(page, '验证 Monaco 撤销与重做')
+  await page.keyboard.press(shortcutKey('S'))
+  await waitForSaveContentAfter(page, 'chapters/1.md', '## 雨夜复盘', saveCountAfterSuccess)
+  await expectVisible(page.getByText('已保存'), 'saved status after undo-redo restore')
+  await assertStoredContent(page, 'chapters/1.md', savedText)
+  const saveCountAfterUndoRedo = await bridgeCallCount(page, 'SaveContent')
+  assert(saveCountAfterUndoRedo > saveCountAfterSuccess, 'Expected restored chapter to be saved after undo-redo.')
+  await delay(700)
+  const saveCountAfterUndoRedoSettled = await bridgeCallCount(page, 'SaveContent')
+  await assertStoredContent(page, 'chapters/1.md', savedText)
 
   await page.getByTitle('搜索').click()
   await page.getByTitle('章节').click()
   await ensureChapterBlockExpanded(page)
   await assertSelectedChapterPath(page, 'chapters/1.md')
   await assertActiveTabTitle(page, '第1章 雨夜线索')
-  await assertEditorContains(page, '显式保存片段')
-  await assertBridgeCallCount(page, 'SaveContent', saveCountAfterSuccess)
+  await assertEditorContains(page, '## 雨夜复盘')
+  await assertEditorNotContains(page, '验证 Monaco 撤销与重做')
+  await assertBridgeCallCount(page, 'SaveContent', saveCountAfterUndoRedoSettled)
 
   await chapterButton(page, '旧城门').click()
   await expectVisible(page.getByText('第2章 旧城门').first(), 'second chapter tab')
@@ -747,7 +768,7 @@ async function verifyEditorSaveWorkflow(browser, url, consoleErrors, pageErrors)
   await expectVisible(page.getByText('保存失败：模拟保存失败，请重试'), 'save failure alert')
   await expectVisible(page.getByText('未保存'), 'dirty status retained after failed save')
   const saveCountAfterFailure = await bridgeCallCount(page, 'SaveContent')
-  assert(saveCountAfterFailure > saveCountAfterSuccess, 'Expected failed explicit save to call SaveContent.')
+  assert(saveCountAfterFailure > saveCountAfterUndoRedoSettled, 'Expected failed explicit save to call SaveContent.')
   await assertStoredContent(page, 'chapters/2.md', '旧城门下，暗号被雨水冲淡。')
 
   await page.getByRole('button', { name: '重试保存' }).click()
@@ -759,7 +780,7 @@ async function verifyEditorSaveWorkflow(browser, url, consoleErrors, pageErrors)
 
   await page.getByText('第1章 雨夜线索').first().click()
   await assertActiveTabTitle(page, '第1章 雨夜线索')
-  await assertEditorContains(page, '显式保存片段')
+  await assertEditorContains(page, '## 雨夜复盘')
   await page.getByText('第2章 旧城门').first().click()
   await assertActiveTabTitle(page, '第2章 旧城门')
   await assertEditorContains(page, '第二次按下保存')
@@ -1528,6 +1549,22 @@ function makeLargeChineseFixture(targetBytes) {
   return chunks.join('')
 }
 
+function realisticWritingText() {
+  const paragraphs = [
+    '## 雨夜复盘',
+    '林岚在雨夜旧宅门前停住。门缝里没有灯，檐下却挂着半截湿线，像有人刚把伞收起，又故意把水滴留在青砖上。',
+    '她没有立刻推门，只把手套往上拉了拉，低声记下三件事：第一，杯沿朝外；第二，桌面水痕还没散；第三，门后的人知道她会来。',
+    '> 这不是供词，只是一段给自己看的现场笔记。',
+    '- 风从旧城门方向吹来，带着铁锈味。',
+    '- 鞋印停在门槛前，没有跨进去。',
+    '- “如果我说没看见，你会信吗？”周砚问。',
+    '林岚没有回答。她把那句话在心里放慢了一遍，确认其中的停顿比内容更像线索。雨声压住远处车灯，整条巷子只剩纸页被潮气卷起的声音。',
+    '她写下最后一行：不要替门外的人下结论；先让读者看见水、光、脚印和沉默。',
+  ]
+
+  return paragraphs.join('\n\n')
+}
+
 function usabilityObservation(surface, severity, summary) {
   return { surface, severity, summary }
 }
@@ -1571,6 +1608,13 @@ async function replaceEditorText(page, content) {
   await page.evaluate((content) => window.__novelistEditor.setValue(content), content)
 }
 
+async function insertEditorText(page, content) {
+  const editor = page.locator('.monaco-editor').first()
+  await expectVisible(editor, 'content editor')
+  await page.waitForFunction(() => typeof window.__novelistEditor?.insertText === 'function', null, { timeout: 12_000 })
+  await page.evaluate((content) => window.__novelistEditor.insertText(content), content)
+}
+
 async function assertEditorContains(page, expectedText) {
   await page.waitForFunction(
     (expectedText) => window.__novelistEditor?.getValue?.().includes(expectedText),
@@ -1578,6 +1622,16 @@ async function assertEditorContains(page, expectedText) {
     { timeout: 12_000 },
   ).catch((error) => {
     throw new Error(`Expected editor to contain: ${expectedText}`, { cause: error })
+  })
+}
+
+async function assertEditorNotContains(page, unexpectedText) {
+  await page.waitForFunction(
+    (unexpectedText) => !window.__novelistEditor?.getValue?.().includes(unexpectedText),
+    unexpectedText,
+    { timeout: 12_000 },
+  ).catch((error) => {
+    throw new Error(`Expected editor not to contain: ${unexpectedText}`, { cause: error })
   })
 }
 

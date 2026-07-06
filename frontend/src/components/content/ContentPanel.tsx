@@ -177,6 +177,13 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
       setSaveError(null)
       await app.SaveContent({ novel_id: novelIdRef.current, path, content })
       updateTab(tabId, { isDirty: false })
+      if (savingRef.current?.id === tabId && savingRef.current.path === path && savingRef.current.content === content) {
+        savingRef.current = null
+      }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
     } catch (error) {
       setSaveError({ tabId, message: errorMessage(error, '保存失败，请重试') })
       throw error

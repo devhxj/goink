@@ -8,6 +8,8 @@ declare global {
     __novelistEditor?: {
       getValue: () => string
       setValue: (value: string) => void
+      focus: () => void
+      insertText: (value: string) => void
     }
   }
 }
@@ -25,6 +27,19 @@ export default function ContentEditor({ value, onChange, onMount, editorTheme }:
       const controls = {
         getValue: () => editor.getValue(),
         setValue: (nextValue: string) => editor.setValue(nextValue),
+        focus: () => editor.focus(),
+        insertText: (nextValue: string) => {
+          editor.focus()
+          const selection = editor.getSelection()
+          if (!selection) return
+          editor.pushUndoStop()
+          editor.executeEdits('novelist-test', [{
+            range: selection,
+            text: nextValue,
+            forceMoveMarkers: true,
+          }])
+          editor.pushUndoStop()
+        },
       }
       window.__novelistEditor = controls
       editor.onDidDispose(() => {
