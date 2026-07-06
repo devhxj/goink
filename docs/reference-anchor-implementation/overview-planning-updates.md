@@ -124,3 +124,23 @@ passed novel/reference text
 ```
 
 Manual corpus-library tools remain important for inspection, correction, archive, restore, and advanced control, but they must not be required before the product can split a supplied novel/source into usable reference materials.
+
+## 2026-07-07 Planning Update: Phase 13 Closed as Product QA Gate
+
+Phase 13 is closed at the current implementation boundary. The full matrix passed on 2026-07-07:
+
+```text
+npm --prefix frontend run build
+npm --prefix frontend run lint
+npm --prefix frontend run test:reference-anchor
+npm --prefix frontend run test:app
+npm --prefix frontend run test:app:full
+npm --prefix frontend run test:app:stress
+npm --prefix frontend run test:app:usability
+dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --no-restore -v minimal -p:UseSharedCompilation=false
+dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --no-restore -v minimal -p:UseSharedCompilation=false
+```
+
+The closed boundary includes app-wide Playwright coverage, reference-anchor workflow coverage, 10MB Chinese novel/reference stress coverage, deterministic source segmentation and material generation from supplied text, source-hash/provenance assertions, material-library paging/search, blueprint binding, draft-audit guardrails, usability reporting, and production-asset/Photino boundary checks. Artifacts are recorded under `output/playwright/phase13/`.
+
+No implementation-plan phase is currently open. Future work such as deeper corpus-library product IA, global feedback tuning, optional LLM-assisted tagging/adaptation, and hard-delete administration should be handled as future product work or a newly defined phase, not as unfinished Phase 13 scope.

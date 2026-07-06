@@ -4,13 +4,13 @@
 
 ## Status
 
-Phases 0-12 are complete at the current implementation boundary. Remaining work is tracked explicitly in `tasks-and-verification.md`: Phase 13 is reopened as the full-product Playwright QA, usability, and robustness gate.
+Phases 0-13 are complete at the current implementation boundary. `tasks-and-verification.md` tracks the completed phase history and the regression matrix that now protects the Phase 13 product-quality gate.
 
-This plan is still the source of truth for the target design. Treat the expanded Phase 13 quality gate as the open implementation-plan phase unless contracts, storage, bridge, agent, or frontend behavior regresses.
+This plan is still the source of truth for the target design. No implementation-plan phase is currently open unless contracts, storage, bridge, agent, or frontend behavior regresses, or a new phase is explicitly defined.
 
 ## Date
 
-2026-07-06
+2026-07-07
 
 ## Scope
 
