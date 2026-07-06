@@ -69,6 +69,14 @@ type MaterialSearchFilters = {
 
 type AnchorScopeFilter = 'all' | 'novel' | 'workspace_corpus'
 
+type MaterialPreviewState = {
+  items: reference.Material[]
+  page: number
+  size: number
+  total: number
+  totalPages: number
+}
+
 const EMPTY_ANCHOR_FORM: CreateAnchorForm = {
   title: '',
   author: '',
@@ -97,6 +105,14 @@ const EMPTY_MATERIAL_FILTERS: MaterialSearchFilters = {
   narrativeDuties: '',
   emotionTransitions: '',
   proseDuties: '',
+}
+
+const EMPTY_MATERIAL_PREVIEW: MaterialPreviewState = {
+  items: [],
+  page: 1,
+  size: 5,
+  total: 0,
+  totalPages: 1,
 }
 
 function sourceKindFromPath(path: string, fallback: string): string {
@@ -161,7 +177,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [editingAnchorId, setEditingAnchorId] = useState<number | null>(null)
   const [anchorEditForm, setAnchorEditForm] = useState<AnchorForm | null>(null)
   const [expandedAnchorMaterialId, setExpandedAnchorMaterialId] = useState<number | null>(null)
-  const [anchorMaterialPreview, setAnchorMaterialPreview] = useState<reference.Material[]>([])
+  const [anchorMaterialPreview, setAnchorMaterialPreview] = useState<MaterialPreviewState>(EMPTY_MATERIAL_PREVIEW)
   const [blueprintForm, setBlueprintForm] = useState<BlueprintForm>(EMPTY_BLUEPRINT_FORM)
   const [revisionForm, setRevisionForm] = useState<BlueprintRevisionForm>(EMPTY_REVISION_FORM)
   const [materialFilters, setMaterialFilters] = useState<MaterialSearchFilters>(EMPTY_MATERIAL_FILTERS)
@@ -375,10 +391,14 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   async function toggleAnchorMaterialPreview(anchor: reference.Anchor) {
     if (expandedAnchorMaterialId === anchor.anchor_id) {
       setExpandedAnchorMaterialId(null)
-      setAnchorMaterialPreview([])
+      setAnchorMaterialPreview(EMPTY_MATERIAL_PREVIEW)
       return
     }
 
+    await loadAnchorMaterialPreview(anchor, 1)
+  }
+
+  async function loadAnchorMaterialPreview(anchor: reference.Anchor, page: number) {
     const result = await run(() => app.SearchReferenceMaterials({
       novel_id: novelId,
       anchor_ids: [anchor.anchor_id],
@@ -388,7 +408,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       function_tags: [],
       pov_tags: [],
       technique_tags: [],
-      page: 1,
+      page,
       size: 5,
       narrative_duties: [],
       emotion_transitions: [],
@@ -396,7 +416,13 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     }))
     if (result) {
       setExpandedAnchorMaterialId(anchor.anchor_id)
-      setAnchorMaterialPreview(result.items ?? [])
+      setAnchorMaterialPreview({
+        items: result.items ?? [],
+        page: result.page,
+        size: result.size,
+        total: result.total,
+        totalPages: result.total_pages,
+      })
     }
   }
 
@@ -1034,11 +1060,40 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                       )}
                       {expandedAnchorMaterialId === anchor.anchor_id && (
                         <div className="mt-3 border-t border-border pt-2">
-                          {anchorMaterialPreview.length === 0 ? (
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] text-muted-foreground">
+                              第 {anchorMaterialPreview.page} / {anchorMaterialPreview.totalPages} 页 · 共 {anchorMaterialPreview.total} 条
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void loadAnchorMaterialPreview(anchor, Math.max(1, anchorMaterialPreview.page - 1))
+                                }}
+                                disabled={loading || anchorMaterialPreview.page <= 1}
+                                className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                                aria-label={`浏览 ${anchor.title} 的上一页材料`}
+                              >
+                                上一页
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void loadAnchorMaterialPreview(anchor, Math.min(anchorMaterialPreview.totalPages, anchorMaterialPreview.page + 1))
+                                }}
+                                disabled={loading || anchorMaterialPreview.page >= anchorMaterialPreview.totalPages}
+                                className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                                aria-label={`浏览 ${anchor.title} 的下一页材料`}
+                              >
+                                下一页
+                              </button>
+                            </span>
+                          </div>
+                          {anchorMaterialPreview.items.length === 0 ? (
                             <p className="text-[11px] text-muted-foreground">暂无可浏览材料</p>
                           ) : (
                             <div className="space-y-2" aria-label={`${anchor.title} 材料预览`}>
-                              {anchorMaterialPreview.map(material => (
+                              {anchorMaterialPreview.items.map(material => (
                                 <div key={material.material_id} className="rounded border border-border bg-card px-2.5 py-2">
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <span className="min-w-0 truncate text-[11px] text-muted-foreground">

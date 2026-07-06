@@ -139,9 +139,15 @@ async function createRebuildAndSearchReferenceMaterial(page) {
   await page.getByRole('button', { name: '清除筛选' }).click()
 
   await page.getByRole('button', { name: /浏览 雨夜动作语料库 的材料/ }).click()
-  await expectVisible(page.getByText('mat-001'), 'anchor material preview id')
-  await expectVisible(page.getByText('把杯子推远，杯底在木桌上留下半圈水痕。'), 'anchor material preview text')
-  await expectVisible(page.getByText('lexical 0.92'), 'anchor material preview score component')
+  const materialPreview = page.locator('[aria-label="雨夜动作语料库 材料预览"]')
+  const firstMaterial = materialPreview.locator('.rounded').filter({ hasText: 'mat-001' }).first()
+  await expectVisible(firstMaterial.getByText('mat-001'), 'anchor material preview id')
+  await expectVisible(firstMaterial.getByText('把杯子推远，杯底在木桌上留下半圈水痕。'), 'anchor material preview text')
+  await expectVisible(firstMaterial.getByText('lexical 0.92'), 'anchor material preview score component')
+  await expectVisible(page.getByText('第 1 / 2 页 · 共 6 条'), 'anchor material preview pagination summary')
+  await page.getByRole('button', { name: /下一页材料/ }).click()
+  await expectVisible(page.getByText('mat-006'), 'anchor material preview second page id')
+  await expectVisible(page.getByText('雨水从伞沿断续落下，像有人在门外迟疑。'), 'anchor material preview second page text')
 
   await page.locator('button[title="重建"]').first().click()
   await expectVisible(page.getByText('锚点已重建'), 'anchor rebuilt message')
@@ -304,8 +310,18 @@ async function verifyBridgeCalls(page) {
     Array.isArray(call.args[0]?.anchor_ids) &&
     call.args[0].anchor_ids.length === 1 &&
     call.args[0].anchor_ids[0] === 101 &&
+    call.args[0].page === 1 &&
     call.args[0].size === 5)
   assert(materialPreviewCall, 'missing anchor material preview search call')
+
+  const materialPreviewNextPageCall = calls.find((call) =>
+    call.method === 'SearchReferenceMaterials' &&
+    Array.isArray(call.args[0]?.anchor_ids) &&
+    call.args[0].anchor_ids.length === 1 &&
+    call.args[0].anchor_ids[0] === 101 &&
+    call.args[0].page === 2 &&
+    call.args[0].size === 5)
+  assert(materialPreviewNextPageCall, 'missing anchor material preview next-page search call')
 
   const searchCall = calls.find((call) =>
     call.method === 'SearchReferenceMaterials' &&
@@ -538,7 +554,7 @@ function installReferenceAnchorMockBridge() {
       case 'PromoteReferenceAnchorToWorkspaceCorpus': return promoteReferenceAnchor(args[0])
       case 'UpdateReferenceAnchorMetadata': return updateReferenceAnchorMetadata(args[0])
       case 'RebuildReferenceAnchor': return rebuildReferenceAnchor(args[1])
-      case 'SearchReferenceMaterials': return pageResult([material()])
+      case 'SearchReferenceMaterials': return searchReferenceMaterials(args[0])
       case 'GetReferenceChapterBlueprints': return Object.values(state.blueprints).map(toBlueprintSummary)
       case 'GetReferenceChapterBlueprint': return state.blueprints[String(args[1])] ?? null
       case 'GenerateReferenceChapterBlueprint': return generateBlueprint(args[0])
@@ -602,6 +618,16 @@ function installReferenceAnchorMockBridge() {
       page: 1,
       size: Math.max(items.length, 1),
       total_pages: 1,
+    }
+  }
+
+  function pagedResult(items, page, size, total) {
+    return {
+      items,
+      total,
+      page,
+      size,
+      total_pages: Math.max(1, Math.ceil(total / size)),
     }
   }
 
@@ -684,11 +710,26 @@ function installReferenceAnchorMockBridge() {
     }
   }
 
-  function material() {
+  function searchReferenceMaterials(input) {
+    const isAnchorScopedPreview = Array.isArray(input.anchor_ids) && input.anchor_ids.length === 1 && input.query === '' && input.size === 5
+    if (!isAnchorScopedPreview) {
+      return pagedResult([material(1)], input.page ?? 1, input.size ?? 10, 1)
+    }
+
+    const page = input.page ?? 1
+    const size = input.size ?? 5
+    if (page === 2) {
+      return pagedResult([material(6)], page, size, 6)
+    }
+
+    return pagedResult([1, 2, 3, 4, 5].map(material), page, size, 6)
+  }
+
+  function material(index = 1) {
     return {
-      material_id: 'mat-001',
+      material_id: `mat-${String(index).padStart(3, '0')}`,
       anchor_id: state.anchors[0]?.anchor_id ?? 101,
-      source_segment_id: 'seg-001',
+      source_segment_id: `seg-${String(index).padStart(3, '0')}`,
       material_type: 'sentence',
       function_tag: 'emotion_evidence',
       emotion_tag: 'restrained',
@@ -698,8 +739,8 @@ function installReferenceAnchorMockBridge() {
       function_confidence: 0.97,
       emotion_confidence: 0.93,
       pov_confidence: 0.91,
-      text: '把杯子推远，杯底在木桌上留下半圈水痕。',
-      source_hash: 'hash-material-001',
+      text: materialText(index),
+      source_hash: `hash-material-${String(index).padStart(3, '0')}`,
       extractor_version: 'mock-extractor-v1',
       user_verified: true,
       created_at: now,
@@ -710,6 +751,12 @@ function installReferenceAnchorMockBridge() {
         feedback_boost: 0.18,
       },
     }
+  }
+
+  function materialText(index) {
+    if (index === 1) return '把杯子推远，杯底在木桌上留下半圈水痕。'
+    if (index === 6) return '雨水从伞沿断续落下，像有人在门外迟疑。'
+    return `第 ${index} 条克制动作材料。`
   }
 
   function generateBlueprint(input) {
