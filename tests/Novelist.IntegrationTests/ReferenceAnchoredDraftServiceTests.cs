@@ -4196,7 +4196,7 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
             """
             # 第一章
 
-            雨声压低了街道，他在门口停住，心里意识到压力仍然压着呼吸。
+            因为雨声压低街道，主角在门口停住，心里意识到压力仍然压着呼吸，指尖发紧。只是那阵沉默没有散开，他没有立刻回答，把那口气慢慢咽回去。
             """);
         var unknownSourcePath = CreateSourceFile(
             "workspace-license-unknown.md",
@@ -4277,7 +4277,7 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
                     FunctionConfidence: 1,
                     EmotionConfidence: 1,
                     PovConfidence: 1,
-                    Text: "雨声压低了街道，他在门口停住，把那口气慢慢咽回去。",
+                    Text: "雨声压低街道，主角在门口停住，指尖发紧，心里意识到压力仍然压着呼吸。只是那阵沉默没有散开，他没有立刻回答，把那口气慢慢咽回去。",
                     SourceHash: "included-hash",
                     ExtractorVersion: "test",
                     UserVerified: true,
@@ -4326,6 +4326,10 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
             licenseStatuses: new Dictionary<long, string>
             {
                 [unknownLicenseAnchorId] = "unknown"
+            },
+            adaptedTextByMaterialId: new Dictionary<string, string>
+            {
+                ["included-corpus-material"] = "因为雨声压低街道，主角在门口停住，指尖发紧，心里意识到压力仍然压着呼吸。只是那阵沉默没有散开，他没有立刻回答，把那口气慢慢咽回去。"
             });
         var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
 

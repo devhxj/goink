@@ -43,7 +43,6 @@ public sealed class FileSystemEmbeddingSettingsService : IEmbeddingSettingsServi
         ProviderType: string.Empty,
         OnnxModelPath: string.Empty,
         OnnxVocabPath: string.Empty,
-        OnnxRuntimePath: string.Empty,
         MaxSequenceLength: null,
         NormalizeEmbeddings: true);
 
@@ -191,10 +190,6 @@ public sealed class FileSystemEmbeddingSettingsService : IEmbeddingSettingsServi
             var vocabPath = string.IsNullOrWhiteSpace(input.OnnxVocabPath)
                 ? string.Empty
                 : NormalizeLocalFilePath(input.OnnxVocabPath, nameof(input.OnnxVocabPath));
-            var runtimePath = string.IsNullOrWhiteSpace(input.OnnxRuntimePath)
-                ? string.Empty
-                : NormalizeLocalPath(input.OnnxRuntimePath, nameof(input.OnnxRuntimePath), mustExist: false);
-
             return new EmbeddingConfigPayload(
                 BuiltinOnnxEmbeddingModel.ProviderKey,
                 string.Empty,
@@ -205,7 +200,6 @@ public sealed class FileSystemEmbeddingSettingsService : IEmbeddingSettingsServi
                 BuiltinOnnxEmbeddingModel.ProviderType,
                 modelPath,
                 vocabPath,
-                runtimePath,
                 BuiltinOnnxEmbeddingModel.MaxSequenceLength,
                 BuiltinOnnxEmbeddingModel.NormalizeEmbeddings);
         }
@@ -236,7 +230,6 @@ public sealed class FileSystemEmbeddingSettingsService : IEmbeddingSettingsServi
             ProviderTypeApi,
             string.Empty,
             string.Empty,
-            string.Empty,
             null,
             true);
     }
@@ -253,7 +246,6 @@ public sealed class FileSystemEmbeddingSettingsService : IEmbeddingSettingsServi
             string.IsNullOrWhiteSpace(config.ProviderType) ? ProviderTypeApi : config.ProviderType,
             config.OnnxModelPath,
             config.OnnxVocabPath,
-            config.OnnxRuntimePath,
             config.MaxSequenceLength,
             config.NormalizeEmbeddings,
             BuiltinOnnxEmbeddingModel.DocumentInputKind);
@@ -270,7 +262,6 @@ public sealed class FileSystemEmbeddingSettingsService : IEmbeddingSettingsServi
             string.IsNullOrWhiteSpace(input.ProviderType) &&
             string.IsNullOrWhiteSpace(input.OnnxModelPath) &&
             string.IsNullOrWhiteSpace(input.OnnxVocabPath) &&
-            string.IsNullOrWhiteSpace(input.OnnxRuntimePath) &&
             input.MaxSequenceLength is null;
     }
 

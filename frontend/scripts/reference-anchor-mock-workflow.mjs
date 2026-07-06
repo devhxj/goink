@@ -182,9 +182,28 @@ async function createRebuildAndSearchReferenceMaterial(page) {
   await expectVisible(materialPanel.getByText('lexical 0.92'), 'material score component')
   await expectVisible(materialPanel.getByText('prose_duty 0.75'), 'material prose-duty score component')
 
-  await page.getByRole('button', { name: /归档 雨夜动作语料库 为受限语料/ }).click()
-  await expectVisible(page.getByText('工作区语料已归档为受限'), 'workspace corpus archived message')
-  await expectVisible(page.getByText('暂无参考锚点'), 'archived workspace corpus hidden from library list')
+  await page.getByPlaceholder('参考书名').fill('批量动作参考')
+  await page.getByPlaceholder('可选').first().fill('Batch Curator')
+  await page.getByLabel('本地路径').fill('D:\\books\\batch-reference.md')
+  await page.getByLabel('来源可信度').selectOption('imported')
+  await page.getByLabel('用户标签').fill('批量;候选')
+  await page.getByRole('button', { name: /^创建$/ }).click()
+  await expectVisible(page.getByText('参考锚点已创建'), 'batch anchor created message')
+  await expectVisible(page.getByText('批量动作参考'), 'batch anchor title')
+
+  const batchAnchorRow = page.locator('.rounded-md').filter({ hasText: '批量动作参考' }).first()
+  await batchAnchorRow.getByRole('checkbox').check()
+  await expectVisible(page.getByText('已选 1 项'), 'single selected corpus row count')
+  await page.getByRole('button', { name: '批量提升选中项' }).click()
+  await expectVisible(page.getByText('已批量提升 1 个参考锚点为工作区语料'), 'bulk promote selected corpus rows message')
+  await expectVisible(batchAnchorRow.getByText('workspace · imported · workspace_corpus'), 'bulk promoted row metadata')
+  assert.equal(await batchAnchorRow.getByRole('checkbox').isChecked(), false, 'bulk promote clears processed selection')
+
+  await page.getByRole('button', { name: '选择当前筛选' }).click()
+  await expectVisible(page.getByText('已选 2 项'), 'selected all visible corpus rows count')
+  await page.getByRole('button', { name: '批量归档选中工作区' }).click()
+  await expectVisible(page.getByText('已批量归档 2 个工作区语料'), 'bulk archive selected workspace corpus rows message')
+  await expectVisible(page.getByText('暂无参考锚点'), 'bulk archived workspace corpus hidden from library list')
 }
 
 async function generateReviseApproveBindAndDraft(page) {
@@ -310,10 +329,10 @@ async function verifyBridgeCalls(page) {
   assert.equal(createCall.args[0].source_trust, 'imported', 'anchor create payload must include source trust')
   assert.deepEqual(createCall.args[0].user_tags, ['雨夜', '动作克制'], 'anchor create payload must include user tags')
 
-  const promoteCall = calls.find((call) => call.method === 'PromoteReferenceAnchorToWorkspaceCorpus')
-  assert(promoteCall, 'missing PromoteReferenceAnchorToWorkspaceCorpus call')
-  assert.equal(promoteCall.args[0].novel_id, 42, 'anchor promote payload must include novel id')
-  assert.equal(promoteCall.args[0].anchor_id, 101, 'anchor promote payload must include anchor id')
+  const promoteCalls = calls.filter((call) => call.method === 'PromoteReferenceAnchorToWorkspaceCorpus')
+  assert.equal(promoteCalls.length, 2, 'single and bulk promote should call PromoteReferenceAnchorToWorkspaceCorpus twice')
+  assert.deepEqual(promoteCalls.map((call) => call.args[0].anchor_id), [101, 102], 'promote calls must include single and bulk anchor ids')
+  assert(promoteCalls.every((call) => call.args[0].novel_id === 42), 'anchor promote payloads must include novel id')
 
   const metadataCall = calls.find((call) => call.method === 'UpdateReferenceAnchorMetadata')
   assert(metadataCall, 'missing UpdateReferenceAnchorMetadata call')
@@ -326,10 +345,10 @@ async function verifyBridgeCalls(page) {
   assert.equal(metadataCall.args[0].source_trust, 'user_verified', 'anchor metadata update payload must include source trust')
   assert.deepEqual(metadataCall.args[0].user_tags, ['雨夜', '动作克制', '精选'], 'anchor metadata update payload must include user tags')
 
-  const deleteCall = calls.find((call) => call.method === 'DeleteReferenceAnchor')
-  assert(deleteCall, 'missing DeleteReferenceAnchor call')
-  assert.equal(deleteCall.args[0], 42, 'anchor delete/archive call must include novel id')
-  assert.equal(deleteCall.args[1], 101, 'anchor delete/archive call must include anchor id')
+  const deleteCalls = calls.filter((call) => call.method === 'DeleteReferenceAnchor')
+  assert.equal(deleteCalls.length, 2, 'bulk archive should call DeleteReferenceAnchor for each selected workspace row')
+  assert.deepEqual(deleteCalls.map((call) => call.args[1]), [101, 102], 'bulk archive calls must include selected workspace anchor ids')
+  assert(deleteCalls.every((call) => call.args[0] === 42), 'anchor delete/archive calls must include novel id')
 
   const materialTagCall = calls.find((call) => call.method === 'UpdateReferenceMaterialTags')
   assert(materialTagCall, 'missing UpdateReferenceMaterialTags call')
@@ -698,7 +717,7 @@ function installReferenceAnchorMockBridge() {
       owner_scope: input.visibility === 'workspace' ? 'workspace_corpus' : 'novel',
       owner_novel_id: input.visibility === 'workspace' ? null : input.novel_id,
     }
-    state.anchors = [anchor]
+    state.anchors = [...state.anchors, anchor]
     return anchor
   }
 

@@ -2203,7 +2203,6 @@ function installConfigurableAppMockBridge(options = {}) {
       provider_type: 'onnx',
       onnx_model_path: '',
       onnx_vocab_path: '',
-      onnx_runtime_path: '',
       max_sequence_length: 512,
       normalize_embeddings: true,
     }

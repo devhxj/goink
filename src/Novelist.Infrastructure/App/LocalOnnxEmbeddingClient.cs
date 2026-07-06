@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Novelist.Contracts.Bridge;
@@ -144,9 +143,6 @@ public sealed class LocalOnnxEmbeddingClient : IEmbeddingClient
             "vocab.txt",
             "NOVELIST_ONNX_VOCAB_PATH",
             nameof(options.OnnxVocabPath));
-        var runtimePath = string.IsNullOrWhiteSpace(options.OnnxRuntimePath)
-            ? string.Empty
-            : NormalizeLocalPath(options.OnnxRuntimePath, nameof(options.OnnxRuntimePath), mustExist: false);
         var maxSequenceLength = isBuiltinModel
             ? BuiltinOnnxEmbeddingModel.MaxSequenceLength
             : options.MaxSequenceLength ?? DefaultMaxSequenceLength;
@@ -170,7 +166,6 @@ public sealed class LocalOnnxEmbeddingClient : IEmbeddingClient
             modelId,
             modelPath,
             vocabPath,
-            runtimePath,
             maxSequenceLength,
             dimensions,
             isBuiltinModel ? BuiltinOnnxEmbeddingModel.NormalizeEmbeddings : options.NormalizeEmbeddings,
@@ -456,7 +451,6 @@ public sealed record LocalOnnxEmbeddingOptions(
     string ModelId,
     string ModelPath,
     string VocabPath,
-    string RuntimePath,
     int MaxSequenceLength,
     int? Dimensions,
     bool NormalizeEmbeddings,
@@ -468,7 +462,6 @@ public sealed record LocalOnnxEmbeddingOptions(
         ModelId,
         ModelPath,
         VocabPath,
-        RuntimePath,
         MaxSequenceLength.ToString(System.Globalization.CultureInfo.InvariantCulture),
         Dimensions?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "",
         NormalizeEmbeddings ? "1" : "0",
@@ -745,10 +738,6 @@ internal sealed class LocalOnnxEmbeddingRunnerFactory : ILocalOnnxEmbeddingRunne
 
 internal sealed class LocalOnnxEmbeddingRunner : ILocalOnnxEmbeddingRunner, IDisposable
 {
-    private static readonly object NativeResolverLock = new();
-    private static readonly ConcurrentDictionary<string, byte> NativeResolverAssemblyKeys = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, byte> NativeSearchDirectories = new(StringComparer.OrdinalIgnoreCase);
-
     private readonly InferenceSession _session;
     private readonly LocalOnnxSessionInputNames _inputNames;
     private readonly object _sync = new();
@@ -757,7 +746,6 @@ internal sealed class LocalOnnxEmbeddingRunner : ILocalOnnxEmbeddingRunner, IDis
     {
         try
         {
-            RegisterNativeLibraryResolver(options.RuntimePath);
             _session = new InferenceSession(options.ModelPath);
             _inputNames = LocalOnnxSessionInputNames.From(ReadSessionInputNames(_session));
         }
@@ -954,166 +942,6 @@ internal sealed class LocalOnnxEmbeddingRunner : ILocalOnnxEmbeddingRunner, IDis
             normalized.Contains("sentence", StringComparison.Ordinal) ||
             normalized.Contains("pooler", StringComparison.Ordinal) ||
             normalized.Contains("pooled", StringComparison.Ordinal);
-    }
-
-    private static void RegisterNativeLibraryResolver(string runtimePath)
-    {
-        var assembly = typeof(InferenceSession).Assembly;
-        foreach (var directory in CandidateNativeSearchDirectories(runtimePath, assembly.Location)
-            .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (Directory.Exists(directory))
-            {
-                NativeSearchDirectories.TryAdd(Path.GetFullPath(directory), 0);
-            }
-        }
-
-        lock (NativeResolverLock)
-        {
-            var assemblyKey = assembly.FullName ?? assembly.Location;
-            if (!NativeResolverAssemblyKeys.TryAdd(assemblyKey, 0))
-            {
-                return;
-            }
-
-            try
-            {
-                NativeLibrary.SetDllImportResolver(
-                    assembly,
-                    static (libraryName, _, _) => ResolveOnnxRuntimeNativeLibrary(libraryName));
-            }
-            catch (InvalidOperationException)
-            {
-                // Another resolver was already registered for this assembly. Keep the
-                // search directories recorded so any existing resolver can still use
-                // normal platform probing.
-            }
-        }
-    }
-
-    private static IntPtr ResolveOnnxRuntimeNativeLibrary(string libraryName)
-    {
-        if (!IsOnnxRuntimeNativeLibrary(libraryName))
-        {
-            return IntPtr.Zero;
-        }
-
-        foreach (var candidate in CandidateNativeLibraries(libraryName, NativeSearchDirectories.Keys))
-        {
-            if (File.Exists(candidate) && NativeLibrary.TryLoad(candidate, out var handle))
-            {
-                return handle;
-            }
-        }
-
-        return IntPtr.Zero;
-    }
-
-    private static bool IsOnnxRuntimeNativeLibrary(string libraryName)
-    {
-        return Path.GetFileNameWithoutExtension(libraryName)
-            .Contains("onnxruntime", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static IEnumerable<string> CandidateNativeSearchDirectories(
-        string runtimePath,
-        string assemblyLocation)
-    {
-        if (!string.IsNullOrWhiteSpace(runtimePath))
-        {
-            if (File.Exists(runtimePath))
-            {
-                var directory = Path.GetDirectoryName(Path.GetFullPath(runtimePath));
-                if (!string.IsNullOrWhiteSpace(directory))
-                {
-                    foreach (var candidate in CandidateNativeSearchDirectoriesFromRoot(directory))
-                    {
-                        yield return candidate;
-                    }
-                }
-            }
-
-            if (Directory.Exists(runtimePath))
-            {
-                foreach (var candidate in CandidateNativeSearchDirectoriesFromRoot(Path.GetFullPath(runtimePath)))
-                {
-                    yield return candidate;
-                }
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(assemblyLocation))
-        {
-            var assemblyDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyLocation));
-            if (!string.IsNullOrWhiteSpace(assemblyDirectory))
-            {
-                foreach (var candidate in CandidateNativeSearchDirectoriesFromRoot(assemblyDirectory))
-                {
-                    yield return candidate;
-                }
-
-                yield return Path.GetFullPath(Path.Combine(assemblyDirectory, "..", "..", "runtimes", RuntimeInformation.RuntimeIdentifier, "native"));
-            }
-        }
-
-        foreach (var root in new[]
-        {
-            AppContext.BaseDirectory,
-            Path.Combine(AppContext.BaseDirectory, "runtime"),
-            Path.Combine(AppContext.BaseDirectory, "runtime", "onnx")
-        })
-        {
-            foreach (var candidate in CandidateNativeSearchDirectoriesFromRoot(root))
-            {
-                yield return candidate;
-            }
-        }
-    }
-
-    private static IEnumerable<string> CandidateNativeSearchDirectoriesFromRoot(string root)
-    {
-        yield return root;
-        yield return Path.Combine(root, "runtimes", RuntimeInformation.RuntimeIdentifier, "native");
-        yield return Path.Combine(root, RuntimeInformation.RuntimeIdentifier, "native");
-        yield return Path.Combine(root, "native");
-    }
-
-    private static IEnumerable<string> CandidateNativeLibraries(
-        string libraryName,
-        IEnumerable<string> directories)
-    {
-        if (Path.IsPathRooted(libraryName))
-        {
-            yield return libraryName;
-        }
-
-        var fileNames = CandidateNativeFileNames(libraryName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        foreach (var directory in directories)
-        {
-            foreach (var fileName in fileNames)
-            {
-                yield return Path.Combine(directory, fileName);
-            }
-        }
-    }
-
-    private static IEnumerable<string> CandidateNativeFileNames(string libraryName)
-    {
-        var fileName = Path.GetFileName(libraryName);
-        if (!string.IsNullOrWhiteSpace(fileName))
-        {
-            yield return fileName;
-        }
-
-        var baseName = Path.GetFileNameWithoutExtension(fileName);
-        if (string.IsNullOrWhiteSpace(baseName))
-        {
-            baseName = "onnxruntime";
-        }
-
-        yield return baseName + ".dll";
-        yield return "lib" + baseName + ".so";
-        yield return "lib" + baseName + ".dylib";
     }
 
     private static IReadOnlyList<string> ReadSessionInputNames(InferenceSession session)

@@ -25,7 +25,6 @@ const emptyEmbeddingConfig = (): EmbeddingConfigView => ({
   user: '',
   onnx_model_path: '',
   onnx_vocab_path: '',
-  onnx_runtime_path: '',
   max_sequence_length: null,
   normalize_embeddings: true,
 })

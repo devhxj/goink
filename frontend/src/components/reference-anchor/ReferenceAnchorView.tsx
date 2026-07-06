@@ -258,6 +258,10 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     || anchorVisibilityFilter !== 'all'
     || anchorSourceTrustFilter !== 'all'
   const canClearAnchorFilters = hasAnchorListFilters || anchorScopeFilter !== 'all'
+  const selectedAnchors = useMemo(() => anchors.filter(anchor => selectedAnchorSet.has(anchor.anchor_id)), [anchors, selectedAnchorSet])
+  const selectedVisibleAnchorIds = useMemo(() => visibleAnchors.map(anchor => anchor.anchor_id), [visibleAnchors])
+  const selectedNovelAnchors = useMemo(() => selectedAnchors.filter(anchor => anchor.owner_scope === 'novel'), [selectedAnchors])
+  const selectedWorkspaceAnchors = useMemo(() => selectedAnchors.filter(anchor => anchor.owner_scope === 'workspace_corpus'), [selectedAnchors])
   const visibleAnchorMaterialItems = useMemo(() => {
     const indexedItems = anchorMaterialPreview.items
       .map((material, index) => ({ material, index }))
@@ -418,6 +422,34 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     }
   }
 
+  async function promoteSelectedAnchorsToWorkspaceCorpus() {
+    if (selectedNovelAnchors.length === 0) return
+
+    const anchorIds = selectedNovelAnchors.map(anchor => anchor.anchor_id)
+    const anchorIdSet = new Set(anchorIds)
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      for (const anchor of selectedNovelAnchors) {
+        await app.PromoteReferenceAnchorToWorkspaceCorpus({
+          novel_id: novelId,
+          anchor_id: anchor.anchor_id,
+        })
+      }
+      setMessage(`已批量提升 ${anchorIds.length} 个参考锚点为工作区语料`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '操作失败')
+      setLoading(false)
+      return
+    } finally {
+      setLoading(false)
+    }
+
+    setSelectedAnchorIds(ids => ids.filter(id => !anchorIdSet.has(id)))
+    await loadAnchors()
+  }
+
   async function deleteOrArchiveAnchor(anchor: reference.Anchor) {
     const isWorkspaceCorpus = anchor.owner_scope === 'workspace_corpus'
     setLoading(true)
@@ -444,6 +476,42 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       setMaterialTagForm(null)
     }
     if (editingAnchorId === anchor.anchor_id) {
+      cancelEditAnchor()
+    }
+    await loadAnchors()
+  }
+
+  async function archiveSelectedWorkspaceAnchors() {
+    if (selectedWorkspaceAnchors.length === 0) return
+
+    const anchorIds = selectedWorkspaceAnchors.map(anchor => anchor.anchor_id)
+    const anchorIdSet = new Set(anchorIds)
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      for (const anchor of selectedWorkspaceAnchors) {
+        await app.DeleteReferenceAnchor(novelId, anchor.anchor_id)
+      }
+      setMessage(`已批量归档 ${anchorIds.length} 个工作区语料`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '操作失败')
+      setLoading(false)
+      return
+    } finally {
+      setLoading(false)
+    }
+
+    setSelectedAnchorIds(ids => ids.filter(id => !anchorIdSet.has(id)))
+    if (expandedAnchorMaterialId !== null && anchorIdSet.has(expandedAnchorMaterialId)) {
+      setExpandedAnchorMaterialId(null)
+      setAnchorMaterialPreview(EMPTY_MATERIAL_PREVIEW)
+      setAnchorMaterialQuery('')
+      setAnchorMaterialSort('default')
+      setEditingMaterialId(null)
+      setMaterialTagForm(null)
+    }
+    if (editingAnchorId !== null && anchorIdSet.has(editingAnchorId)) {
       cancelEditAnchor()
     }
     await loadAnchors()
@@ -1055,6 +1123,50 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                     清除筛选
                   </button>
                 )}
+              </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2">
+                <span className="text-[11px] text-muted-foreground">
+                  已选 {selectedAnchors.length} 项
+                  {selectedAnchors.length > 0 && ` · 可提升 ${selectedNovelAnchors.length} · 可归档 ${selectedWorkspaceAnchors.length}`}
+                </span>
+                <div className="flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAnchorIds(selectedVisibleAnchorIds)}
+                    disabled={loading || visibleAnchors.length === 0}
+                    className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                  >
+                    选择当前筛选
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAnchorIds([])}
+                    disabled={loading || selectedAnchors.length === 0}
+                    className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                  >
+                    清除选择
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void promoteSelectedAnchorsToWorkspaceCorpus()
+                    }}
+                    disabled={loading || selectedNovelAnchors.length === 0}
+                    className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                  >
+                    批量提升选中项
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void archiveSelectedWorkspaceAnchors()
+                    }}
+                    disabled={loading || selectedWorkspaceAnchors.length === 0}
+                    className="rounded bg-secondary px-2 py-1 text-[11px] leading-none text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                  >
+                    批量归档选中工作区
+                  </button>
+                </div>
               </div>
               {visibleAnchors.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{hasAnchorListFilters ? '没有匹配的参考锚点' : '暂无参考锚点'}</p>

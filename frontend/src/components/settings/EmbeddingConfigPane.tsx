@@ -174,17 +174,6 @@ export default function EmbeddingConfigPane({
                 className="flex-1 h-8 rounded-md border bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               />
             </div>
-
-            <div className="flex items-center gap-3">
-              <label htmlFor="embedding-onnx-runtime" className="text-xs text-muted-foreground w-24 shrink-0">运行时</label>
-              <input
-                id="embedding-onnx-runtime"
-                value={config.onnx_runtime_path}
-                onChange={e => onUpdate({ onnx_runtime_path: e.target.value })}
-                placeholder="可选"
-                className="flex-1 h-8 rounded-md border bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-              />
-            </div>
           </div>
         </details>
       )}

@@ -130,7 +130,6 @@ public sealed class EmbeddingSettingsServiceTests : IDisposable
                 ProviderType: "onnx",
                 OnnxModelPath: "",
                 OnnxVocabPath: "",
-                OnnxRuntimePath: "",
                 MaxSequenceLength: 128,
                 NormalizeEmbeddings: false),
             CancellationToken.None);

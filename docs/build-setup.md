@@ -46,18 +46,15 @@ build/runtime/
 
 本地 ONNX 模式在设置中选择 `ONNX` 即可，模型固定为 `bge-small-zh-v1.5` int8、512 维、512 token、CLS pooling + L2 归一化；该模式不会回退到在线 Embeddings API。在线 Embeddings API 模式不限制供应商、模型或维度。
 
-通常不需要手工放置 ONNX Runtime 或 sqlite-vec 原生库。仅在需要覆盖 NuGet 自带运行时资产时，才使用这些可选目录或环境变量：
+通常不需要手工放置 sqlite-vec 原生库。仅在需要覆盖 NuGet 自带 sqlite-vec 运行时资产时，才使用这些可选目录或环境变量：
 
 ```text
-build/runtime/onnx/
-└── runtimes/{rid}/native/onnxruntime.{dll|so|dylib}
-
 build/runtime/sqlite-vec/
 └── {rid}/
     └── vec0.{dll|so|dylib}
 ```
 
-也可以在运行时用 `OnnxRuntimePath` 增加 ONNX 原生库搜索目录，或用 `NOVELIST_SQLITE_VEC_PATH` 指向明确的 sqlite-vec 扩展文件。
+也可以在运行时用 `NOVELIST_SQLITE_VEC_PATH` 指向明确的 sqlite-vec 扩展文件。ONNX Runtime 不提供手工覆盖路径；请以 `Microsoft.ML.OnnxRuntime` NuGet 发布资产为准。
 
 ## 开发模式
 
@@ -115,7 +112,7 @@ bash scripts/novelist-publish.sh osx-arm64
 - 复制 `build/runtime/git/` 到发布目录；
 - 保留 `dotnet publish` 产生的 NuGet 运行时资产，包括 ONNX Runtime 和 sqlite-vec；
 - 复制可选的 `build/runtime/models/` 到发布目录；
-- 复制可选的 `build/runtime/onnx/` 和 `build/runtime/sqlite-vec/` 覆盖目录；
+- 复制可选的 `build/runtime/sqlite-vec/` 覆盖目录；
 - 生成 `novelist` 或 `novelist.exe` 入口别名。
 
 平台打包入口：

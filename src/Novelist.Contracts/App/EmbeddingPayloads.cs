@@ -12,7 +12,6 @@ public sealed record EmbeddingConfigPayload(
     [property: JsonPropertyName("provider_type")] string ProviderType = "",
     [property: JsonPropertyName("onnx_model_path")] string OnnxModelPath = "",
     [property: JsonPropertyName("onnx_vocab_path")] string OnnxVocabPath = "",
-    [property: JsonPropertyName("onnx_runtime_path")] string OnnxRuntimePath = "",
     [property: JsonPropertyName("max_sequence_length")] int? MaxSequenceLength = null,
     [property: JsonPropertyName("normalize_embeddings")] bool NormalizeEmbeddings = true);
 
