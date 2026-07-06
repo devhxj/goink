@@ -188,7 +188,7 @@ workspace/global reference corpus
 - [ ] Per-novel known facts, forbidden facts, timeline state, character state, and POV boundaries still gate whether a globally sourced material may be used.
 - [ ] AI can explain why it selected each material and which story need it satisfies, without requiring the user to manually choose libraries first.
 - [ ] User feedback is split into global corpus feedback and per-novel usage feedback; accepting a material for one novel must not silently make it safe for another novel with different facts or POV.
-- [ ] Agent tools search the shared corpus by injected novel context but do not expose arbitrary file reads or allow the model to bypass source/license filters.
+- [x] Agent tools search the shared corpus by injected novel context but do not expose arbitrary file reads or allow the model to bypass source/license filters.
 - [ ] UI provides corpus management as a library feature and reference-anchored drafting as an automatic retrieval feature, not as a per-novel setup checklist. Current coverage names and separates `语料库管理` from `参考写作检索`; full library management IA, bulk flows, and import/archive/delete policy remain pending.
 
 **Verification:**
@@ -236,6 +236,7 @@ Targeted Phase 12 thin-slice checks completed:
 - [x] The reference-anchor list UI now supports paginated row-level material browsing for a specific anchor/corpus row using `SearchReferenceMaterials` with explicit `anchor_ids`; the Playwright workflow asserts page summary, material id/text/score display, next-page navigation, and anchor-scoped page payloads without treating this as the complete material browser/library UI.
 - [x] The row-level material browser now supports single-material tag correction for function, emotion, scene, POV, and technique tags through `UpdateReferenceMaterialTags`; the Playwright workflow asserts the corrected row display and bridge payload without treating it as bulk material editing or full library management.
 - [x] The reference-anchor page now separates current UI surfaces into `语料库管理` (`导入语料来源` and `库条目`) and `参考写作检索`; the Playwright workflow asserts these headings without treating the page as the complete corpus library IA.
+- [x] Reference MAF tools now make the current agent authority boundary explicit: agents can list/search/adapt/audit already imported reference materials and start orchestration with injected novel context, but no reference tool exposes source import, file picking, metadata promotion/update/delete, arbitrary path/source parameters, or source/license filter bypass.
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'ReferenceAnchorContractTests|ReferenceAnchorHandlersRouteEveryMethodToServiceOperations|CompatibilityRegistryIncludesReferenceAnchorMethods' -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter 'UpdateAnchorMetadataCanPromoteToWorkspaceCorpusWithoutChangingMaterialIdentity|UpdateAnchorMetadataCannotBypassOtherNovelPrivateOrWorkspaceRestrictedVisibility' -v minimal -p:UseSharedCompilation=false`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter 'WorkspaceCorpus|ReferenceOrchestrationRunUsesWorkspaceCorpus|ReferenceOrchestrationRunFiltersWorkspaceCorpus|ReferenceOrchestrationRunUsesCorpusSearchPolicy' -v minimal`
@@ -250,6 +251,7 @@ Targeted Phase 12 thin-slice checks completed:
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'PromoteReferenceAnchorToWorkspaceCorpusPayloadUsesStableSnakeCaseJsonNames|ReferenceAnchorHandlersRouteEveryMethodToServiceOperations|CompatibilityRegistryIncludesReferenceAnchorMethods' -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'ReferenceOrchestrationAgentToolStartsRunWithoutApprovingHumanDecisions|ReferenceAnchorContractTests|MafToolRegistryTests' -v minimal`
 - [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'CreateToolsIncludesReferenceToolsOnlyWhenServicesAreConfigured|ReferenceMaterialToolInjectsNovelContext' -v minimal`
+- [x] `dotnet test tests/Novelist.Tests/Novelist.Tests.csproj --filter 'ReferenceAgentToolsCannotImportCorpusSourcesOrReadArbitraryFiles|CreateToolsIncludesReferenceToolsOnlyWhenServicesAreConfigured|ReferenceMaterialToolInjectsNovelContext|ReferenceOrchestrationAgentToolStartsRunWithoutApprovingHumanDecisions|MafToolRegistryTests' -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter SearchMaterialsBoostsAcceptedMaterialFeedbackOnlyForCurrentNovel -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter WorkspaceCorpusFeedbackBoostsOnlyTheNovelThatRecordedUsage -v minimal`
 - [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --filter WorkspaceCorpusMaterialLinksAreBoundToCurrentBlueprintAnalysisContract -v minimal`

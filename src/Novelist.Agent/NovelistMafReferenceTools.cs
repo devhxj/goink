@@ -26,8 +26,8 @@ public sealed partial class NovelistMafToolRegistry
 
     private sealed class ReferenceMafTools
     {
-        private const string GetAnchorsDescription = "列出当前小说已导入的参考锚定书籍。novel_id 由运行时注入，不需要也不能传入。";
-        private const string SearchMaterialsDescription = "按 story context 搜索受 license/visibility 过滤的参考语料库。返回材料 id、标签、来源、文本和 score_components；用于给蓝图 beat 绑定材料，不直接写章节。";
+        private const string GetAnchorsDescription = "列出当前小说可访问的已导入参考锚定书籍。novel_id 由运行时注入，不需要也不能传入；不能导入新来源，不能读取任意文件。";
+        private const string SearchMaterialsDescription = "按 story context 搜索已导入且受 license/visibility 过滤的参考语料库。返回材料 id、标签、来源、文本和 score_components；用于给蓝图 beat 绑定材料，不直接写章节，不能导入新来源，不能读取任意文件。";
         private const string AdaptMaterialDescription = "预览参考材料改写。只允许基于 material_id、slot_values、scene_facts 和 max_rewrite_level 生成候选，不直接写章节。";
         private const string AuditReuseDescription = "审计参考材料复用候选。纯检查工具，不写章节，不保存正文。";
 
@@ -174,7 +174,7 @@ public sealed partial class NovelistMafToolRegistry
         private const string BindMaterialsDescription = "为已通过 approve_reference_chapter_blueprint 批准的蓝图 beat 返回参考材料候选；默认不自动选中，进入 generate_reference_anchored_draft 前需显式 select_top_candidate=true。";
         private const string GenerateDraftDescription = "从已按 generate_reference_chapter_blueprint -> review_reference_chapter_blueprint -> approve_reference_chapter_blueprint -> bind_reference_blueprint_materials 且 select_top_candidate=true 准备好的 approved/material_bound 蓝图生成候选段落；只返回 candidates，随后调用 audit_reference_anchored_draft，不调用 SaveContent，不直接写章节。";
         private const string AuditDraftDescription = "按 candidate_id 审计 generate_reference_anchored_draft 生成的 reference-anchored 草稿候选。纯检查工具，不写章节。";
-        private const string StartOrchestrationDescription = "启动默认 reference orchestration 候选流程。novel_id 由运行时注入；agent 只能提供章节目标、已知/禁止事实和 corpus policy，不能确认 source/fact，不能批准 blueprint revision，不能批准 final insertion，这些决策必须由作者完成。";
+        private const string StartOrchestrationDescription = "启动默认 reference orchestration 候选流程，只检索已导入且受 license/visibility 过滤的语料。novel_id 由运行时注入；agent 只能提供章节目标、已知/禁止事实和 corpus policy，不能导入新来源，不能读取任意文件，不能确认 source/fact，不能批准 blueprint revision，不能批准 final insertion，这些决策必须由作者完成。";
         private const string GetOrchestrationRunsDescription = "列出当前小说的 reference orchestration 运行历史，可按章节过滤；只读工具，不批准、不恢复、不写章节。";
         private const string GetOrchestrationRunDescription = "读取单个 reference orchestration run 的状态、当前停点和 required decision；只读工具，不批准、不恢复、不写章节。";
         private const string GetOrchestrationRunEventsDescription = "读取单个 reference orchestration run 的本地事件历史；只读工具，只用于解释流程为何停止或继续，不批准、不恢复、不写章节。";

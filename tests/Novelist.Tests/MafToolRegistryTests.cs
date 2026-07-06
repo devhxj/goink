@@ -312,6 +312,67 @@ public sealed class MafToolRegistryTests
     }
 
     [Fact]
+    public void ReferenceAgentToolsCannotImportCorpusSourcesOrReadArbitraryFiles()
+    {
+        var registry = new NovelistMafToolRegistry(
+            new RecordingStoryMemorySearchService(),
+            chapterContent: null,
+            approvals: null,
+            events: null,
+            subagents: null,
+            preferences: null,
+            world: null,
+            planning: null,
+            webFetch: null,
+            webSearch: null,
+            referenceAnchors: new RecordingReferenceAnchorService(),
+            referenceDrafts: new RecordingReferenceAnchoredDraftService());
+
+        var referenceTools = registry.CreateTools(new NovelistMafToolContext(17))
+            .Where(tool => tool.Name.Contains("reference", StringComparison.Ordinal))
+            .ToArray();
+        var names = referenceTools.Select(tool => tool.Name).ToArray();
+
+        Assert.DoesNotContain("create_reference_anchor", names);
+        Assert.DoesNotContain("import_reference_source", names);
+        Assert.DoesNotContain("pick_reference_source_file", names);
+        Assert.DoesNotContain("promote_reference_anchor_to_workspace_corpus", names);
+        Assert.DoesNotContain("update_reference_anchor_metadata", names);
+        Assert.DoesNotContain("delete_reference_anchor", names);
+
+        foreach (var tool in referenceTools)
+        {
+            Assert.True(tool.JsonSchema.TryGetProperty("properties", out var properties), tool.Name);
+            Assert.False(properties.TryGetProperty("source_path", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("file_path", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("absolute_path", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("path", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("source_file", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("source_uri", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("source_url", out _), tool.Name);
+            Assert.False(properties.TryGetProperty("import_path", out _), tool.Name);
+        }
+
+        AssertToolDescriptionContains(
+            referenceTools.Single(tool => tool.Name == "get_reference_anchors"),
+            "已导入",
+            "不能导入",
+            "不能读取任意文件");
+        AssertToolDescriptionContains(
+            referenceTools.Single(tool => tool.Name == "search_reference_materials"),
+            "已导入",
+            "license/visibility",
+            "不能导入",
+            "不能读取任意文件");
+        AssertToolDescriptionContains(
+            referenceTools.Single(tool => tool.Name == "start_reference_orchestration_run"),
+            "已导入",
+            "license/visibility",
+            "不能导入",
+            "不能读取任意文件");
+    }
+
+    [Fact]
     public void ReferenceDraftToolDescriptionsEnforceBlueprintWorkflowOrder()
     {
         var registry = new NovelistMafToolRegistry(
