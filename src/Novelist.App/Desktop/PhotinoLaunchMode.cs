@@ -10,7 +10,10 @@ public static class PhotinoLaunchMode
         return args.Any(arg => arg.StartsWith(StartUrlPrefix, StringComparison.OrdinalIgnoreCase));
     }
 
-    public static PhotinoWindowSettings CreateSettings(IEnumerable<string> args, string? defaultStartUrl = null)
+    public static PhotinoWindowSettings CreateSettings(
+        IEnumerable<string> args,
+        string? defaultStartUrl = null,
+        string? webViewDataPathKey = null)
     {
         var startUrl = args
             .FirstOrDefault(arg => arg.StartsWith(StartUrlPrefix, StringComparison.OrdinalIgnoreCase))?
@@ -20,6 +23,7 @@ public static class PhotinoLaunchMode
             Title: "novelist",
             Width: 1280,
             Height: 840,
-            StartUrl: string.IsNullOrWhiteSpace(startUrl) ? defaultStartUrl ?? "about:blank" : startUrl);
+            StartUrl: string.IsNullOrWhiteSpace(startUrl) ? defaultStartUrl ?? "about:blank" : startUrl,
+            WebViewDataPathKey: string.IsNullOrWhiteSpace(startUrl) ? webViewDataPathKey : null);
     }
 }

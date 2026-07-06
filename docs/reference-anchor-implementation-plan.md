@@ -4,7 +4,7 @@ This implementation plan has been split into focused companion documents so each
 
 ## Status
 
-Core implementation phases 0-11 and Phase 13 are complete in the task tracker. Phase 12 still tracks the shared reference corpus model where AI chooses relevant materials from global libraries by story context instead of requiring per-novel binding.
+Core implementation phases 0-11 are complete in the task tracker. Phase 12 still tracks the shared reference corpus model where AI chooses relevant materials from global libraries by story context instead of requiring per-novel binding. Phase 13 has been reopened and expanded into a full-product Playwright QA, usability, and robustness gate, including 10MB source stress coverage and automatic material generation from passed novel/reference text.
 
 ## Date
 

@@ -13,7 +13,7 @@ public sealed class PhotinoWindowFactory : IPhotinoWindowFactory
         var window = new PhotinoWindow();
         window.SetBrowserControlInitParameters("--disable-gpu --disable-gpu-compositing --disable-software-rasterizer=false");
         DesktopLaunchLog.Write("Photino browser init parameters configured.");
-        var temporaryFilesPath = TryCreateWebViewDataPath();
+        var temporaryFilesPath = TryCreateWebViewDataPath(settings.WebViewDataPathKey);
         if (!string.IsNullOrWhiteSpace(temporaryFilesPath))
         {
             window.SetTemporaryFilesPath(temporaryFilesPath);
@@ -38,9 +38,9 @@ public sealed class PhotinoWindowFactory : IPhotinoWindowFactory
         return adapter;
     }
 
-    private static string? TryCreateWebViewDataPath()
+    private static string? TryCreateWebViewDataPath(string? key)
     {
-        foreach (var path in CandidateWebViewDataPaths())
+        foreach (var path in CandidateWebViewDataPaths(key))
         {
             try
             {
@@ -56,15 +56,28 @@ public sealed class PhotinoWindowFactory : IPhotinoWindowFactory
         return null;
     }
 
-    private static IEnumerable<string> CandidateWebViewDataPaths()
+    private static IEnumerable<string> CandidateWebViewDataPaths(string? key)
     {
+        var leaf = SanitizeWebViewDataPathKey(key);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (!string.IsNullOrWhiteSpace(localAppData))
         {
-            yield return Path.Combine(localAppData, "Novelist", "WebView2");
+            yield return Path.Combine(localAppData, "Novelist", "WebView2", leaf);
         }
 
-        yield return Path.Combine(Path.GetTempPath(), "Novelist", "WebView2");
+        yield return Path.Combine(Path.GetTempPath(), "Novelist", "WebView2", leaf);
+    }
+
+    private static string SanitizeWebViewDataPathKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return "default";
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new string(key.Select(ch => invalid.Contains(ch) ? '-' : ch).ToArray()).Trim();
+        return sanitized.Length == 0 ? "default" : sanitized;
     }
 
     private sealed class PhotinoWindowAdapter : IPhotinoWindow

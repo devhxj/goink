@@ -17,6 +17,7 @@ public sealed class DesktopFrontendAssetTests : IDisposable
         Assert.Equal(Path.GetFullPath(distPath), asset.DistPath);
         Assert.Equal(Path.Combine(Path.GetFullPath(distPath), "index.html"), asset.IndexPath);
         Assert.Equal(asset.IndexPath, asset.StartUrl);
+        AssertCacheKey(asset.CacheKey);
     }
 
     [Fact]
@@ -44,6 +45,24 @@ public sealed class DesktopFrontendAssetTests : IDisposable
         Assert.Equal(Path.GetFullPath(distPath), asset.DistPath);
     }
 
+    [Fact]
+    public void TryResolveChangesCacheKeyWhenIndexContentChanges()
+    {
+        var distPath = CreateDistFixture(Path.Combine(_root, "versioned-dist"));
+        var first = DesktopFrontendAssets.TryResolve([$"--frontend-dist={distPath}"]);
+
+        File.WriteAllText(Path.Combine(distPath, "index.html"), "<!doctype html><title>changed fixture</title>");
+        var second = DesktopFrontendAssets.TryResolve([$"--frontend-dist={distPath}"]);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(first.IndexPath, first.StartUrl);
+        Assert.Equal(second.IndexPath, second.StartUrl);
+        AssertCacheKey(first.CacheKey);
+        AssertCacheKey(second.CacheKey);
+        Assert.NotEqual(first.CacheKey, second.CacheKey);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -57,5 +76,10 @@ public sealed class DesktopFrontendAssetTests : IDisposable
         Directory.CreateDirectory(distPath);
         File.WriteAllText(Path.Combine(distPath, "index.html"), "<!doctype html><title>novelist fixture</title>");
         return distPath;
+    }
+
+    private static void AssertCacheKey(string cacheKey)
+    {
+        Assert.Matches(@"^frontend-[0-9a-f]{16}$", cacheKey);
     }
 }

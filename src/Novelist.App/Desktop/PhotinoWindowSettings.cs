@@ -4,4 +4,5 @@ public sealed record PhotinoWindowSettings(
     string Title,
     int Width,
     int Height,
-    string StartUrl);
+    string StartUrl,
+    string? WebViewDataPathKey = null);

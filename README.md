@@ -100,7 +100,7 @@ mode: auto
 | 范围 | 状态 |
 |---|---|
 | 桌面主线 | 已迁移到 `.NET 10 + Photino.NET + React/Vite` |
-| 参考锚定 | Phase 0-11 和 Phase 13 已完成；Phase 12 继续推进 workspace 级共享参考语料和 AI 驱动材料选择，工作区语料已支持批量来源导入、保留溯源的归档隐藏、已归档材料恢复、事务性选中项批量提升/归档、旧工作区可见语料自动迁移，并可在材料库和语料行内检索、筛选、排序与批量校正标签；默认编排只自动检索已确认授权语料 |
+| 参考锚定 | Phase 0-11 已完成；Phase 12 继续推进 workspace 级共享参考语料和 AI 驱动材料选择；Phase 13 已重新打开为全软件 Playwright 深测、易用性评估和 10MB 大小说鲁棒性验收，要求语料从传入小说/参考源自动切分生成 |
 | 前端构建 | Vite 8/Rolldown 已拆分主入口、工作区、Monaco、Markdown、Mermaid 和图谱依赖 |
 | 旧实现 | Go/Wails 与旧 Python 实现已退役；新功能不要写入 `app/`、`internal/`、`python-master/` 或 `frontend/src/lib/wailsjs/` |
 
@@ -201,7 +201,7 @@ make frontend-dev
 | `make package-macos` | 生成 macOS DMG |
 | `npm --prefix frontend run build` | TypeScript 构建和 Vite 生产构建 |
 | `npm --prefix frontend run lint` | 前端 ESLint |
-| `npm --prefix frontend run verify` | 前端 build、lint、参考锚定流程和 app-wide 烟测 |
+| `npm --prefix frontend run verify` | 前端 build、lint、参考锚定流程和基础 app-wide 烟测；Phase 13 深测还需要 full/stress/usability 专项命令 |
 | `dotnet test Novelist.slnx --no-restore -v minimal` | .NET 测试套件 |
 
 ## 质量边界

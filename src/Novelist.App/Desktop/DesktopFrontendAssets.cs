@@ -1,9 +1,12 @@
+using System.Security.Cryptography;
+
 namespace Novelist.App.Desktop;
 
 public sealed record DesktopFrontendAsset(
     string DistPath,
     string IndexPath,
-    string StartUrl);
+    string StartUrl,
+    string CacheKey);
 
 public static class DesktopFrontendAssets
 {
@@ -114,11 +117,19 @@ public static class DesktopFrontendAssets
         return new DesktopFrontendAsset(
             fullDistPath,
             indexPath,
-            indexPath);
+            indexPath,
+            CreateCacheKey(indexPath));
     }
 
     private static bool HasIndex(string distPath)
     {
         return File.Exists(Path.Combine(distPath, "index.html"));
+    }
+
+    private static string CreateCacheKey(string indexPath)
+    {
+        using var stream = File.OpenRead(indexPath);
+        var hash = Convert.ToHexString(SHA256.HashData(stream))[..16].ToLowerInvariant();
+        return "frontend-" + hash;
     }
 }

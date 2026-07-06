@@ -35,7 +35,10 @@ public sealed class PhotinoDesktopApplication
             }
         }
 
-        var settings = PhotinoLaunchMode.CreateSettings(args, frontendAssets?.StartUrl);
+        var settings = PhotinoLaunchMode.CreateSettings(
+            args,
+            frontendAssets?.StartUrl,
+            frontendAssets?.CacheKey);
         DesktopLaunchLog.Write("Creating Photino window");
         new PhotinoDesktopHost(_windowFactory).Run(settings);
         DesktopLaunchLog.Write("Photino window closed");

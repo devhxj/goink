@@ -104,3 +104,23 @@ This keeps the testing model layered:
 - reference-anchor Playwright tests keep deep feature workflow coverage;
 - .NET unit/integration tests own service, storage, bridge, and production composition behavior;
 - real Photino smoke remains a narrow runtime boundary check unless a later phase introduces stable desktop automation.
+
+## 2026-07-06 Planning Update: Phase 13 Reopened as Full-Product QA
+
+Phase 13 is no longer considered complete at the earlier app-wide smoke boundary. The phase is reopened as a full-product Playwright QA, usability, and robustness gate for Novelist.
+
+The expanded boundary must cover every primary user surface, real writing ergonomics, error recovery, compact layouts, production asset loading, and reference-anchor/corpus behavior under large and malformed inputs. It must include at least one 10MB Chinese novel/reference fixture and must produce evidence: screenshots, traces, bridge-call logs, console-error logs, and a usability report.
+
+The reference/corpus path has one additional hard requirement: materials must be generated from the novel or reference source text passed into the workflow. The tested default path is:
+
+```text
+passed novel/reference text
+  -> deterministic source segmentation
+  -> deterministic material extraction
+  -> provenance/source-hash persistence
+  -> story-context material search
+  -> blueprint beat binding
+  -> draft audit
+```
+
+Manual corpus-library tools remain important for inspection, correction, archive, restore, and advanced control, but they must not be required before the product can split a supplied novel/source into usable reference materials.

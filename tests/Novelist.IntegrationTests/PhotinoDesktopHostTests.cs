@@ -31,9 +31,11 @@ public sealed class PhotinoDesktopHostTests
     {
         var settings = PhotinoLaunchMode.CreateSettings(
             [PhotinoLaunchMode.DesktopFlag, "--start-url=http://localhost:5173/"],
-            @"C:\novelist\frontend\dist\index.html");
+            @"C:\novelist\frontend\dist\index.html",
+            "frontend-cache-key");
 
         Assert.Equal("http://localhost:5173/", settings.StartUrl);
+        Assert.Null(settings.WebViewDataPathKey);
     }
 
     [Fact]
@@ -69,6 +71,7 @@ public sealed class PhotinoDesktopHostTests
 
             Assert.NotNull(factory.Settings);
             Assert.Equal(Path.Combine(distPath, "index.html"), factory.Settings.StartUrl);
+            AssertCacheKey(factory.Settings.WebViewDataPathKey);
             Assert.True(factory.Window.WaitForCloseCalled);
         }
         finally
@@ -100,6 +103,12 @@ public sealed class PhotinoDesktopHostTests
         Directory.CreateDirectory(distPath);
         File.WriteAllText(Path.Combine(distPath, "index.html"), "<!doctype html><title>novelist fixture</title>");
         return distPath;
+    }
+
+    private static void AssertCacheKey(string? cacheKey)
+    {
+        Assert.NotNull(cacheKey);
+        Assert.Matches(@"^frontend-[0-9a-f]{16}$", cacheKey);
     }
 
     private sealed class CapturingWindowFactory : IPhotinoWindowFactory
