@@ -364,17 +364,21 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 14: Performance, Robustness, and Phase 14 Playwright Gate
 
+**Status:** Partially complete for the backend 10MB deterministic style-profile boundary. A 10MB user-provided source now imports through the real anchor service, produces more than 500 segments/materials, builds a deterministic style profile, records bounded evidence/provenance metadata, and keeps source phrases out of persisted feature vectors and deterministic analysis diagnostics. Advanced/LLM-assisted profile stress, UI white-screen coverage, progress/cancel/recovery, and Playwright stress gates remain open.
+
 **Description:** Add stress and regression coverage for large style corpora and high-fidelity style workflows.
 
 **Acceptance criteria:**
 
 - [ ] 10MB source builds baseline and advanced style profiles without white screen or unbounded memory growth.
+- [x] Backend deterministic profile build handles a 10MB imported source without persisting source text in profile features, evidence schema, or deterministic diagnostics.
 - [ ] Profile build supports progress, cancellation, failure recovery, and resumable inspection.
 - [ ] Material/profile search remains paged and responsive.
 - [ ] The full style workflow is covered by Playwright with screenshots, bridge-call logs, console diagnostics, and traces.
 
 **Verification:**
 
+- [x] `dotnet test tests\Novelist.IntegrationTests\Novelist.IntegrationTests.csproj --no-restore -v minimal -p:UseSharedCompilation=false --filter 'ReferenceStyleProfileServiceTests|ReferenceAnchorAdvancedSegmentationTests'`
 - [ ] `npm --prefix frontend run test:reference-style`
 - [ ] `npm --prefix frontend run test:reference-style:stress`
 - [ ] Existing Phase 13 matrix remains green.

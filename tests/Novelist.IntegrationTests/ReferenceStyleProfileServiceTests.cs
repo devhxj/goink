@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Novelist.Contracts.App;
 using Novelist.Core.App;
@@ -82,6 +83,89 @@ public sealed class ReferenceStyleProfileServiceTests : IDisposable
         Assert.DoesNotContain("雨声压低", persisted.FeatureVectorJson, StringComparison.Ordinal);
         Assert.DoesNotContain("你终于来了", persisted.FeatureVectorJson, StringComparison.Ordinal);
         Assert.DoesNotContain("text", persisted.EvidenceColumns, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TenMbSourceBuildsDeterministicStyleProfileWithoutPersistingSourceText()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("大语料画像测试", "", ""), CancellationToken.None);
+        var source = BuildLargeChineseSource(minUtf8Bytes: 10_000_000);
+        const string sourceSentinel = "雨声压低了整条街的呼吸";
+        const string sourceTailSentinel = "答案就在灯光背后";
+        Assert.InRange(Encoding.UTF8.GetByteCount(source), 10_000_000, 19_500_000);
+        var sourcePath = CreateSourceFile("large-style-profile.md", source);
+        var anchorService = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await anchorService.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(
+                novel.Id,
+                "10MB 风格画像参考",
+                null,
+                sourcePath,
+                "markdown",
+                "user_provided",
+                Visibility: ReferenceCorpusVisibilities.Workspace,
+                SourceTrust: ReferenceSourceTrustLevels.UserVerified),
+            CancellationToken.None);
+
+        var status = await anchorService.GetBuildStatusAsync(novel.Id, anchor.AnchorId, CancellationToken.None);
+        Assert.NotNull(status);
+        Assert.Equal(ReferenceAnchorBuildStates.Ready, status.Status);
+        Assert.True(status.SourceSegmentCount > 500);
+        Assert.True(status.MaterialCount > 500);
+
+        var styleService = new SqliteReferenceStyleProfileService(options, novels);
+        var profile = await styleService.BuildStyleProfileAsync(
+            new BuildReferenceStyleProfilePayload(
+                novel.Id,
+                "10MB 确定性画像",
+                "large source deterministic boundary",
+                [anchor.AnchorId],
+                ["user_provided"],
+                [ReferenceSourceTrustLevels.UserVerified]),
+            CancellationToken.None);
+
+        Assert.True(profile.ProfileId > 0);
+        Assert.Equal(ReferenceStyleProfileStatuses.Active, profile.Status);
+        Assert.Equal(ReferenceStyleAnalyzerVersions.DeterministicV1, profile.AnalyzerVersion);
+        Assert.Equal(ReferenceStyleAnalyzerSources.DeterministicBaseline, profile.AnalyzerSource);
+        Assert.Equal([anchor.AnchorId], profile.SourceAnchorIds);
+        Assert.Equal([anchor.SourceFileHash], profile.SourceHashes);
+        Assert.InRange(profile.AggregateConfidence, 0.8, 1.0);
+        Assert.NotEmpty(profile.EvidenceSpans);
+        Assert.InRange(profile.EvidenceSpans.Count, 1, 64);
+        Assert.All(profile.EvidenceSpans, evidence =>
+        {
+            Assert.Equal(profile.ProfileId, evidence.ProfileId);
+            Assert.Equal(anchor.AnchorId, evidence.AnchorId);
+            Assert.False(string.IsNullOrWhiteSpace(evidence.SourceSegmentId));
+            Assert.False(string.IsNullOrWhiteSpace(evidence.TextHash));
+            Assert.True(evidence.EndOffset > evidence.StartOffset);
+        });
+
+        Assert.True(ReadNumericFeature(profile.Features, "material_count") > 500);
+        Assert.True(ReadNumericFeature(profile.Features, "sentence_count") > 0);
+        Assert.True(ReadNumericFeature(profile.Features, "paragraph_count") > 0);
+        Assert.True(ReadNumericFeature(profile.Features, "sensory_ratio") > 0);
+        Assert.True(ReadNumericFeature(profile.Features, "hook_marker_ratio") > 0);
+
+        var profileSource = Assert.Single(await ReadProfileSourcesAsync(options, profile.ProfileId));
+        Assert.Equal(anchor.AnchorId, profileSource.AnchorId);
+        Assert.True(profileSource.MaterialCount > 500);
+        Assert.True(profileSource.SegmentCount > 500);
+
+        var persisted = await ReadPersistedStyleProfileAsync(options, profile.ProfileId);
+        Assert.DoesNotContain(sourceSentinel, persisted.FeatureVectorJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(sourceTailSentinel, persisted.FeatureVectorJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("text", persisted.EvidenceColumns, StringComparer.OrdinalIgnoreCase);
+
+        var analysisRun = Assert.Single(await ReadAnalysisRunsAsync(options, profile.ProfileId));
+        Assert.Equal(ReferenceStyleAnalyzerSources.DeterministicBaseline, analysisRun.AnalyzerSource);
+        Assert.Equal("completed", analysisRun.Status);
+        Assert.DoesNotContain(sourceSentinel, analysisRun.DiagnosticsJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(sourceTailSentinel, analysisRun.DiagnosticsJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -679,6 +763,27 @@ public sealed class ReferenceStyleProfileServiceTests : IDisposable
         await initialization.InitializeAsync(options.DefaultDataDirectory, CancellationToken.None);
     }
 
+    private static string BuildLargeChineseSource(int minUtf8Bytes)
+    {
+        var paragraph = string.Concat(
+            Enumerable.Repeat("雨声压低了整条街的呼吸，门外忽然安静下来，他终于明白答案就在灯光背后", 650)) + "？";
+        var builder = new StringBuilder("# 第一章 大雨\n\n");
+        while (Encoding.UTF8.GetByteCount(builder.ToString()) < minUtf8Bytes)
+        {
+            builder.Append(paragraph);
+            builder.Append("\n\n");
+        }
+
+        return builder.ToString();
+    }
+
+    private static double ReadNumericFeature(
+        ReferenceStyleFeatureVectorPayload features,
+        string featureKey)
+    {
+        return Assert.Single(features.NumericFeatures, feature => feature.FeatureKey == featureKey).Value;
+    }
+
     private static async ValueTask<PersistedStyleProfile> ReadPersistedStyleProfileAsync(
         AppInitializationOptions options,
         long profileId)
@@ -703,6 +808,32 @@ public sealed class ReferenceStyleProfileServiceTests : IDisposable
         }
 
         return new PersistedStyleProfile(featureVectorJson, columns);
+    }
+
+    private static async ValueTask<IReadOnlyList<PersistedProfileSource>> ReadProfileSourcesAsync(
+        AppInitializationOptions options,
+        long profileId)
+    {
+        await using var connection = await OpenReferenceConnectionAsync(options);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT anchor_id, material_count, segment_count
+            FROM reference_style_profile_sources
+            WHERE profile_id = $profile_id
+            ORDER BY anchor_id ASC;
+            """;
+        command.Parameters.AddWithValue("$profile_id", profileId);
+        var rows = new List<PersistedProfileSource>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(new PersistedProfileSource(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetInt32(2)));
+        }
+
+        return rows;
     }
 
     private static IReadOnlyList<string> FeatureSignature(ReferenceStyleFeatureVectorPayload features)
@@ -846,6 +977,11 @@ public sealed class ReferenceStyleProfileServiceTests : IDisposable
     private sealed record PersistedStyleProfile(
         string FeatureVectorJson,
         IReadOnlyList<string> EvidenceColumns);
+
+    private sealed record PersistedProfileSource(
+        long AnchorId,
+        int MaterialCount,
+        int SegmentCount);
 
     private sealed record PersistedAnalysisRun(
         string AnalyzerSource,
