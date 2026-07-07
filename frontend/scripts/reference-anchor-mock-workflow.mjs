@@ -9,7 +9,10 @@ import { chromium } from 'playwright'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(frontendRoot, '..')
-const outputDir = path.join(repoRoot, 'output', 'playwright', 'phase13', 'reference-anchor')
+const runMode = process.argv.includes('--stress') ? 'stress' : 'workflow'
+const outputDir = runMode === 'stress'
+  ? path.join(repoRoot, 'output', 'playwright', 'phase14', 'reference-style-stress')
+  : path.join(repoRoot, 'output', 'playwright', 'phase13', 'reference-anchor')
 
 const now = '2026-07-05T12:00:00.000Z'
 
@@ -38,7 +41,9 @@ async function main() {
     page.on('pageerror', (error) => pageErrors.push(error.message))
 
     logStep('loading app')
-    await page.addInitScript(installReferenceAnchorMockBridge)
+    await page.addInitScript(installReferenceAnchorMockBridge, {
+      styleStress: runMode === 'stress',
+    })
     await page.goto(url, { waitUntil: 'domcontentloaded' })
 
     logStep('opening reference panel')
@@ -51,6 +56,18 @@ async function main() {
     await expectVisible(page.getByRole('heading', { name: '风格画像库' }), 'style profile library heading')
     await expectVisible(page.getByRole('heading', { name: '参考写作检索' }), 'reference drafting retrieval heading')
     await page.screenshot({ path: path.join(outputDir, 'reference-anchor-01-initial.png'), fullPage: true })
+
+    if (runMode === 'stress') {
+      logStep('reference style stress workflow')
+      await runReferenceStyleStressWorkflow(page)
+      await page.screenshot({ path: path.join(outputDir, 'reference-style-stress-10mb.png'), fullPage: true })
+      await verifyReferenceStyleStressBridgeCalls(page)
+      await writeReferenceStyleStressMetrics(page)
+      assert.deepEqual(pageErrors, [], `Unexpected page errors:\n${pageErrors.join('\n')}`)
+      assert.deepEqual(consoleErrors, [], `Unexpected console errors:\n${consoleErrors.join('\n')}`)
+      console.log(`Reference-style stress workflow passed. Screenshots: ${path.relative(repoRoot, outputDir)}`)
+      return
+    }
 
     logStep('checking advanced-mode boundary')
     await expectHidden(page.getByText('材料搜索', { exact: true }), 'material search hidden by default')
@@ -395,6 +412,58 @@ async function buildInspectArchiveRestoreAndCompareStyleProfiles(page) {
   await expectVisible(stylePanel.getByTestId('reference-style-profile-row').filter({ hasText: '雨夜克制画像' }).getByText('active'), 'restored style profile status')
 
   await secondAnchorRow.locator('input[type="checkbox"]').first().uncheck()
+}
+
+async function runReferenceStyleStressWorkflow(page) {
+  const stylePanel = page.getByTestId('reference-style-profile-library')
+  const stressAnchorRow = page.getByTestId('reference-anchor-row').filter({ hasText: '10MB 风格压力语料' }).first()
+  await expectVisible(stressAnchorRow, 'stress style anchor row')
+  await expectVisible(stressAnchorRow.getByText('workspace · user_verified · workspace_corpus'), 'stress style anchor metadata')
+
+  await stressAnchorRow.locator('input[type="checkbox"]').first().check()
+  await expectVisible(stylePanel.getByText(/已选 1 个来源：10MB 风格压力语料/), 'stress style selected source')
+
+  await stylePanel.getByLabel('风格画像标题').fill('10MB 高级风格压力画像')
+  await stylePanel.getByLabel('风格画像说明').fill('验证 10MB 风格语料的进度、分页、画像详情和无白屏表现')
+  const buildStartedAt = Date.now()
+  await stylePanel.getByRole('button', { name: /^构建风格画像$/ }).click()
+  await expectVisible(stylePanel.getByTestId('reference-style-build-status').getByText('running', { exact: true }), 'stress style build running status')
+  await expectVisible(stylePanel.getByText(/阶段 读取材料|阶段 确定性基线|阶段 模型分析|阶段 持久化画像/), 'stress style build progress stage')
+  await expectVisible(stylePanel.getByText('风格画像已构建'), 'stress style profile built message')
+  const buildElapsedMs = Date.now() - buildStartedAt
+  assert(buildElapsedMs < 20_000, `stress style profile build UI took ${buildElapsedMs}ms`)
+  await expectVisible(stylePanel.getByTestId('reference-style-build-status').getByText('completed', { exact: true }), 'stress style build completed status')
+  await expectVisible(stylePanel.getByTestId('reference-style-profile-row').filter({ hasText: '10MB 高级风格压力画像' }), 'stress style profile row')
+  await expectVisible(stylePanel.getByTestId('reference-style-profile-detail').getByText(/dialogue_ratio/).first(), 'stress style detail numeric feature')
+  await expectVisible(stylePanel.getByTestId('reference-style-profile-detail').getByText(/advanced_hook_pressure/).first(), 'stress style detail advanced categorical feature')
+
+  const detailText = await stylePanel.getByTestId('reference-style-profile-detail').textContent()
+  assert(!detailText.includes('STRESS_SOURCE_SENTINEL'), 'style profile detail must not expose stress source text sentinel')
+  assert(!detailText.includes('D:\\books\\style-stress-10mb.md'), 'style profile detail must not expose source path')
+
+  await stylePanel.getByLabel('风格画像筛选').fill('10MB')
+  await expectVisible(stylePanel.getByTestId('reference-style-profile-row').filter({ hasText: '10MB 高级风格压力画像' }), 'stress style profile filter result')
+
+  const materialPanel = page.getByTestId('reference-material-library')
+  await materialPanel.getByLabel('材料库搜索').fill('10MB 风格节奏')
+  const materialSearchStartedAt = Date.now()
+  await materialPanel.getByRole('button', { name: /^检索材料库$/ }).click()
+  await expectVisible(materialPanel.getByText('第 1 / 150 页 · 1500 条材料'), 'stress style material library first page')
+  const materialSearchElapsedMs = Date.now() - materialSearchStartedAt
+  assert(materialSearchElapsedMs < 10_000, `stress style material search took ${materialSearchElapsedMs}ms`)
+  await expectVisible(materialPanel.getByText('stress-style-mat-0001'), 'stress style material first id')
+  await expectVisible(materialPanel.getByText('stress-style-seg-0001'), 'stress style material first provenance')
+  await materialPanel.getByRole('button', { name: /^下一页$/ }).click()
+  await expectVisible(materialPanel.getByText('第 2 / 150 页 · 1500 条材料'), 'stress style material library second page')
+  await expectVisible(materialPanel.getByText('stress-style-mat-0011'), 'stress style material next page id')
+
+  await page.evaluate(({ buildElapsedMs, materialSearchElapsedMs }) => {
+    window.__referenceAnchorMockState.styleStressMetrics = {
+      ...(window.__referenceAnchorMockState.styleStressMetrics ?? {}),
+      buildElapsedMs,
+      materialSearchElapsedMs,
+    }
+  }, { buildElapsedMs, materialSearchElapsedMs })
 }
 
 async function generateReviseApproveBindAndDraft(page) {
@@ -831,6 +900,67 @@ async function verifyBridgeCalls(page) {
   assert.deepEqual(searchCall.args[0].prose_duties, ['source_backed_detail'], 'manual story-context material search must pass prose duties')
 }
 
+async function verifyReferenceStyleStressBridgeCalls(page) {
+  const calls = await page.evaluate(() => window.__referenceAnchorMockState.calls)
+  const methods = calls.map((call) => call.method)
+  assert(methods.includes('GetReferenceAnchors'), 'style stress workflow must load reference anchors')
+  assert(methods.includes('BuildReferenceStyleProfile'), 'style stress workflow must build a style profile')
+  assert(methods.includes('GetReferenceStyleProfileBuildStatus'), 'style stress workflow must inspect persisted build status')
+  assert(methods.includes('GetReferenceStyleProfiles'), 'style stress workflow must refresh style profiles')
+  assert(methods.includes('SearchReferenceMaterials'), 'style stress workflow must search paged material library results')
+  assert(!methods.includes('SaveContent'), 'style stress workflow must not save chapter content')
+
+  const buildCall = calls.find((call) => call.method === 'BuildReferenceStyleProfile')
+  assert(buildCall, 'missing stress BuildReferenceStyleProfile call')
+  assert.equal(buildCall.args[0].novel_id, 42, 'stress style build payload must include novel id')
+  assert.equal(buildCall.args[0].title, '10MB 高级风格压力画像', 'stress style build payload must preserve title')
+  assert.deepEqual(buildCall.args[0].anchor_ids, [901], 'stress style build payload must use the 10MB style anchor')
+  assert.match(buildCall.args[0].build_id, /^style-42-[A-Za-z0-9._-]+$/, 'stress style build payload must include a safe build id')
+  assert.equal(buildCall.result?.profile_id, 301, 'stress style build must return the built profile')
+
+  const statusCalls = calls.filter((call) => call.method === 'GetReferenceStyleProfileBuildStatus')
+  assert(statusCalls.some((call) => call.args[0]?.build_id === buildCall.args[0].build_id), 'stress style workflow must inspect the submitted build id')
+
+  const materialSearchCalls = calls.filter((call) =>
+    call.method === 'SearchReferenceMaterials' &&
+    Array.isArray(call.args[0]?.anchor_ids) &&
+    call.args[0].anchor_ids.length === 0 &&
+    call.args[0].query === '10MB 风格节奏')
+  assert(materialSearchCalls.length >= 2, 'stress style material library must request multiple pages')
+  assert.equal(materialSearchCalls[0].result?.total, 1500, 'stress style material search must expose the full large material total')
+  assert.equal(materialSearchCalls[0].result?.items?.length, 10, 'stress style material search must remain paged')
+  assert.equal(materialSearchCalls[1].args[0].page, 2, 'stress style material search must request the second page')
+}
+
+async function writeReferenceStyleStressMetrics(page) {
+  const metrics = await page.evaluate(() => {
+    const state = window.__referenceAnchorMockState
+    const buildCall = state.calls.find((call) => call.method === 'BuildReferenceStyleProfile')
+    const materialSearchCalls = state.calls.filter((call) => call.method === 'SearchReferenceMaterials' && call.args[0]?.query === '10MB 风格节奏')
+    const status = state.styleBuildStatuses[buildCall?.args?.[0]?.build_id] ?? null
+    return {
+      targetSourceBytes: state.styleStress?.sourceBytes ?? 0,
+      materialTotal: state.styleStress?.materialTotal ?? 0,
+      buildId: buildCall?.args?.[0]?.build_id ?? '',
+      profileId: buildCall?.result?.profile_id ?? 0,
+      buildStatus: status?.status ?? '',
+      buildStage: status?.stage ?? '',
+      buildProgressCompleted: status?.progress_completed ?? 0,
+      buildProgressTotal: status?.progress_total ?? 0,
+      materialSearchPagesVisited: materialSearchCalls.map((call) => call.args[0]?.page ?? 1),
+      materialSearchPageSize: materialSearchCalls[0]?.result?.items?.length ?? 0,
+      bridgeCallCount: state.calls.length,
+      buildElapsedMs: state.styleStressMetrics?.buildElapsedMs ?? 0,
+      materialSearchElapsedMs: state.styleStressMetrics?.materialSearchElapsedMs ?? 0,
+    }
+  })
+  await fs.writeFile(
+    path.join(outputDir, 'reference-style-stress-metrics.json'),
+    `${JSON.stringify(metrics, null, 2)}\n`,
+    'utf8',
+  )
+}
+
 function assertBridgeCallOrder(calls, beforeMethod, afterMethod) {
   const beforeIndex = calls.findIndex((call) => call.method === beforeMethod)
   const afterIndex = calls.findIndex((call) => call.method === afterMethod)
@@ -964,7 +1094,7 @@ function logStep(message) {
   console.log(`[reference-anchor mock] ${message}`)
 }
 
-function installReferenceAnchorMockBridge() {
+function installReferenceAnchorMockBridge(options = {}) {
   const now = '2026-07-05T12:00:00.000Z'
   const receivers = new Set()
   const state = {
@@ -981,6 +1111,8 @@ function installReferenceAnchorMockBridge() {
     runs: [],
     events: {},
     archivedMaterialIds: new Set(),
+    styleStress: null,
+    styleStressMetrics: {},
   }
 
   state.blueprints[902] = makeBlueprint(902, {
@@ -989,6 +1121,10 @@ function installReferenceAnchorMockBridge() {
     status: 'stale',
     latest_review: makeReview(902, 'review-stale-902'),
   })
+
+  if (options?.styleStress) {
+    seedReferenceStyleStressState()
+  }
 
   Object.defineProperty(window, '__referenceAnchorMockState', {
     configurable: true,
@@ -1013,15 +1149,20 @@ function installReferenceAnchorMockBridge() {
   })
 
   async function handleRequest(envelope) {
+    const call = {
+      method: envelope.method,
+      args: Array.isArray(envelope.payload?.args) ? envelope.payload.args : [],
+    }
     try {
-      const args = Array.isArray(envelope.payload?.args) ? envelope.payload.args : []
-      state.calls.push({ method: envelope.method, args })
+      state.calls.push(call)
       if (envelope.method === 'SaveContent') {
         throw new Error('SaveContent is forbidden in the reference-anchor mock workflow.')
       }
-      const result = await route(envelope.method, args)
+      const result = await route(envelope.method, call.args)
+      call.result = result
       respond({ kind: 'response', id: envelope.id, ok: true, result })
     } catch (error) {
+      call.error = error instanceof Error ? error.message : String(error)
       respond({
         kind: 'response',
         id: envelope.id,
@@ -1162,6 +1303,40 @@ function installReferenceAnchorMockBridge() {
     }
   }
 
+  function seedReferenceStyleStressState() {
+    const sourceBytes = 10 * 1024 * 1024
+    const materialTotal = 1500
+    const anchor = {
+      anchor_id: 901,
+      novel_id: 0,
+      title: '10MB 风格压力语料',
+      author: 'Stress Harness',
+      source_path: 'D:\\books\\style-stress-10mb.md',
+      source_kind: 'markdown',
+      license_status: 'user_provided',
+      source_file_hash: `hash-style-stress-${sourceBytes}`,
+      build_version: 'mock-reference-style-stress-v1',
+      status: 'ready',
+      created_at: now,
+      updated_at: now,
+      visibility: 'workspace',
+      source_trust: 'user_verified',
+      user_tags: ['10MB', '风格画像', '压力测试'],
+      owner_scope: 'workspace_corpus',
+      owner_novel_id: null,
+    }
+    state.nextAnchorId = 902
+    state.anchors = [anchor]
+    state.styleStress = {
+      anchor,
+      sourceBytes,
+      sourceCharacters: 3_500_000,
+      materialTotal,
+      sourceSegmentCount: materialTotal,
+      sourceHash: anchor.source_file_hash,
+    }
+  }
+
   function createReferenceAnchor(input) {
     const anchor = {
       anchor_id: state.nextAnchorId++,
@@ -1266,6 +1441,20 @@ function installReferenceAnchorMockBridge() {
       anchor.status = 'ready'
       anchor.updated_at = now
     }
+    if (state.styleStress && anchorId === state.styleStress.anchor.anchor_id) {
+      return {
+        novel_id: 42,
+        anchor_id: anchorId,
+        status: 'ready',
+        stage: 'completed',
+        source_segment_count: state.styleStress.sourceSegmentCount,
+        material_count: state.styleStress.materialTotal,
+        slot_count: Math.round(state.styleStress.materialTotal * 1.5),
+        vector_count: 0,
+        last_error: '',
+        updated_at: now,
+      }
+    }
     return {
       novel_id: 42,
       anchor_id: anchorId,
@@ -1281,6 +1470,18 @@ function installReferenceAnchorMockBridge() {
   }
 
   function searchReferenceMaterials(input) {
+    if (state.styleStress && shouldUseStyleStressMaterials(input)) {
+      const page = input.page ?? 1
+      const size = input.size ?? 10
+      const start = (page - 1) * size + 1
+      const end = Math.min(start + size - 1, state.styleStress.materialTotal)
+      const items = []
+      for (let index = start; index <= end; index += 1) {
+        items.push(stressStyleMaterial(index))
+      }
+      return pagedResult(items, page, size, state.styleStress.materialTotal)
+    }
+
     const isAnchorScopedPreview = Array.isArray(input.anchor_ids) && input.anchor_ids.length === 1 && input.query === '' && input.size === 5
     if (!isAnchorScopedPreview) {
       const isMaterialLibrarySearch = Array.isArray(input.anchor_ids) && input.anchor_ids.length === 0
@@ -1307,6 +1508,12 @@ function installReferenceAnchorMockBridge() {
     return pagedResult([1, 2, 3, 4, 5].map(material), page, size, 6)
   }
 
+  function shouldUseStyleStressMaterials(input) {
+    const anchorIds = Array.isArray(input.anchor_ids) ? input.anchor_ids : []
+    if (anchorIds.includes(state.styleStress.anchor.anchor_id)) return true
+    return anchorIds.length === 0 && String(input.query ?? '').includes('10MB')
+  }
+
   async function buildReferenceStyleProfile(input) {
     const profileId = state.nextStyleProfileId++
     const buildId = input.build_id || `mock-style-build-${profileId}`
@@ -1315,13 +1522,15 @@ function installReferenceAnchorMockBridge() {
       if (!anchor) throw new Error(`Unknown reference anchor ${anchorId}`)
       return anchor
     })
+    const isStressBuild = sourceAnchors.some((anchor) => anchor.anchor_id === state.styleStress?.anchor.anchor_id)
+    const progressTotal = isStressBuild ? 8 : 5
     const baseStatus = makeStyleBuildStatus(input, buildId, {
       status: 'running',
       stage: 'queued',
       progress_completed: 0,
-      progress_total: 5,
+      progress_total: progressTotal,
       source_hashes: sourceAnchors.map((anchor) => anchor.source_file_hash),
-      diagnostics: ['queued build metadata only'],
+      diagnostics: [isStressBuild ? 'queued 10MB style build metadata only' : 'queued build metadata only'],
     })
     state.styleBuildStatuses[buildId] = baseStatus
 
@@ -1342,9 +1551,16 @@ function installReferenceAnchorMockBridge() {
       throw new Error('模拟画像构建失败')
     }
 
-    await advanceStyleBuild(buildId, 'reading_materials', 3, input.title.includes('取消') ? 700 : 80)
-    await advanceStyleBuild(buildId, 'deterministic_baseline', 4)
-    await advanceStyleBuild(buildId, 'persisting_profile', 5)
+    await advanceStyleBuild(buildId, 'reading_materials', 3, input.title.includes('取消') ? 700 : isStressBuild ? 220 : 80)
+    if (isStressBuild) {
+      await advanceStyleBuild(buildId, 'reading_materials', 4, 120)
+      await advanceStyleBuild(buildId, 'deterministic_baseline', 5, 120)
+      await advanceStyleBuild(buildId, 'llm_analysis', 6, 120)
+      await advanceStyleBuild(buildId, 'persisting_profile', 7, 120)
+    } else {
+      await advanceStyleBuild(buildId, 'deterministic_baseline', 4)
+    }
+    await advanceStyleBuild(buildId, 'persisting_profile', progressTotal)
 
     const profile = makeStyleProfile(profileId, {
       novel_id: input.novel_id,
@@ -1357,6 +1573,9 @@ function installReferenceAnchorMockBridge() {
       average_sentence_chars: profileId % 2 === 0 ? 24.5 : 16.25,
       dialogue_ratio: profileId % 2 === 0 ? 0.18 : 0.42,
       dominant_technique: profileId % 2 === 0 ? 'sensory_detail' : 'dialogue_exchange',
+      analyzer_source: isStressBuild ? 'deterministic_baseline+llm_assisted' : undefined,
+      aggregate_confidence: isStressBuild ? 0.9 : undefined,
+      stress_profile: isStressBuild,
     })
     state.styleProfiles = [profile, ...state.styleProfiles]
     state.styleBuildStatuses[buildId] = {
@@ -1364,9 +1583,9 @@ function installReferenceAnchorMockBridge() {
       profile_id: profile.profile_id,
       status: 'completed',
       stage: 'completed',
-      progress_completed: 5,
-      progress_total: 5,
-      diagnostics: ['completed without source text'],
+      progress_completed: progressTotal,
+      progress_total: progressTotal,
+      diagnostics: [isStressBuild ? 'completed 10MB style profile without source text' : 'completed without source text'],
       error_code: null,
       error_message: null,
       updated_at: now,
@@ -1575,8 +1794,42 @@ function installReferenceAnchorMockBridge() {
   }
 
   function materialById(materialId) {
+    if (String(materialId).startsWith('stress-style-mat-')) {
+      const match = String(materialId).match(/(\d+)$/)
+      return stressStyleMaterial(match ? Number.parseInt(match[1], 10) : 1)
+    }
     const match = String(materialId).match(/(\d+)$/)
     return material(match ? Number.parseInt(match[1], 10) : 1)
+  }
+
+  function stressStyleMaterial(index = 1) {
+    const padded = String(index).padStart(4, '0')
+    return {
+      material_id: `stress-style-mat-${padded}`,
+      anchor_id: state.styleStress?.anchor.anchor_id ?? 901,
+      source_segment_id: `stress-style-seg-${padded}`,
+      material_type: index % 5 === 0 ? 'dialogue_exchange' : index % 7 === 0 ? 'hook' : 'sentence',
+      function_tag: index % 7 === 0 ? 'hook_pressure' : 'emotion_evidence',
+      emotion_tag: index % 3 === 0 ? 'coiled_alarm' : 'restrained',
+      scene_tag: '10mb_style_stress',
+      pov_tag: 'close',
+      technique_tag: index % 5 === 0 ? 'dialogue_mechanics' : 'rhythm_afterbeat',
+      function_confidence: 0.94,
+      emotion_confidence: 0.91,
+      pov_confidence: 0.9,
+      text: `10MB 风格节奏材料 ${padded}：雨声压住动作后拍，人物只以杯底水痕、灯影停顿和短促对白推进判断。`,
+      source_hash: `hash-style-stress-material-${padded}`,
+      extractor_version: 'mock-style-stress-extractor-v1',
+      user_verified: true,
+      created_at: now,
+      score_components: {
+        lexical: 0.9,
+        function: 0.86,
+        prose_duty: 0.82,
+        style_fit: 0.88,
+        confidence: 0.9,
+      },
+    }
   }
 
   function material(index = 1) {
@@ -1618,6 +1871,8 @@ function installReferenceAnchorMockBridge() {
     const dialogueRatio = overrides.dialogue_ratio ?? 0.35
     const averageSentenceChars = overrides.average_sentence_chars ?? 18.5
     const technique = overrides.dominant_technique ?? 'dialogue_exchange'
+    const stressEvidenceIds = Array.from({ length: 12 }, (_, index) => `style-evidence-${profileId}-${String(index + 1).padStart(2, '0')}`)
+    const evidenceIds = overrides.stress_profile ? stressEvidenceIds : [evidenceId]
     return {
       profile_id: profileId,
       novel_id: overrides.novel_id ?? 42,
@@ -1626,12 +1881,12 @@ function installReferenceAnchorMockBridge() {
       status: 'active',
       analyzer_version: 'reference-style-deterministic-v1',
       feature_schema_version: 'style-profile-v1',
-      analyzer_source: 'deterministic_baseline',
+      analyzer_source: overrides.analyzer_source ?? 'deterministic_baseline',
       source_anchor_ids: overrides.source_anchor_ids ?? [101],
       source_hashes: overrides.source_hashes ?? ['hash-anchor-001'],
       allowed_license_statuses: overrides.allowed_license_statuses ?? ['user_provided', 'licensed', 'public_domain'],
       allowed_source_trust_levels: overrides.allowed_source_trust_levels ?? ['user_verified', 'imported'],
-      aggregate_confidence: 0.87,
+      aggregate_confidence: overrides.aggregate_confidence ?? 0.87,
       features: {
         numeric_features: [
           {
@@ -1639,15 +1894,33 @@ function installReferenceAnchorMockBridge() {
             value: dialogueRatio,
             unit: 'ratio',
             confidence: 0.86,
-            evidence_ids: [evidenceId],
+            evidence_ids: evidenceIds.slice(0, 4),
           },
           {
             feature_key: 'average_sentence_chars',
             value: averageSentenceChars,
             unit: 'chars',
             confidence: 0.84,
-            evidence_ids: [evidenceId],
+            evidence_ids: evidenceIds.slice(0, 4),
           },
+          ...(overrides.stress_profile
+            ? [
+                {
+                  feature_key: 'punctuation_per_100_chars',
+                  value: 8.6,
+                  unit: 'count_per_100_chars',
+                  confidence: 0.88,
+                  evidence_ids: evidenceIds.slice(2, 8),
+                },
+                {
+                  feature_key: 'hook_marker_ratio',
+                  value: 0.22,
+                  unit: 'ratio',
+                  confidence: 0.86,
+                  evidence_ids: evidenceIds.slice(4, 10),
+                },
+              ]
+            : []),
         ],
         distribution_features: [
           {
@@ -1658,8 +1931,23 @@ function installReferenceAnchorMockBridge() {
               { label: 'medium', min: 21, max: 60, weight: profileId % 2 === 0 ? 0.66 : 0.45 },
             ],
             confidence: 0.83,
-            evidence_ids: [evidenceId],
+            evidence_ids: evidenceIds.slice(0, 5),
           },
+          ...(overrides.stress_profile
+            ? [
+                {
+                  feature_key: 'paragraph_cadence_distribution',
+                  unit: 'beat',
+                  buckets: [
+                    { label: 'short_afterbeat', min: 0, max: 1, weight: 0.46 },
+                    { label: 'medium_pressure', min: 2, max: 4, weight: 0.39 },
+                    { label: 'long_release', min: 5, max: 9, weight: 0.15 },
+                  ],
+                  confidence: 0.87,
+                  evidence_ids: evidenceIds.slice(3, 10),
+                },
+              ]
+            : []),
         ],
         categorical_features: [
           {
@@ -1667,26 +1955,51 @@ function installReferenceAnchorMockBridge() {
             label: technique,
             weight: 0.7,
             confidence: 0.85,
-            evidence_ids: [evidenceId],
+            evidence_ids: evidenceIds.slice(0, 3),
           },
+          ...(overrides.stress_profile
+            ? [
+                {
+                  feature_key: 'advanced_hook_pressure',
+                  label: 'delayed_identity_reveal',
+                  weight: 0.78,
+                  confidence: 0.89,
+                  evidence_ids: evidenceIds.slice(4, 12),
+                },
+                {
+                  feature_key: 'dialogue_mechanics',
+                  label: 'short_interruptive_exchange',
+                  weight: 0.63,
+                  confidence: 0.86,
+                  evidence_ids: evidenceIds.slice(1, 9),
+                },
+                {
+                  feature_key: 'sensory_image_system',
+                  label: 'rain_light_object_trace',
+                  weight: 0.74,
+                  confidence: 0.88,
+                  evidence_ids: evidenceIds.slice(2, 11),
+                },
+              ]
+            : []),
         ],
       },
-      evidence_spans: [
+      evidence_spans: evidenceIds.map((id, index) => (
         {
-          evidence_id: evidenceId,
+          evidence_id: id,
           profile_id: profileId,
           anchor_id: overrides.source_anchor_ids?.[0] ?? 101,
-          source_segment_id: 'seg-001',
-          material_id: 'mat-001',
-          feature_key: 'dialogue_ratio',
-          label: 'dialogue_exchange',
-          start_offset: 0,
-          end_offset: 12,
-          text_hash: 'hash-material-001',
+          source_segment_id: overrides.stress_profile ? `stress-style-seg-${String(index + 1).padStart(4, '0')}` : 'seg-001',
+          material_id: overrides.stress_profile ? `stress-style-mat-${String(index + 1).padStart(4, '0')}` : 'mat-001',
+          feature_key: index % 3 === 0 ? 'dialogue_ratio' : index % 3 === 1 ? 'advanced_hook_pressure' : 'paragraph_cadence_distribution',
+          label: index % 3 === 0 ? 'dialogue_exchange' : index % 3 === 1 ? 'delayed_identity_reveal' : 'short_afterbeat',
+          start_offset: index * 17,
+          end_offset: index * 17 + 12,
+          text_hash: overrides.stress_profile ? `hash-style-stress-evidence-${String(index + 1).padStart(2, '0')}` : 'hash-material-001',
           confidence: 0.86,
-          analyzer_source: 'deterministic_baseline',
-        },
-      ],
+          analyzer_source: overrides.analyzer_source ?? 'deterministic_baseline',
+        }
+      )),
       created_at: now,
       updated_at: now,
       archived_at: null,

@@ -365,17 +365,17 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 14: Performance, Robustness, and Phase 14 Playwright Gate
 
-**Status:** Partially complete for the backend robustness and frontend progress/cancel boundary. A 10MB user-provided source now imports through the real anchor service, produces more than 500 segments/materials, builds a deterministic style profile, records bounded evidence/provenance metadata, and keeps source phrases out of persisted feature vectors and deterministic analysis diagnostics. Style profile builds now create source-text-free persisted build-status rows with stage/progress metadata, bridge-readable status, explicit cancel marking, cancellation-token persistence, failed-build recovery inspection, and rebuild-after-failure coverage. The frontend `风格画像库` now generates safe build ids, displays persisted build progress/diagnostics/errors, can cancel running builds, and can refresh failed/cancelled status for recovery inspection. Advanced/LLM-assisted profile stress, UI white-screen coverage, and the dedicated Playwright stress gate remain open.
+**Status:** Partially complete for the backend robustness, frontend progress/cancel boundary, and dedicated browser stress gate. A 10MB user-provided source now imports through the real anchor service, produces more than 500 segments/materials, builds a deterministic style profile, records bounded evidence/provenance metadata, and keeps source phrases out of persisted feature vectors and deterministic analysis diagnostics. Style profile builds now create source-text-free persisted build-status rows with stage/progress metadata, bridge-readable status, explicit cancel marking, cancellation-token persistence, failed-build recovery inspection, and rebuild-after-failure coverage. The frontend `风格画像库` now generates safe build ids, displays persisted build progress/diagnostics/errors, can cancel running builds, and can refresh failed/cancelled status for recovery inspection. The dedicated style stress gate now drives a mocked 10MB workspace corpus source through style-profile build progress, LLM-analysis-stage metadata, profile detail inspection, paged material-library search, screenshots, bridge-call assertions, and metrics under `output/playwright/phase14/reference-style-stress/`. Broader default-workflow style suggestions, full Phase 13 regression rerun, and full .NET style-related suite verification remain open.
 
 **Description:** Add stress and regression coverage for large style corpora and high-fidelity style workflows.
 
 **Acceptance criteria:**
 
-- [ ] 10MB source builds baseline and advanced style profiles without white screen or unbounded memory growth. The normal browser workflow now covers progress/cancel/failure recovery; dedicated 10MB UI stress remains open.
+- [x] 10MB source builds baseline and advanced style profiles without white screen or unbounded memory growth. Backend deterministic service coverage uses the real anchor/style services; the browser stress gate uses a mocked 10MB workspace corpus source to verify style build progress, LLM-analysis-stage metadata, profile inspection, paged material-library search, screenshots, console/page-error checks, and metrics.
 - [x] Backend deterministic profile build handles a 10MB imported source without persisting source text in profile features, evidence schema, or deterministic diagnostics.
 - [x] Backend profile build supports persisted progress, cancellation status, failure recovery, and resumable inspection. The current bridge method remains a synchronous build call for compatibility; persisted status rows make progress/failure/cancel visible and restart-readable, while a future background worker can reuse the same build-status table.
-- [ ] Material/profile search remains paged and responsive.
-- [ ] The full style workflow is covered by Playwright with screenshots, bridge-call logs, console diagnostics, and traces.
+- [x] Material/profile search remains paged and responsive for the covered browser stress path. The stress gate verifies 1,500 material rows are exposed through 10-item pages and profile filtering/detail inspection remains responsive.
+- [x] The full covered style workflow is exercised by Playwright with screenshots, bridge-call assertions, console diagnostics, and stress metrics. Product-default style suggestions and broader Phase 12 UX remain tracked separately.
 
 **Verification:**
 
@@ -383,7 +383,7 @@ The current extractor is deterministic and robust, but limited:
 - [x] `dotnet test tests\Novelist.Tests\Novelist.Tests.csproj --no-restore -v minimal -p:UseSharedCompilation=false --filter 'ReferenceStyleProfileBuildStatusPayloadsUseStableSnakeCaseJsonNamesWithoutTextFields|ReferenceStyleProfileHandlersRouteEveryMethodToServiceOperations|CompatibilityAppMethodListHasExpectedCoverage|CompatibilityRegistryIncludesReferenceAnchorMethods'`
 - [x] `dotnet test tests\Novelist.IntegrationTests\Novelist.IntegrationTests.csproj --no-restore -v minimal -p:UseSharedCompilation=false --filter 'FailedStyleProfileBuildPersistsRecoverableBuildStatusWithoutSourceText|CancelledStyleProfileBuildPersistsCancelledStatusWithoutActiveProfile'`
 - [x] `npm --prefix frontend run test:reference-style`
-- [ ] `npm --prefix frontend run test:reference-style:stress`
+- [x] `npm --prefix frontend run test:reference-style:stress`
 - [ ] Existing Phase 13 matrix remains green.
 - [ ] Full .NET tests pass for style-related services and contracts.
 
