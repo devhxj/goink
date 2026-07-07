@@ -75,6 +75,28 @@ function scoreComponents(link: reference.BlueprintMaterialLink): Array<[string, 
     .sort(([, left], [, right]) => right - left)
 }
 
+function compactList(values: Array<string | number> | undefined, max = 5): string {
+  const items = (values ?? [])
+    .map(value => String(value).trim())
+    .filter(Boolean)
+    .slice(0, max)
+  return items.join(',')
+}
+
+function styleContractSummary(contract: reference.BlueprintStyleContract | null | undefined): string {
+  if (!contract) return ''
+  const parts = [
+    compactList(contract.style_profile_ids) ? `profiles=${compactList(contract.style_profile_ids, 4)}` : '',
+    contract.imitation_intensity ? `intensity=${contract.imitation_intensity}` : '',
+    contract.min_style_fit > 0 ? `min_fit=${contract.min_style_fit}` : '',
+    contract.allowed_closeness ? `closeness=${contract.allowed_closeness}` : '',
+    compactList(contract.style_dimensions) ? `dims=${compactList(contract.style_dimensions)}` : '',
+    compactList(contract.required_evidence_types, 4) ? `evidence=${compactList(contract.required_evidence_types, 4)}` : '',
+    compactList(contract.forbidden_style_risks, 4) ? `risks=${compactList(contract.forbidden_style_risks, 4)}` : '',
+  ].filter(Boolean)
+  return parts.join(' ')
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
@@ -171,7 +193,7 @@ export function BlueprintDetail({
   const auditSections = draft?.audit ? auditFindings(draft.audit) : []
   const editableBeat = blueprint.beats[0]
   const updateRevisionField = (key: keyof BlueprintRevisionForm) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       onRevisionFormChange(form => ({ ...form, [key]: event.target.value }))
     }
   const updateSlotPlanField = (index: number, key: keyof reference.SlotValue) =>
@@ -418,6 +440,70 @@ export function BlueprintDetail({
               <textarea value={revisionForm.noReuseReason} onChange={updateRevisionField('noReuseReason')} className={`${inputClass} min-h-16 resize-y`} />
             </Field>
           </RevisionSection>
+
+          <RevisionSection title="风格合约">
+            <Field label="风格画像 ID">
+              <textarea
+                value={revisionForm.styleProfileIds}
+                onChange={updateRevisionField('styleProfileIds')}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder="301；302"
+              />
+            </Field>
+            <Field label="风格职责">
+              <textarea
+                value={revisionForm.styleDimensions}
+                onChange={updateRevisionField('styleDimensions')}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder="dialogue_ratio；sensory_ratio"
+              />
+            </Field>
+            <Field label="模仿强度">
+              <select value={revisionForm.imitationIntensity} onChange={updateRevisionField('imitationIntensity')} className={inputClass}>
+                <option value="">未设置</option>
+                <option value="diagnostic_only">diagnostic_only</option>
+                <option value="loose">loose</option>
+                <option value="moderate">moderate</option>
+                <option value="strong">strong</option>
+              </select>
+            </Field>
+            <Field label="最低风格匹配">
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={0.01}
+                value={revisionForm.minStyleFit}
+                onChange={updateRevisionField('minStyleFit')}
+                className={inputClass}
+                placeholder="0.75"
+              />
+            </Field>
+            <Field label="允许接近度">
+              <input
+                value={revisionForm.allowedCloseness}
+                onChange={updateRevisionField('allowedCloseness')}
+                className={inputClass}
+                placeholder="loose / moderate / strict"
+              />
+            </Field>
+            <Field label="必需风格证据">
+              <textarea
+                value={revisionForm.requiredEvidenceTypes}
+                onChange={updateRevisionField('requiredEvidenceTypes')}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder="dialogue_exchange；hook"
+              />
+            </Field>
+            <Field label="禁止风格风险">
+              <textarea
+                value={revisionForm.forbiddenStyleRisks}
+                onChange={updateRevisionField('forbiddenStyleRisks')}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder="source_leak；style_distance"
+              />
+            </Field>
+          </RevisionSection>
         </fieldset>
       </div>
 
@@ -443,6 +529,11 @@ export function BlueprintDetail({
               </div>
               <p className="mt-1 text-xs text-foreground">{beat.narrative_function}</p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{beat.paragraph_intention}</p>
+              {styleContractSummary(beat.style_contract) && (
+                <p className="mt-1 break-words text-[11px] leading-relaxed text-muted-foreground">
+                  风格合约 {styleContractSummary(beat.style_contract)}
+                </p>
+              )}
             </div>
           ))}
         </div>

@@ -391,8 +391,22 @@ async function generateReviseApproveBindAndDraft(page) {
 
   const detail = blueprintDetail(page)
   await detail.getByLabel('段落意图').fill('用手部动作和雨声停顿表现压住反应。')
+  await detail.getByLabel('风格画像 ID').fill('profile-301')
+  await detail.getByLabel('风格职责').fill('dialogue_ratio\nsensory_ratio')
+  await detail.getByLabel('模仿强度').selectOption('strong')
+  await detail.getByLabel('最低风格匹配').fill('0.8')
+  await detail.getByLabel('允许接近度').fill('moderate')
+  await detail.getByLabel('必需风格证据').fill('dialogue_exchange')
+  await detail.getByLabel('禁止风格风险').fill('source_leak\nstyle_distance')
+  await detail.getByRole('button', { name: /保存修订/ }).click()
+  await expectVisible(page.getByText('风格画像 ID 必须是正整数：profile-301'), 'invalid style profile id validation')
+
+  await detail.getByLabel('风格画像 ID').fill('301')
   await detail.getByRole('button', { name: /保存修订/ }).click()
   await expectVisible(page.getByText('蓝图已修订，需要重新评审和批准'), 'blueprint revised message')
+  await expectVisible(detail.getByText('profiles=301'), 'style contract summary profile id')
+  await expectVisible(detail.getByText('intensity=strong'), 'style contract summary intensity')
+  await expectVisible(detail.getByText('dims=dialogue_ratio,sensory_ratio'), 'style contract summary dimensions')
 
   await detail.getByRole('button', { name: /^评审$/ }).click()
   await expectVisible(page.getByText('蓝图评审已完成'), 'blueprint reviewed message')
@@ -445,6 +459,7 @@ async function runDefaultOrchestrationToFinalInsertionStop(page) {
   await expectVisible(panel.getByText('不新增门外身份'), 'approval summary fact boundary value')
   await expectVisible(panel.getByText('警觉 -> 克制 -> 暂缓确认'), 'approval summary emotion value')
   await expectVisible(panel.getByText('使用工作区参考材料中的克制动作证据。'), 'approval summary material plan value')
+  await expectVisible(panel.getByText(/style contracts: beat 1 profiles=301 intensity=strong min_fit=0.8/), 'approval summary style contract plan value')
   await expectVisible(panel.getByText('L1'), 'approval summary rewrite budget value')
   await expectVisible(panel.getByText('无高风险'), 'approval summary empty high risk value')
   await panel.getByRole('button', { name: /^确认$/ }).click()
@@ -719,6 +734,20 @@ async function verifyBridgeCalls(page) {
   const styleRestoreCall = calls.find((call) => call.method === 'RestoreReferenceStyleProfile')
   assert(styleRestoreCall, 'missing RestoreReferenceStyleProfile call')
   assert.deepEqual(styleRestoreCall.args[0], { novel_id: 42, profile_id: 301 }, 'style profile restore payload must include novel and profile id')
+
+  const styleContractRevisionCall = calls.find((call) =>
+    call.method === 'ReviseReferenceChapterBlueprint' &&
+    call.args[0]?.changes?.some((change) => change.field_path === 'beat:beat-001:style_contract'))
+  assert(styleContractRevisionCall, 'missing style contract blueprint revision call')
+  const styleContractChange = styleContractRevisionCall.args[0].changes.find((change) => change.field_path === 'beat:beat-001:style_contract')
+  const revisedStyleContract = JSON.parse(styleContractChange.new_value)
+  assert.deepEqual(revisedStyleContract.style_profile_ids, [301], 'style contract revision must include selected style profile ids')
+  assert.deepEqual(revisedStyleContract.style_dimensions, ['dialogue_ratio', 'sensory_ratio'], 'style contract revision must include style dimensions')
+  assert.equal(revisedStyleContract.imitation_intensity, 'strong', 'style contract revision must include imitation intensity')
+  assert.equal(revisedStyleContract.min_style_fit, 0.8, 'style contract revision must include minimum style fit')
+  assert.equal(revisedStyleContract.allowed_closeness, 'moderate', 'style contract revision must include allowed closeness')
+  assert.deepEqual(revisedStyleContract.required_evidence_types, ['dialogue_exchange'], 'style contract revision must include evidence requirements')
+  assert.deepEqual(revisedStyleContract.forbidden_style_risks, ['source_leak', 'style_distance'], 'style contract revision must include forbidden style risks')
 
   const startCall = calls.find((call) => call.method === 'StartReferenceOrchestrationRun')
   assert(startCall, 'missing StartReferenceOrchestrationRun call')
@@ -1524,6 +1553,9 @@ function installReferenceAnchorMockBridge() {
       if (change.field_path.endsWith('paragraph_intention')) {
         blueprint.beats[0].paragraph_intention = change.new_value
       }
+      if (change.field_path.endsWith('style_contract')) {
+        blueprint.beats[0].style_contract = change.new_value.trim() ? JSON.parse(change.new_value) : null
+      }
       if (change.field_path === 'known_facts') {
         blueprint.known_facts = JSON.parse(change.new_value)
       }
@@ -1742,7 +1774,7 @@ function installReferenceAnchorMockBridge() {
         pov: 'close / 主角',
         fact_boundary_changes: ['不新增门外身份'],
         emotional_trajectory: '警觉 -> 克制 -> 暂缓确认',
-        material_use_plan: '使用工作区参考材料中的克制动作证据。',
+        material_use_plan: '使用工作区参考材料中的克制动作证据。 style contracts: beat 1 profiles=301 intensity=strong min_fit=0.8 closeness=moderate dims=dialogue_ratio,sensory_ratio evidence=dialogue_exchange risks=source_leak,style_distance',
         rewrite_budget: 'L1',
         high_risk_findings: [],
       },

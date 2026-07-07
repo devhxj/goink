@@ -28,8 +28,10 @@ import {
   addListChange,
   addSlotPlanChange,
   addStringChange,
+  addStyleContractChange,
   formFromBlueprint,
   lines,
+  styleContractFromForm,
 } from './blueprintRevision'
 import type { BlueprintRevisionForm, BlueprintRevisionStringKey } from './blueprintRevision'
 import { inputClass, statusTone } from './referenceAnchorStyles'
@@ -1327,6 +1329,17 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       }
     }
     addSlotPlanChange(changes, `${prefix}slot_plan`, revisionForm.slotPlan, beat.slot_plan)
+    try {
+      addStyleContractChange(
+        changes,
+        `${prefix}style_contract`,
+        styleContractFromForm(revisionForm),
+        beat.style_contract ?? null,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '风格合约无效')
+      return
+    }
 
     if (changes.length === 0) {
       setMessage('没有需要保存的蓝图修改')

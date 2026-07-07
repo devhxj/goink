@@ -209,7 +209,7 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 8: Style Contract for Blueprint Beats
 
-**Status:** Partially complete. Backend contracts, SQLite storage, analysis-contract hashing, whole-contract revision, material-binding consumption, deterministic review diagnostics for invalid style contracts, and compact orchestration approval summaries exist. Field-level editing UI and Playwright approval-summary coverage remain open.
+**Status:** Complete for the first editable style-contract boundary. Backend contracts, SQLite storage, analysis-contract hashing, whole-contract revision, material-binding consumption, deterministic review diagnostics for invalid style contracts, and compact orchestration approval summaries exist. The frontend blueprint detail panel now exposes field-level style-contract controls for profile ids, style duties, imitation intensity, minimum fit, allowed closeness, required evidence, and forbidden style risks; saving those fields emits the existing `beat:<id>:style_contract` revision payload so approval hashes and material links are invalidated through the same backend path.
 
 **Description:** Extend blueprint/material binding so each beat can carry a style contract: target style profile, style duties, imitation intensity, allowed closeness, required evidence types, and forbidden style risks.
 
@@ -225,7 +225,12 @@ The current extractor is deterministic and robust, but limited:
 - [x] Contract/hash invalidation tests for JSON payload and analysis-contract hash.
 - [x] Blueprint review tests for missing or contradictory style duties. The deterministic reviewer now fails missing style profile ids, empty style duties, strong imitation with too-low `min_style_fit`, and required style evidence labels/material granularities that are incompatible with the beat material search.
 - [x] Integration test proves blueprint approval summary includes compact style contract terms.
-- [ ] Playwright approval-summary coverage.
+- [x] Playwright approval-summary coverage through `npm --prefix frontend run test:reference-style`.
+
+**Implementation notes:**
+
+- `BlueprintDetail` keeps the user-facing editing surface field-level, while `ReferenceAnchorView.saveBlueprintEdits` serializes a normalized `style_contract` object into the existing whole-contract revision field. Empty style fields clear an existing contract with an empty revision value.
+- The mock browser workflow edits a beat style contract, asserts the exact `ReviseReferenceChapterBlueprint` payload, verifies the saved beat summary, and verifies the orchestration approval summary includes compact style-contract terms.
 
 **Dependencies:** Tasks 5-7.
 
