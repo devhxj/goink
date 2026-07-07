@@ -291,19 +291,27 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 11: Human Evaluation and Golden Style Fixtures
 
+**Status:** Complete for the first repeatable golden fixture evaluation boundary. Eight style categories now have deterministic golden fixtures, expected numeric ranges, taxonomy label checks, a six-dimension candidate rubric, and source-text-free JSON/Markdown reports under `output/reference-style-eval/`. Browser/product workflow coverage remains tracked under Tasks 12 and 14.
+
 **Description:** Build a repeatable evaluation suite for style understanding and imitation quality.
 
 **Acceptance criteria:**
 
-- [ ] Golden fixtures cover dialogue-heavy, introspective, sensory, action, suspense, emotional restraint, high-tempo web-fiction, and slow-burn literary prose.
-- [ ] Each fixture has expected advanced labels and acceptable feature ranges.
-- [ ] Candidate evaluation uses a rubric for style fit, readability, originality distance, fact safety, POV safety, and usefulness to author.
-- [ ] Evaluation reports are generated under `output/reference-style-eval/`.
+- [x] Golden fixtures cover dialogue-heavy, introspective, sensory, action, suspense, emotional restraint, high-tempo web-fiction, and slow-burn literary prose.
+- [x] Each fixture has expected advanced labels and acceptable feature ranges.
+- [x] Candidate evaluation uses a rubric for style fit, readability, originality distance, fact safety, POV safety, and usefulness to author.
+- [x] Evaluation reports are generated under `output/reference-style-eval/`.
 
 **Verification:**
 
-- [ ] `dotnet test ... --filter ReferenceStyle`
+- [x] `dotnet test tests/Novelist.IntegrationTests/Novelist.IntegrationTests.csproj --no-restore -v minimal -p:UseSharedCompilation=false --filter 'ReferenceStyleGoldenFixtureEvaluatorTests|ReferenceStyleDeterministicBaselineExtractorTests'`
 - [ ] `npm --prefix frontend run test:reference-style` or equivalent browser workflow after UI exists.
+
+**Implementation notes:**
+
+- `ReferenceStyleGoldenFixtureEvaluator` reads the fixture JSON, builds deterministic baselines with the existing style extractor, validates taxonomy labels against `ReferenceStyleTaxonomy`, scores the six rubric dimensions, and writes `reference-style-golden-report.json` plus `.md`.
+- Reports include fixture ids, categories, feature keys, observed values, expected ranges, taxonomy labels, and rubric scores only. They do not include source material text, candidate text, prompts, source paths, or arbitrary file-read surfaces.
+- The integration test asserts all eight fixtures pass and that representative source/candidate sentinel strings do not appear in generated reports.
 
 **Dependencies:** Tasks 3-10.
 

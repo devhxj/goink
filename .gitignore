@@ -7,6 +7,7 @@ spike_test
 # Test and dev
 dev_test/
 /output/playwright/
+/output/reference-style-eval/
 
 # ONNX model files (downloaded at runtime)
 models/
