@@ -10,6 +10,7 @@ type StyleProfileLibraryPanelProps = {
   novelId: number
   anchors: reference.Anchor[]
   selectedAnchorIds: number[]
+  onProfilesChanged?: () => void | Promise<void>
 }
 
 type StyleProfileForm = {
@@ -197,6 +198,7 @@ export function StyleProfileLibraryPanel({
   novelId,
   anchors,
   selectedAnchorIds,
+  onProfilesChanged,
 }: StyleProfileLibraryPanelProps) {
   const app = useApp()
   const [profiles, setProfiles] = useState<reference.StyleProfileSummary[]>([])
@@ -433,6 +435,7 @@ export function StyleProfileLibraryPanel({
       setLeftCompareId(String(built.profile_id))
       setActiveBuildId(null)
       await loadProfiles()
+      void onProfilesChanged?.()
     } catch (err) {
       if (buildSequenceRef.current !== sequence) return
 
@@ -536,6 +539,7 @@ export function StyleProfileLibraryPanel({
       setActiveProfile(archived)
       setComparison(null)
       await loadProfiles()
+      void onProfilesChanged?.()
     }
   }
 
@@ -547,6 +551,7 @@ export function StyleProfileLibraryPanel({
     if (restored) {
       setActiveProfile(restored)
       await loadProfiles()
+      void onProfilesChanged?.()
     }
   }
 

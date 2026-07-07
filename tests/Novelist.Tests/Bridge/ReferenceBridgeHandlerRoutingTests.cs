@@ -193,7 +193,15 @@ public sealed class ReferenceBridgeHandlerRoutingTests
             ["culprit identity"],
             null,
             new ReferenceCorpusSearchPolicyPayload("story_context", 3, ["user_provided"], [99], []),
-            SourceConfirmed: false));
+            SourceConfirmed: false,
+            StylePolicy: new ReferenceOrchestrationStylePolicyPayload(
+                [301],
+                ["dialogue_ratio", "sensory_ratio"],
+                ReferenceStyleImitationIntensities.Strong,
+                0.8,
+                "moderate",
+                ["dialogue_exchange"],
+                ["source_leak", "style_distance"])));
         await AssertOkAsync(dispatcher, "GetReferenceOrchestrationRuns", 42L, 7);
         await AssertOkAsync(dispatcher, "GetReferenceOrchestrationRun", 42L, "run-1");
         await AssertOkAsync(dispatcher, "GetReferenceOrchestrationRunEvents", 42L, "run-1");
@@ -220,7 +228,7 @@ public sealed class ReferenceBridgeHandlerRoutingTests
                 "AuditDraftAgainstBlueprint:42:501:candidate-1",
                 "GetDraftAudits:42:501:candidate-1:10",
                 "GetStyleAuditFindings:42:501:candidate-1:source_leak:10",
-                "StartOrchestrationRun:42:7:tighten the reveal:known clue:culprit identity:<null>:story_context:3:user_provided:99::<false>",
+                "StartOrchestrationRun:42:7:tighten the reveal:known clue:culprit identity:<null>:story_context:3:user_provided:99::<false>:301:dialogue_ratio,sensory_ratio:strong:0.8:moderate:dialogue_exchange:source_leak,style_distance",
                 "GetOrchestrationRuns:42:7",
                 "GetOrchestrationRun:42:run-1",
                 "GetOrchestrationRunEvents:42:run-1",
@@ -729,7 +737,7 @@ public sealed class ReferenceBridgeHandlerRoutingTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Calls.Add(
-                $"StartOrchestrationRun:{input.NovelId}:{input.ChapterNumber}:{input.ChapterGoal}:{string.Join(',', input.KnownFacts)}:{string.Join(',', input.ForbiddenFacts)}:{FormatNullableLongs(input.AnchorIds)}:{input.CorpusSearchPolicy.Mode}:{input.CorpusSearchPolicy.MaxResultsPerBeat}:{string.Join(',', input.CorpusSearchPolicy.LicenseStatuses)}:{string.Join(',', input.CorpusSearchPolicy.IncludeAnchorIds)}:{string.Join(',', input.CorpusSearchPolicy.ExcludeAnchorIds)}:<{input.SourceConfirmed.ToString().ToLowerInvariant()}>");
+                $"StartOrchestrationRun:{input.NovelId}:{input.ChapterNumber}:{input.ChapterGoal}:{string.Join(',', input.KnownFacts)}:{string.Join(',', input.ForbiddenFacts)}:{FormatNullableLongs(input.AnchorIds)}:{input.CorpusSearchPolicy.Mode}:{input.CorpusSearchPolicy.MaxResultsPerBeat}:{string.Join(',', input.CorpusSearchPolicy.LicenseStatuses)}:{string.Join(',', input.CorpusSearchPolicy.IncludeAnchorIds)}:{string.Join(',', input.CorpusSearchPolicy.ExcludeAnchorIds)}:<{input.SourceConfirmed.ToString().ToLowerInvariant()}>:{FormatStylePolicy(input.StylePolicy)}");
             return ValueTask.FromResult<ReferenceOrchestrationRunPayload>(null!);
         }
 
@@ -797,5 +805,19 @@ public sealed class ReferenceBridgeHandlerRoutingTests
     private static string FormatNullableLongs(IReadOnlyList<long>? values)
     {
         return values is null ? "<null>" : string.Join(',', values);
+    }
+
+    private static string FormatStylePolicy(ReferenceOrchestrationStylePolicyPayload? stylePolicy)
+    {
+        return stylePolicy is null
+            ? "<null>"
+            : string.Join(':',
+                string.Join(',', stylePolicy.StyleProfileIds),
+                string.Join(',', stylePolicy.StyleDimensions),
+                stylePolicy.ImitationIntensity,
+                stylePolicy.MinStyleFit.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture),
+                stylePolicy.AllowedCloseness,
+                string.Join(',', stylePolicy.RequiredEvidenceTypes),
+                string.Join(',', stylePolicy.ForbiddenStyleRisks));
     }
 }

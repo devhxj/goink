@@ -478,6 +478,15 @@ public sealed record ReferenceCorpusSearchPolicyPayload(
     [property: JsonPropertyName("include_anchor_ids")] IReadOnlyList<long> IncludeAnchorIds,
     [property: JsonPropertyName("exclude_anchor_ids")] IReadOnlyList<long> ExcludeAnchorIds);
 
+public sealed record ReferenceOrchestrationStylePolicyPayload(
+    [property: JsonPropertyName("style_profile_ids")] IReadOnlyList<long> StyleProfileIds,
+    [property: JsonPropertyName("style_dimensions")] IReadOnlyList<string> StyleDimensions,
+    [property: JsonPropertyName("imitation_intensity")] string ImitationIntensity,
+    [property: JsonPropertyName("min_style_fit")] double MinStyleFit,
+    [property: JsonPropertyName("allowed_closeness")] string AllowedCloseness,
+    [property: JsonPropertyName("required_evidence_types")] IReadOnlyList<string> RequiredEvidenceTypes,
+    [property: JsonPropertyName("forbidden_style_risks")] IReadOnlyList<string> ForbiddenStyleRisks);
+
 public sealed record StartReferenceOrchestrationRunPayload(
     [property: JsonPropertyName("novel_id")] long NovelId,
     [property: JsonPropertyName("chapter_number")] int ChapterNumber,
@@ -486,7 +495,10 @@ public sealed record StartReferenceOrchestrationRunPayload(
     [property: JsonPropertyName("forbidden_facts")] IReadOnlyList<string> ForbiddenFacts,
     [property: JsonPropertyName("anchor_ids")] IReadOnlyList<long>? AnchorIds,
     [property: JsonPropertyName("corpus_search_policy")] ReferenceCorpusSearchPolicyPayload CorpusSearchPolicy,
-    [property: JsonPropertyName("source_confirmed")] bool SourceConfirmed = false);
+    [property: JsonPropertyName("source_confirmed")] bool SourceConfirmed = false,
+    [property: JsonPropertyName("style_policy")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ReferenceOrchestrationStylePolicyPayload? StylePolicy = null);
 
 public sealed record ReferenceOrchestrationApprovalSummaryPayload(
     [property: JsonPropertyName("chapter_function")] string ChapterFunction,
@@ -530,7 +542,10 @@ public sealed record ReferenceOrchestrationRunPayload(
     [property: JsonPropertyName("last_stop_reason")] string LastStopReason,
     [property: JsonPropertyName("error_message")] string ErrorMessage,
     [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
-    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
+    [property: JsonPropertyName("style_policy")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ReferenceOrchestrationStylePolicyPayload? StylePolicy = null);
 
 public sealed record ReferenceOrchestrationRunEventPayload(
     [property: JsonPropertyName("event_id")] long EventId,

@@ -153,6 +153,16 @@ const EMPTY_MATERIAL_LIBRARY: MaterialLibraryState = {
   totalPages: 1,
 }
 
+const DEFAULT_ORCHESTRATION_STYLE_DIMENSIONS = 'dialogue_ratio\nsensory_ratio'
+const DEFAULT_ORCHESTRATION_STYLE_EVIDENCE = 'dialogue_exchange'
+const DEFAULT_ORCHESTRATION_STYLE_RISKS = 'source_leak\nstyle_distance'
+const ORCHESTRATION_STYLE_MIN_FIT: Record<reference.StyleImitationIntensity, string> = {
+  diagnostic_only: '0',
+  loose: '0.35',
+  moderate: '0.65',
+  strong: '0.8',
+}
+
 function tagFormFromMaterial(material: reference.Material): MaterialTagForm {
   return {
     functionTag: material.function_tag,
@@ -343,6 +353,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [orchestrationRuns, setOrchestrationRuns] = useState<reference.OrchestrationRun[]>([])
   const [activeOrchestrationRun, setActiveOrchestrationRun] = useState<reference.OrchestrationRun | null>(null)
   const [orchestrationEvents, setOrchestrationEvents] = useState<reference.OrchestrationRunEvent[]>([])
+  const [styleProfiles, setStyleProfiles] = useState<reference.StyleProfileSummary[]>([])
   const [binding, setBinding] = useState<reference.BlueprintMaterialBindingResult | null>(null)
   const [draft, setDraft] = useState<reference.AnchoredDraft | null>(null)
   const [anchorForm, setAnchorForm] = useState<CreateAnchorForm>(EMPTY_ANCHOR_FORM)
@@ -369,6 +380,14 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const [materialFilters, setMaterialFilters] = useState<MaterialSearchFilters>(EMPTY_MATERIAL_FILTERS)
   const [materialQuery, setMaterialQuery] = useState('')
   const [orchestrationUseSelectedAnchors, setOrchestrationUseSelectedAnchors] = useState(false)
+  const [orchestrationStyleProfileId, setOrchestrationStyleProfileId] = useState('')
+  const [orchestrationStyleOptedOut, setOrchestrationStyleOptedOut] = useState(false)
+  const [orchestrationStyleIntensity, setOrchestrationStyleIntensity] = useState<reference.StyleImitationIntensity>('strong')
+  const [orchestrationStyleMinFit, setOrchestrationStyleMinFit] = useState(ORCHESTRATION_STYLE_MIN_FIT.strong)
+  const [orchestrationStyleAllowedCloseness, setOrchestrationStyleAllowedCloseness] = useState('moderate')
+  const [orchestrationStyleDimensions, setOrchestrationStyleDimensions] = useState(DEFAULT_ORCHESTRATION_STYLE_DIMENSIONS)
+  const [orchestrationStyleRequiredEvidenceTypes, setOrchestrationStyleRequiredEvidenceTypes] = useState(DEFAULT_ORCHESTRATION_STYLE_EVIDENCE)
+  const [orchestrationStyleForbiddenRisks, setOrchestrationStyleForbiddenRisks] = useState(DEFAULT_ORCHESTRATION_STYLE_RISKS)
   const [advancedMode, setAdvancedMode] = useState(false)
   const [anchorScopeFilter, setAnchorScopeFilter] = useState<AnchorScopeFilter>('all')
   const [anchorQuery, setAnchorQuery] = useState('')
@@ -403,6 +422,18 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   const selectedVisibleAnchorIds = useMemo(() => visibleAnchors.map(anchor => anchor.anchor_id), [visibleAnchors])
   const selectedNovelAnchors = useMemo(() => selectedAnchors.filter(anchor => anchor.owner_scope === 'novel'), [selectedAnchors])
   const selectedWorkspaceAnchors = useMemo(() => selectedAnchors.filter(anchor => anchor.owner_scope === 'workspace_corpus'), [selectedAnchors])
+  const activeStyleProfiles = useMemo(() => styleProfiles.filter(profile => profile.status === 'active'), [styleProfiles])
+  const orchestrationEffectiveStyleProfileId = useMemo(() => {
+    if (orchestrationStyleProfileId && activeStyleProfiles.some(profile => String(profile.profile_id) === orchestrationStyleProfileId)) {
+      return orchestrationStyleProfileId
+    }
+
+    if (!orchestrationStyleOptedOut && activeStyleProfiles.length > 0) {
+      return String(activeStyleProfiles[0].profile_id)
+    }
+
+    return ''
+  }, [activeStyleProfiles, orchestrationStyleOptedOut, orchestrationStyleProfileId])
   const selectedMaterialSet = useMemo(() => new Set(selectedMaterialIds), [selectedMaterialIds])
   const visibleAnchorMaterialItems = useMemo(() => {
     const indexedItems = anchorMaterialPreview.items
@@ -507,12 +538,25 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     })
   }, [app, novelId])
 
+  const loadStyleProfiles = useCallback(async () => {
+    if (!novelId) {
+      setStyleProfiles([])
+      return
+    }
+
+    const list = await app.GetReferenceStyleProfiles({
+      novel_id: novelId,
+      include_archived: false,
+    })
+    setStyleProfiles(list ?? [])
+  }, [app, novelId])
+
   useEffect(() => {
     let cancelled = false
     void (async () => {
       setLoading(true)
       try {
-        await Promise.all([loadAnchors(), loadBlueprints(), loadOrchestrationRuns()])
+        await Promise.all([loadAnchors(), loadBlueprints(), loadOrchestrationRuns(), loadStyleProfiles()])
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : '加载失败')
       } finally {
@@ -520,7 +564,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       }
     })()
     return () => { cancelled = true }
-  }, [loadAnchors, loadBlueprints, loadOrchestrationRuns])
+  }, [loadAnchors, loadBlueprints, loadOrchestrationRuns, loadStyleProfiles])
 
   useEffect(() => {
     let cancelled = false
@@ -1104,10 +1148,56 @@ export default function ReferenceAnchorView({ novelId }: Props) {
     }
   }
 
+  function changeOrchestrationStyleProfile(profileId: string) {
+    setOrchestrationStyleOptedOut(profileId === '')
+    setOrchestrationStyleProfileId(profileId)
+  }
+
+  function changeOrchestrationStyleIntensity(intensity: reference.StyleImitationIntensity) {
+    setOrchestrationStyleIntensity(intensity)
+    setOrchestrationStyleMinFit(ORCHESTRATION_STYLE_MIN_FIT[intensity])
+  }
+
+  function buildOrchestrationStylePolicy(): reference.OrchestrationStylePolicy | null {
+    const profileId = Number.parseInt(orchestrationEffectiveStyleProfileId, 10)
+    if (!Number.isFinite(profileId) || profileId <= 0) {
+      return null
+    }
+
+    const dimensions = lines(orchestrationStyleDimensions)
+    const requiredEvidenceTypes = lines(orchestrationStyleRequiredEvidenceTypes)
+    if (dimensions.length === 0 && requiredEvidenceTypes.length === 0) {
+      throw new Error('启用风格策略时至少需要一个风格维度或证据类型')
+    }
+
+    const minStyleFit = Number.parseFloat(orchestrationStyleMinFit)
+    if (!Number.isFinite(minStyleFit) || minStyleFit < 0) {
+      throw new Error('最低拟合必须是非负数字')
+    }
+
+    return {
+      style_profile_ids: [profileId],
+      style_dimensions: dimensions,
+      imitation_intensity: orchestrationStyleIntensity,
+      min_style_fit: minStyleFit,
+      allowed_closeness: orchestrationStyleAllowedCloseness.trim(),
+      required_evidence_types: requiredEvidenceTypes,
+      forbidden_style_risks: lines(orchestrationStyleForbiddenRisks),
+    }
+  }
+
   async function startOrchestration() {
     const chapterNumber = Number.parseInt(blueprintForm.chapterNumber, 10)
     if (!Number.isFinite(chapterNumber) || chapterNumber < 1) {
       setError('请输入有效章节号')
+      return
+    }
+
+    let stylePolicy: reference.OrchestrationStylePolicy | null = null
+    try {
+      stylePolicy = buildOrchestrationStylePolicy()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '风格策略无效')
       return
     }
 
@@ -1126,6 +1216,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
         exclude_anchor_ids: [],
       },
       source_confirmed: false,
+      style_policy: stylePolicy,
     }), '编排已启动，等待确认来源与事实边界')
     if (started) {
       setActiveOrchestrationRun(started)
@@ -2255,6 +2346,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
               novelId={novelId}
               anchors={anchors}
               selectedAnchorIds={selectedAnchorIds}
+              onProfilesChanged={loadStyleProfiles}
             />
           </section>
 
@@ -2276,6 +2368,14 @@ export default function ReferenceAnchorView({ novelId }: Props) {
               forbiddenFacts={blueprintForm.forbiddenFacts}
               useSelectedAnchors={orchestrationUseSelectedAnchors}
               selectedAnchorCount={selectedAnchorIds.length}
+              styleProfiles={activeStyleProfiles}
+              styleProfileId={orchestrationEffectiveStyleProfileId}
+              styleIntensity={orchestrationStyleIntensity}
+              styleMinFit={orchestrationStyleMinFit}
+              styleAllowedCloseness={orchestrationStyleAllowedCloseness}
+              styleDimensions={orchestrationStyleDimensions}
+              styleRequiredEvidenceTypes={orchestrationStyleRequiredEvidenceTypes}
+              styleForbiddenRisks={orchestrationStyleForbiddenRisks}
               runs={orchestrationRuns}
               activeRun={activeOrchestrationRun}
               events={orchestrationEvents}
@@ -2285,6 +2385,14 @@ export default function ReferenceAnchorView({ novelId }: Props) {
               onKnownFactsChange={value => setBlueprintForm(form => ({ ...form, knownFacts: value }))}
               onForbiddenFactsChange={value => setBlueprintForm(form => ({ ...form, forbiddenFacts: value }))}
               onUseSelectedAnchorsChange={setOrchestrationUseSelectedAnchors}
+              onStyleProfileIdChange={changeOrchestrationStyleProfile}
+              onStyleIntensityChange={changeOrchestrationStyleIntensity}
+              onStyleMinFitChange={setOrchestrationStyleMinFit}
+              onStyleAllowedClosenessChange={setOrchestrationStyleAllowedCloseness}
+              onStyleDimensionsChange={setOrchestrationStyleDimensions}
+              onStyleRequiredEvidenceTypesChange={setOrchestrationStyleRequiredEvidenceTypes}
+              onStyleForbiddenRisksChange={setOrchestrationStyleForbiddenRisks}
+              onRefreshStyleProfiles={loadStyleProfiles}
               onStart={startOrchestration}
               onSelectRun={selectOrchestrationRun}
               onRefresh={loadOrchestrationRuns}

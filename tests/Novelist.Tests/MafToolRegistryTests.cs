@@ -898,6 +898,7 @@ public sealed class MafToolRegistryTests
         Assert.Equal(["user_provided"], drafts.LastStart.CorpusSearchPolicy.LicenseStatuses);
         Assert.Equal([7], drafts.LastStart.CorpusSearchPolicy.IncludeAnchorIds);
         Assert.Equal([9], drafts.LastStart.CorpusSearchPolicy.ExcludeAnchorIds);
+        Assert.Null(drafts.LastStart.StylePolicy);
 
         var data = result.Data!.Value;
         Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, data.GetProperty("status").GetString());

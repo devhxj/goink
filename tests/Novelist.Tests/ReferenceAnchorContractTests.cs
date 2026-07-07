@@ -977,6 +977,14 @@ public sealed class ReferenceAnchorContractTests
             LicenseStatuses: ["user_provided"],
             IncludeAnchorIds: [7],
             ExcludeAnchorIds: [9]);
+        var stylePolicy = new ReferenceOrchestrationStylePolicyPayload(
+            StyleProfileIds: [301],
+            StyleDimensions: ["dialogue_ratio", "sensory_ratio"],
+            ImitationIntensity: ReferenceStyleImitationIntensities.Strong,
+            MinStyleFit: 0.8,
+            AllowedCloseness: "moderate",
+            RequiredEvidenceTypes: ["dialogue_exchange"],
+            ForbiddenStyleRisks: ["source_leak", "style_distance"]);
         var input = new StartReferenceOrchestrationRunPayload(
             NovelId: 42,
             ChapterNumber: 7,
@@ -985,7 +993,8 @@ public sealed class ReferenceAnchorContractTests
             ForbiddenFacts: ["凶手身份"],
             AnchorIds: null,
             CorpusSearchPolicy: policy,
-            SourceConfirmed: false);
+            SourceConfirmed: false,
+            StylePolicy: stylePolicy);
 
         using var inputJson = JsonDocument.Parse(JsonSerializer.Serialize(input, BridgeJson.SerializerOptions));
         var inputRoot = inputJson.RootElement;
@@ -1003,7 +1012,19 @@ public sealed class ReferenceAnchorContractTests
         Assert.Equal("user_provided", policyRoot.GetProperty("license_statuses")[0].GetString());
         Assert.Equal(7, policyRoot.GetProperty("include_anchor_ids")[0].GetInt64());
         Assert.Equal(9, policyRoot.GetProperty("exclude_anchor_ids")[0].GetInt64());
+        var stylePolicyRoot = inputRoot.GetProperty("style_policy");
+        Assert.Equal(301, stylePolicyRoot.GetProperty("style_profile_ids")[0].GetInt64());
+        Assert.Equal("dialogue_ratio", stylePolicyRoot.GetProperty("style_dimensions")[0].GetString());
+        Assert.Equal("strong", stylePolicyRoot.GetProperty("imitation_intensity").GetString());
+        Assert.Equal(0.8, stylePolicyRoot.GetProperty("min_style_fit").GetDouble());
+        Assert.Equal("moderate", stylePolicyRoot.GetProperty("allowed_closeness").GetString());
+        Assert.Equal("dialogue_exchange", stylePolicyRoot.GetProperty("required_evidence_types")[0].GetString());
+        Assert.Equal("source_leak", stylePolicyRoot.GetProperty("forbidden_style_risks")[0].GetString());
         Assert.False(inputRoot.TryGetProperty("NovelId", out _));
+        Assert.False(stylePolicyRoot.TryGetProperty("source_text", out _));
+        Assert.False(stylePolicyRoot.TryGetProperty("candidate_text", out _));
+        Assert.False(stylePolicyRoot.TryGetProperty("prompt", out _));
+        Assert.False(stylePolicyRoot.TryGetProperty("path", out _));
 
         var run = new ReferenceOrchestrationRunPayload(
             RunId: "run-1",
@@ -1041,7 +1062,8 @@ public sealed class ReferenceAnchorContractTests
             LastStopReason: ReferenceOrchestrationStopReasons.SourceConfirmationRequired,
             ErrorMessage: "",
             CreatedAt: DateTimeOffset.Parse("2026-07-05T00:00:00Z"),
-            UpdatedAt: DateTimeOffset.Parse("2026-07-05T00:00:00Z"));
+            UpdatedAt: DateTimeOffset.Parse("2026-07-05T00:00:00Z"),
+            StylePolicy: stylePolicy);
 
         using var runJson = JsonDocument.Parse(JsonSerializer.Serialize(run, BridgeJson.SerializerOptions));
         var runRoot = runJson.RootElement;
@@ -1052,6 +1074,13 @@ public sealed class ReferenceAnchorContractTests
         Assert.Equal(0, runRoot.GetProperty("blueprint_id").GetInt64());
         Assert.Equal("", runRoot.GetProperty("review_id").GetString());
         Assert.Equal("source_confirmation_required", runRoot.GetProperty("last_stop_reason").GetString());
+        var runStylePolicy = runRoot.GetProperty("style_policy");
+        Assert.Equal(301, runStylePolicy.GetProperty("style_profile_ids")[0].GetInt64());
+        Assert.Equal("strong", runStylePolicy.GetProperty("imitation_intensity").GetString());
+        Assert.False(runStylePolicy.TryGetProperty("source_text", out _));
+        Assert.False(runStylePolicy.TryGetProperty("candidate_text", out _));
+        Assert.False(runStylePolicy.TryGetProperty("prompt", out _));
+        Assert.False(runStylePolicy.TryGetProperty("path", out _));
         var decision = runRoot.GetProperty("current_decision");
         Assert.Equal("confirm_source_and_facts", decision.GetProperty("decision_type").GetString());
         Assert.Equal("confirm_source", decision.GetProperty("required_actions")[0].GetString());

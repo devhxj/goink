@@ -722,6 +722,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         var forbiddenFacts = NormalizeList(input.ForbiddenFacts);
         var anchorIds = NormalizeAnchorIds(input.AnchorIds);
         var policy = NormalizeCorpusSearchPolicy(input.CorpusSearchPolicy);
+        var stylePolicy = NormalizeOrchestrationStylePolicy(input.StylePolicy);
         var status = input.SourceConfirmed
             ? ReferenceOrchestrationRunStatuses.Running
             : ReferenceOrchestrationRunStatuses.WaitingForUser;
@@ -730,7 +731,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             : ReferenceOrchestrationStages.SourceConfirmation;
         var currentDecision = input.SourceConfirmed
             ? null
-            : BuildSourceConfirmationDecision(chapterGoal, knownFacts, forbiddenFacts, policy);
+            : BuildSourceConfirmationDecision(chapterGoal, knownFacts, forbiddenFacts, policy, stylePolicy);
         var run = new ReferenceOrchestrationRunPayload(
             "run-" + Guid.NewGuid().ToString("N"),
             input.NovelId,
@@ -749,7 +750,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             input.SourceConfirmed ? string.Empty : ReferenceOrchestrationStopReasons.SourceConfirmationRequired,
             ErrorMessage: string.Empty,
             now,
-            now);
+            now,
+            StylePolicy: stylePolicy);
 
         await _mutex.WaitAsync(cancellationToken);
         try
@@ -965,6 +967,11 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                         current.KnownFacts,
                         current.ForbiddenFacts),
                     cancellationToken);
+                blueprint = await ApplyOrchestrationStylePolicyAsync(
+                    current.NovelId,
+                    blueprint,
+                    current.StylePolicy,
+                    cancellationToken);
                 current = await PersistOrchestrationRunAsync(
                     current with
                     {
@@ -1119,6 +1126,34 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             };
             return await PersistOrchestrationRunAsync(failed, cancellationToken);
         }
+    }
+
+    private async ValueTask<ReferenceChapterBlueprintPayload> ApplyOrchestrationStylePolicyAsync(
+        long novelId,
+        ReferenceChapterBlueprintPayload blueprint,
+        ReferenceOrchestrationStylePolicyPayload? stylePolicy,
+        CancellationToken cancellationToken)
+    {
+        var styleContract = StylePolicyToStyleContract(stylePolicy);
+        if (styleContract is null || blueprint.Beats.Count == 0)
+        {
+            return blueprint;
+        }
+
+        var serializedStyleContract = WriteStyleContract(styleContract);
+        var changes = blueprint.Beats
+            .Select(beat => new ReferenceBlueprintRevisionChangePayload(
+                $"beat:{beat.BeatId}:style_contract",
+                serializedStyleContract))
+            .ToArray();
+        return await ReviseChapterBlueprintAsync(
+            new ReviseReferenceChapterBlueprintPayload(
+                novelId,
+                blueprint.BlueprintId,
+                changes,
+                "orchestrator",
+                "apply orchestration style policy"),
+            cancellationToken);
     }
 
     private async ValueTask<ReferenceOrchestrationRunPayload> PersistOrchestrationRunAsync(
@@ -3293,12 +3328,12 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
               (run_id, novel_id, chapter_number, status, stage, chapter_goal,
                known_facts_json, forbidden_facts_json, anchor_ids_json, corpus_search_policy_json,
                blueprint_id, review_id, candidate_ids_json, current_decision_json,
-               last_stop_reason, error_message, created_at, updated_at)
+               last_stop_reason, error_message, created_at, updated_at, style_policy_json)
             VALUES
               ($run_id, $novel_id, $chapter_number, $status, $stage, $chapter_goal,
                $known_facts_json, $forbidden_facts_json, $anchor_ids_json, $corpus_search_policy_json,
                $blueprint_id, $review_id, $candidate_ids_json, $current_decision_json,
-               $last_stop_reason, $error_message, $created_at, $updated_at);
+               $last_stop_reason, $error_message, $created_at, $updated_at, $style_policy_json);
             """;
         AddOrchestrationRunParameters(command, run);
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -3343,6 +3378,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 current_decision_json = $current_decision_json,
                 last_stop_reason = $last_stop_reason,
                 error_message = $error_message,
+                style_policy_json = $style_policy_json,
                 updated_at = $updated_at
             WHERE novel_id = $novel_id AND run_id = $run_id;
             """;
@@ -3379,6 +3415,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         command.Parameters.AddWithValue("$error_message", run.ErrorMessage);
         command.Parameters.AddWithValue("$created_at", FormatTimestamp(run.CreatedAt));
         command.Parameters.AddWithValue("$updated_at", FormatTimestamp(run.UpdatedAt));
+        command.Parameters.AddWithValue("$style_policy_json", WriteStylePolicy(run.StylePolicy));
     }
 
     private static async ValueTask InsertOrchestrationRunEventAsync(
@@ -3457,7 +3494,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
               SELECT run_id, novel_id, chapter_number, status, stage, chapter_goal,
                      known_facts_json, forbidden_facts_json, anchor_ids_json, corpus_search_policy_json,
                      blueprint_id, review_id, candidate_ids_json, current_decision_json,
-                     last_stop_reason, error_message, created_at, updated_at
+                     last_stop_reason, error_message, created_at, updated_at, style_policy_json
               FROM reference_orchestration_runs
               WHERE novel_id = $novel_id
               ORDER BY updated_at DESC, run_id DESC;
@@ -3466,7 +3503,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
               SELECT run_id, novel_id, chapter_number, status, stage, chapter_goal,
                      known_facts_json, forbidden_facts_json, anchor_ids_json, corpus_search_policy_json,
                      blueprint_id, review_id, candidate_ids_json, current_decision_json,
-                     last_stop_reason, error_message, created_at, updated_at
+                     last_stop_reason, error_message, created_at, updated_at, style_policy_json
               FROM reference_orchestration_runs
               WHERE novel_id = $novel_id AND chapter_number = $chapter_number
               ORDER BY updated_at DESC, run_id DESC;
@@ -3499,7 +3536,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             SELECT run_id, novel_id, chapter_number, status, stage, chapter_goal,
                    known_facts_json, forbidden_facts_json, anchor_ids_json, corpus_search_policy_json,
                    blueprint_id, review_id, candidate_ids_json, current_decision_json,
-                   last_stop_reason, error_message, created_at, updated_at
+                   last_stop_reason, error_message, created_at, updated_at, style_policy_json
             FROM reference_orchestration_runs
             WHERE novel_id = $novel_id AND run_id = $run_id;
             """;
@@ -3542,7 +3579,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             reader.GetString(14),
             reader.GetString(15),
             ParseTimestamp(reader.GetString(16)),
-            ParseTimestamp(reader.GetString(17)));
+            ParseTimestamp(reader.GetString(17)),
+            ReadStylePolicy(reader.GetString(18)));
     }
 
     private async ValueTask EnsureSchemaAsync(string databasePath, CancellationToken cancellationToken)
@@ -3762,7 +3800,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
               last_stop_reason TEXT NOT NULL,
               error_message TEXT NOT NULL,
               created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
+              updated_at TEXT NOT NULL,
+              style_policy_json TEXT NOT NULL DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS reference_orchestration_run_events (
@@ -3954,6 +3993,12 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             "style_attempts_json",
             "TEXT NOT NULL DEFAULT '[]'",
             cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "reference_orchestration_runs",
+            "style_policy_json",
+            "TEXT NOT NULL DEFAULT ''",
+            cancellationToken);
     }
 
     private static async ValueTask EnsureColumnAsync(
@@ -4062,6 +4107,46 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             NormalizeAnchorIds(policy.ExcludeAnchorIds));
     }
 
+    private static ReferenceOrchestrationStylePolicyPayload? NormalizeOrchestrationStylePolicy(
+        ReferenceOrchestrationStylePolicyPayload? stylePolicy)
+    {
+        return StyleContractToStylePolicy(StylePolicyToStyleContract(stylePolicy));
+    }
+
+    private static ReferenceBlueprintStyleContractPayload? StylePolicyToStyleContract(
+        ReferenceOrchestrationStylePolicyPayload? stylePolicy)
+    {
+        if (stylePolicy is null)
+        {
+            return null;
+        }
+
+        return NormalizeStyleContract(new ReferenceBlueprintStyleContractPayload(
+            stylePolicy.StyleProfileIds,
+            stylePolicy.StyleDimensions,
+            stylePolicy.ImitationIntensity,
+            stylePolicy.MinStyleFit,
+            stylePolicy.AllowedCloseness,
+            stylePolicy.RequiredEvidenceTypes,
+            stylePolicy.ForbiddenStyleRisks));
+    }
+
+    private static ReferenceOrchestrationStylePolicyPayload? StyleContractToStylePolicy(
+        ReferenceBlueprintStyleContractPayload? styleContract)
+    {
+        var normalized = NormalizeStyleContract(styleContract);
+        return normalized is null
+            ? null
+            : new ReferenceOrchestrationStylePolicyPayload(
+                normalized.StyleProfileIds,
+                normalized.StyleDimensions,
+                normalized.ImitationIntensity,
+                normalized.MinStyleFit,
+                normalized.AllowedCloseness,
+                normalized.RequiredEvidenceTypes,
+                normalized.ForbiddenStyleRisks);
+    }
+
     private static string NormalizeRunId(string? runId)
     {
         if (string.IsNullOrWhiteSpace(runId))
@@ -4151,7 +4236,8 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         string chapterGoal,
         IReadOnlyList<string> knownFacts,
         IReadOnlyList<string> forbiddenFacts,
-        ReferenceCorpusSearchPolicyPayload policy)
+        ReferenceCorpusSearchPolicyPayload policy,
+        ReferenceOrchestrationStylePolicyPayload? stylePolicy)
     {
         var summary = "Confirm source trust and chapter fact boundaries before reference orchestration runs safe stages.";
         var factBoundaryChanges = knownFacts
@@ -4159,6 +4245,13 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             .Concat(forbiddenFacts.Select(fact => "forbidden: " + fact))
             .Take(20)
             .ToArray();
+        var materialUsePlan = "search policy: " + policy.Mode;
+        var stylePolicySummary = BuildStylePolicyApprovalSummary(stylePolicy);
+        if (!string.IsNullOrWhiteSpace(stylePolicySummary))
+        {
+            materialUsePlan += "; " + stylePolicySummary;
+        }
+
         return new ReferenceOrchestrationRequiredDecisionPayload(
             ReferenceOrchestrationDecisionTypes.ConfirmSourceAndFacts,
             ReferenceOrchestrationStopReasons.SourceConfirmationRequired,
@@ -4169,7 +4262,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
                 "not selected",
                 factBoundaryChanges,
                 "pending blueprint generation",
-                "search policy: " + policy.Mode,
+                materialUsePlan,
                 "L2",
                 []));
     }
@@ -4442,6 +4535,29 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         return summaries.Length == 0
             ? string.Empty
             : "style contracts: " + string.Join("; ", summaries);
+    }
+
+    private static string BuildStylePolicyApprovalSummary(ReferenceOrchestrationStylePolicyPayload? stylePolicy)
+    {
+        var contract = StylePolicyToStyleContract(stylePolicy);
+        if (contract is null)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string> { "style policy" };
+        AddCompactList(parts, "profiles", contract.StyleProfileIds.Select(value => value.ToString(CultureInfo.InvariantCulture)), maxCount: 4);
+        AddCompactValue(parts, "intensity", contract.ImitationIntensity);
+        if (contract.MinStyleFit > 0)
+        {
+            AddCompactValue(parts, "min_fit", contract.MinStyleFit.ToString("0.####", CultureInfo.InvariantCulture));
+        }
+
+        AddCompactValue(parts, "closeness", contract.AllowedCloseness);
+        AddCompactList(parts, "dims", contract.StyleDimensions, maxCount: 5);
+        AddCompactList(parts, "evidence", contract.RequiredEvidenceTypes, maxCount: 4);
+        AddCompactList(parts, "risks", contract.ForbiddenStyleRisks, maxCount: 4);
+        return string.Join(" ", parts);
     }
 
     private static string FormatStyleContractApprovalSummary(ReferenceChapterBlueprintBeatPayload beat)
@@ -5431,9 +5547,25 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
         return NormalizeStyleContract(ReadJson<ReferenceBlueprintStyleContractPayload>(json));
     }
 
+    private static ReferenceOrchestrationStylePolicyPayload? ReadStylePolicy(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        return NormalizeOrchestrationStylePolicy(ReadJson<ReferenceOrchestrationStylePolicyPayload>(json));
+    }
+
     private static string WriteStyleContract(ReferenceBlueprintStyleContractPayload? styleContract)
     {
         var normalized = NormalizeStyleContract(styleContract);
+        return normalized is null ? string.Empty : JsonSerializer.Serialize(normalized, JsonOptions);
+    }
+
+    private static string WriteStylePolicy(ReferenceOrchestrationStylePolicyPayload? stylePolicy)
+    {
+        var normalized = NormalizeOrchestrationStylePolicy(stylePolicy);
         return normalized is null ? string.Empty : JsonSerializer.Serialize(normalized, JsonOptions);
     }
 

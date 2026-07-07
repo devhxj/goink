@@ -4207,6 +4207,79 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReferenceOrchestrationRunAppliesStylePolicyToGeneratedBlueprintAndApprovalSummary()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("编排风格策略测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "主角在雨夜门口确认线索，决定去找证人。"),
+            CancellationToken.None);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+        var stylePolicy = new ReferenceOrchestrationStylePolicyPayload(
+            StyleProfileIds: [301],
+            StyleDimensions: ["dialogue_ratio", "sensory_ratio"],
+            ImitationIntensity: ReferenceStyleImitationIntensities.Strong,
+            MinStyleFit: 0.8,
+            AllowedCloseness: "moderate",
+            RequiredEvidenceTypes: ["dialogue_exchange"],
+            ForbiddenStyleRisks: ["source_leak", "style_distance"]);
+
+        var run = await service.StartOrchestrationRunAsync(
+            new StartReferenceOrchestrationRunPayload(
+                novel.Id,
+                ChapterNumber: 6,
+                ChapterGoal: "让主角从犹豫走向行动",
+                KnownFacts: ["证人存在", "雨夜门口出现线索"],
+                ForbiddenFacts: ["凶手身份"],
+                AnchorIds: null,
+                CorpusSearchPolicy: new ReferenceCorpusSearchPolicyPayload(
+                    "story_context",
+                    MaxResultsPerBeat: 5,
+                    LicenseStatuses: ["user_provided"],
+                    IncludeAnchorIds: [],
+                    ExcludeAnchorIds: []),
+                SourceConfirmed: true,
+                StylePolicy: stylePolicy),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, run.Status);
+        Assert.Equal(ReferenceOrchestrationStages.BlueprintApproval, run.Stage);
+        Assert.NotNull(run.StylePolicy);
+        Assert.Equal([301], run.StylePolicy.StyleProfileIds);
+        Assert.Equal(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, run.CurrentDecision?.DecisionType);
+        Assert.Contains("style contracts:", run.CurrentDecision!.ApprovalSummary.MaterialUsePlan, StringComparison.Ordinal);
+        Assert.Contains("profiles=301", run.CurrentDecision.ApprovalSummary.MaterialUsePlan, StringComparison.Ordinal);
+        Assert.Contains("intensity=strong", run.CurrentDecision.ApprovalSummary.MaterialUsePlan, StringComparison.Ordinal);
+        Assert.DoesNotContain("source_text", run.CurrentDecision.ApprovalSummary.MaterialUsePlan, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("prompt", run.CurrentDecision.ApprovalSummary.MaterialUsePlan, StringComparison.OrdinalIgnoreCase);
+
+        var blueprint = await service.GetChapterBlueprintAsync(novel.Id, run.BlueprintId, CancellationToken.None);
+        Assert.NotNull(blueprint);
+        var beat = Assert.Single(blueprint.Beats);
+        Assert.NotNull(beat.StyleContract);
+        Assert.Equal([301], beat.StyleContract.StyleProfileIds);
+        Assert.Equal(["dialogue_ratio", "sensory_ratio"], beat.StyleContract.StyleDimensions);
+        Assert.Equal(ReferenceStyleImitationIntensities.Strong, beat.StyleContract.ImitationIntensity);
+        Assert.Equal(0.8, beat.StyleContract.MinStyleFit);
+        Assert.Equal("moderate", beat.StyleContract.AllowedCloseness);
+        Assert.Equal(["dialogue_exchange"], beat.StyleContract.RequiredEvidenceTypes);
+        Assert.Equal(["source_leak", "style_distance"], beat.StyleContract.ForbiddenStyleRisks);
+        Assert.Equal(ReferenceBlueprintReviewStatuses.Passed, blueprint.LatestReview?.Status);
+
+        var reloadedService = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+        var loaded = await reloadedService.GetOrchestrationRunAsync(novel.Id, run.RunId, CancellationToken.None);
+
+        Assert.NotNull(loaded);
+        Assert.NotNull(loaded.StylePolicy);
+        Assert.Equal([301], loaded.StylePolicy.StyleProfileIds);
+        Assert.Equal(ReferenceStyleImitationIntensities.Strong, loaded.StylePolicy.ImitationIntensity);
+    }
+
+    [Fact]
     public async Task ReferenceOrchestrationRunStopsForHighRiskDecisionWhenBlueprintBecomesStaleBeforeApproval()
     {
         var options = CreateOptions();

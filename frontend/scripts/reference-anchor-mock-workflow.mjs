@@ -525,6 +525,17 @@ async function runDefaultOrchestrationToFinalInsertionStop(page) {
   await expectVisible(panel.getByText('作者决策'), 'orchestration author decision copy')
   await expectVisible(panel.getByText(/来源\/事实边界.*蓝图批准.*最终正文插入/), 'orchestration author decision details')
   await expectVisible(panel.getByText(/默认按故事上下文从可访问工作区语料检索材料/), 'default workspace corpus retrieval copy')
+  await expectVisible(panel.getByText('风格策略', { exact: true }), 'orchestration style policy panel')
+  const styleProfileSelect = panel.getByTestId('reference-orchestration-style-profile')
+  await expectVisible(styleProfileSelect, 'orchestration style profile select')
+  await styleProfileSelect.selectOption('301')
+  await panel.getByRole('button', { name: /^强$/ }).click()
+  await panel.getByLabel('最低拟合').fill('0.8')
+  await panel.getByLabel('接近度').fill('moderate')
+  await panel.getByLabel('风格维度').fill('dialogue_ratio\nsensory_ratio')
+  await panel.getByLabel('证据类型').fill('dialogue_exchange')
+  await panel.getByLabel('禁止风险').fill('source_leak\nstyle_distance')
+  await expectVisible(panel.getByText(/deterministic_baseline.*来源 1.*置信/), 'selected style profile rationale')
 
   await panel.getByRole('button', { name: /启动候选编排/ }).click()
   await expectVisible(page.getByText('编排已启动，等待确认来源与事实边界'), 'orchestration started message')
@@ -535,6 +546,7 @@ async function runDefaultOrchestrationToFinalInsertionStop(page) {
   await expectVisible(panel.getByText('每节拍最多 3'), 'max results policy')
   await expectVisible(panel.getByText('授权 user_provided'), 'license status policy')
   await expectVisible(panel.getByText('未限制到已选锚点'), 'unrestricted anchor policy')
+  await expectVisible(panel.getByText(/画像 301；强度 strong；最低拟合 0.80；接近度 moderate/), 'active run style policy summary')
   await panel.getByRole('button', { name: /^确认$/ }).click()
 
   await expectVisible(page.getByText('编排已继续'), 'orchestration resumed message')
@@ -873,6 +885,13 @@ async function verifyBridgeCalls(page) {
   assert.deepEqual(startCall.args[0].corpus_search_policy.exclude_anchor_ids, [], 'default orchestration must not pin exclude anchors')
   assert.equal(startCall.args[0].corpus_search_policy.mode, 'story_context', 'default orchestration must use story-context corpus search')
   assert.deepEqual(startCall.args[0].corpus_search_policy.license_statuses, ['user_provided'], 'default orchestration must use safe license policy')
+  assert.deepEqual(startCall.args[0].style_policy.style_profile_ids, [301], 'default orchestration style policy must include selected profile id')
+  assert.deepEqual(startCall.args[0].style_policy.style_dimensions, ['dialogue_ratio', 'sensory_ratio'], 'default orchestration style policy must include style dimensions')
+  assert.equal(startCall.args[0].style_policy.imitation_intensity, 'strong', 'default orchestration style policy must include selected intensity')
+  assert.equal(startCall.args[0].style_policy.min_style_fit, 0.8, 'default orchestration style policy must include minimum style fit')
+  assert.equal(startCall.args[0].style_policy.allowed_closeness, 'moderate', 'default orchestration style policy must include allowed closeness')
+  assert.deepEqual(startCall.args[0].style_policy.required_evidence_types, ['dialogue_exchange'], 'default orchestration style policy must include evidence requirements')
+  assert.deepEqual(startCall.args[0].style_policy.forbidden_style_risks, ['source_leak', 'style_distance'], 'default orchestration style policy must include forbidden risks')
 
   const materialPreviewCall = calls.find((call) =>
     call.method === 'SearchReferenceMaterials' &&
@@ -2206,6 +2225,7 @@ function installReferenceAnchorMockBridge(options = {}) {
       forbidden_facts: input.forbidden_facts ?? [],
       anchor_ids: input.anchor_ids ?? [],
       corpus_search_policy: input.corpus_search_policy,
+      style_policy: input.style_policy ?? null,
       blueprint_id: 0,
       review_id: '',
       candidate_ids: [],
@@ -2236,6 +2256,7 @@ function installReferenceAnchorMockBridge(options = {}) {
         known_facts: run.known_facts,
         forbidden_facts: run.forbidden_facts,
         primary_anchor_id: state.anchors[0]?.anchor_id ?? 0,
+        style_contract: stylePolicyToContract(run.style_policy),
         latest_review: makeReview(701, 'review-run-701'),
       })
       state.blueprints[String(blueprint.blueprint_id)] = blueprint
@@ -2320,7 +2341,7 @@ function installReferenceAnchorMockBridge(options = {}) {
   }
 
   function makeBlueprint(blueprintId, overrides = {}) {
-    const beat = makeBeat()
+    const beat = makeBeat(overrides.style_contract ?? null)
     return {
       blueprint_id: blueprintId,
       novel_id: 42,
@@ -2366,7 +2387,7 @@ function installReferenceAnchorMockBridge(options = {}) {
     }
   }
 
-  function makeBeat() {
+  function makeBeat(styleContract = null) {
     return {
       beat_id: 'beat-001',
       beat_index: 1,
@@ -2420,6 +2441,20 @@ function installReferenceAnchorMockBridge(options = {}) {
       no_reuse_reason: '',
       prose_duties: ['delayed_reaction', 'subtext', 'source_backed_detail'],
       risk_flags: [],
+      style_contract: styleContract,
+    }
+  }
+
+  function stylePolicyToContract(stylePolicy) {
+    if (!stylePolicy) return null
+    return {
+      style_profile_ids: stylePolicy.style_profile_ids ?? [],
+      style_dimensions: stylePolicy.style_dimensions ?? [],
+      imitation_intensity: stylePolicy.imitation_intensity ?? 'moderate',
+      min_style_fit: stylePolicy.min_style_fit ?? 0,
+      allowed_closeness: stylePolicy.allowed_closeness ?? '',
+      required_evidence_types: stylePolicy.required_evidence_types ?? [],
+      forbidden_style_risks: stylePolicy.forbidden_style_risks ?? [],
     }
   }
 

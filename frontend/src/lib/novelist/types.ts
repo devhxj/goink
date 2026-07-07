@@ -1183,6 +1183,16 @@ export namespace reference {
     exclude_anchor_ids: number[]
   }
 
+  export interface OrchestrationStylePolicy {
+    style_profile_ids: number[]
+    style_dimensions: string[]
+    imitation_intensity: StyleImitationIntensity
+    min_style_fit: number
+    allowed_closeness: string
+    required_evidence_types: string[]
+    forbidden_style_risks: string[]
+  }
+
   export interface StartOrchestrationRunInput {
     novel_id: number
     chapter_number: number
@@ -1192,6 +1202,7 @@ export namespace reference {
     anchor_ids?: number[] | null
     corpus_search_policy: CorpusSearchPolicy
     source_confirmed?: boolean
+    style_policy?: OrchestrationStylePolicy | null
   }
 
   export interface OrchestrationApprovalSummary {
@@ -1232,6 +1243,7 @@ export namespace reference {
     forbidden_facts: string[]
     anchor_ids: number[]
     corpus_search_policy: CorpusSearchPolicy
+    style_policy?: OrchestrationStylePolicy | null
     blueprint_id: number
     review_id: string
     candidate_ids: string[]

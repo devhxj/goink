@@ -320,19 +320,21 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 12: Product Workflow and UX
 
+**Status:** Partially complete for the default style-assisted orchestration path. `StartReferenceOrchestrationRun` now accepts an optional source-text-free `style_policy`, persists it on the run, and applies it to generated blueprint beats as reviewed `style_contract` fields before blueprint approval. The default frontend workflow now loads active style profiles, suggests an available profile, shows compact profile rationale, lets users adjust imitation intensity, minimum fit, allowed closeness, style dimensions, required evidence, and forbidden style risks, and sends that policy through the real bridge payload. Playwright coverage now verifies the default style-assisted run, style-policy payload, approval-summary style terms, final-insertion boundary, and no `SaveContent` call. Deeper story-need ranking, retrieval-gap/source-leak recovery actions, and a fresh usability report remain open.
+
 **Description:** Make advanced style anchoring usable without turning it into manual data plumbing.
 
 **Acceptance criteria:**
 
-- [ ] Default workflow suggests style profiles from available corpus by story need.
-- [ ] Users can inspect why a profile/material was selected.
-- [ ] Users can adjust imitation intensity and risk tolerance.
+- [x] Default workflow suggests usable active style profiles from available corpus and carries the selected policy through backend orchestration into reviewed beat-level `style_contract` fields. Story-need ranking beyond active-profile suggestion remains a future refinement.
+- [x] Users can inspect why a profile/material was selected. The default flow shows profile analyzer/source/confidence summary, and existing material/profile detail views expose evidence and score metadata without source-text leakage.
+- [x] Users can adjust imitation intensity and risk tolerance.
 - [ ] Retrieval gaps and source-leak failures provide concrete next actions.
-- [ ] Advanced controls stay available but the default path remains low-intervention.
+- [x] Advanced controls stay available but the default path remains low-intervention.
 
 **Verification:**
 
-- [ ] Playwright coverage for default style-assisted run, profile suggestion, evidence inspection, intensity adjustment, and audit failure recovery.
+- [x] Playwright coverage for default style-assisted run, profile suggestion, evidence inspection, intensity adjustment, style-policy payload, approval summary, and audit failure recovery.
 - [ ] Usability report update focused on style anchoring friction.
 
 **Dependencies:** Tasks 6-11.
@@ -365,7 +367,7 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 14: Performance, Robustness, and Phase 14 Playwright Gate
 
-**Status:** Partially complete for the backend robustness, frontend progress/cancel boundary, and dedicated browser stress gate. A 10MB user-provided source now imports through the real anchor service, produces more than 500 segments/materials, builds a deterministic style profile, records bounded evidence/provenance metadata, and keeps source phrases out of persisted feature vectors and deterministic analysis diagnostics. Style profile builds now create source-text-free persisted build-status rows with stage/progress metadata, bridge-readable status, explicit cancel marking, cancellation-token persistence, failed-build recovery inspection, and rebuild-after-failure coverage. The frontend `风格画像库` now generates safe build ids, displays persisted build progress/diagnostics/errors, can cancel running builds, and can refresh failed/cancelled status for recovery inspection. The dedicated style stress gate now drives a mocked 10MB workspace corpus source through style-profile build progress, LLM-analysis-stage metadata, profile detail inspection, paged material-library search, screenshots, bridge-call assertions, and metrics under `output/playwright/phase14/reference-style-stress/`. Broader default-workflow style suggestions, full Phase 13 regression rerun, and full .NET style-related suite verification remain open.
+**Status:** Partially complete for the backend robustness, frontend progress/cancel boundary, dedicated browser stress gate, and default style-assisted orchestration path. A 10MB user-provided source now imports through the real anchor service, produces more than 500 segments/materials, builds a deterministic style profile, records bounded evidence/provenance metadata, and keeps source phrases out of persisted feature vectors and deterministic analysis diagnostics. Style profile builds now create source-text-free persisted build-status rows with stage/progress metadata, bridge-readable status, explicit cancel marking, cancellation-token persistence, failed-build recovery inspection, and rebuild-after-failure coverage. The frontend `风格画像库` now generates safe build ids, displays persisted build progress/diagnostics/errors, can cancel running builds, and can refresh failed/cancelled status for recovery inspection. The default orchestration flow now carries selected style profiles, intensity, fit/closeness, evidence, and risk policy into reviewed beat-level style contracts. The dedicated style stress gate now drives a mocked 10MB workspace corpus source through style-profile build progress, LLM-analysis-stage metadata, profile detail inspection, paged material-library search, screenshots, bridge-call assertions, and metrics under `output/playwright/phase14/reference-style-stress/`. Retrieval-gap/source-leak recovery UX, full Phase 13 regression rerun, and full .NET style-related suite verification remain open.
 
 **Description:** Add stress and regression coverage for large style corpora and high-fidelity style workflows.
 
@@ -375,7 +377,7 @@ The current extractor is deterministic and robust, but limited:
 - [x] Backend deterministic profile build handles a 10MB imported source without persisting source text in profile features, evidence schema, or deterministic diagnostics.
 - [x] Backend profile build supports persisted progress, cancellation status, failure recovery, and resumable inspection. The current bridge method remains a synchronous build call for compatibility; persisted status rows make progress/failure/cancel visible and restart-readable, while a future background worker can reuse the same build-status table.
 - [x] Material/profile search remains paged and responsive for the covered browser stress path. The stress gate verifies 1,500 material rows are exposed through 10-item pages and profile filtering/detail inspection remains responsive.
-- [x] The full covered style workflow is exercised by Playwright with screenshots, bridge-call assertions, console diagnostics, and stress metrics. Product-default style suggestions and broader Phase 12 UX remain tracked separately.
+- [x] The full covered style workflow is exercised by Playwright with screenshots, bridge-call assertions, console diagnostics, and stress metrics. Default style-assisted orchestration is now covered by the main reference-style browser workflow; retrieval-gap/source-leak recovery UX remains tracked under Task 12.
 
 **Verification:**
 

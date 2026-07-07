@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleStop, FileClock, History, Loader2, Play, RefreshCcw, ShieldAlert } from 'lucide-react'
+import { CheckCircle2, CircleStop, FileClock, History, Loader2, Palette, Play, RefreshCcw, ShieldAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { reference } from '@/lib/novelist/types'
 import { actionButtonClass, inputClass, statusTone } from './referenceAnchorStyles'
@@ -10,6 +10,14 @@ type OrchestrationPanelProps = {
   forbiddenFacts: string
   useSelectedAnchors: boolean
   selectedAnchorCount: number
+  styleProfiles: reference.StyleProfileSummary[]
+  styleProfileId: string
+  styleIntensity: reference.StyleImitationIntensity
+  styleMinFit: string
+  styleAllowedCloseness: string
+  styleDimensions: string
+  styleRequiredEvidenceTypes: string
+  styleForbiddenRisks: string
   runs: reference.OrchestrationRun[]
   activeRun: reference.OrchestrationRun | null
   events: reference.OrchestrationRunEvent[]
@@ -19,11 +27,49 @@ type OrchestrationPanelProps = {
   onKnownFactsChange: (value: string) => void
   onForbiddenFactsChange: (value: string) => void
   onUseSelectedAnchorsChange: (value: boolean) => void
+  onStyleProfileIdChange: (value: string) => void
+  onStyleIntensityChange: (value: reference.StyleImitationIntensity) => void
+  onStyleMinFitChange: (value: string) => void
+  onStyleAllowedClosenessChange: (value: string) => void
+  onStyleDimensionsChange: (value: string) => void
+  onStyleRequiredEvidenceTypesChange: (value: string) => void
+  onStyleForbiddenRisksChange: (value: string) => void
+  onRefreshStyleProfiles: () => void
   onStart: () => void
   onSelectRun: (runId: string) => void
   onRefresh: () => void
   onResume: (decisionType: string, payload: string) => void
   onCancel: (runId: string) => void
+}
+
+const STYLE_INTENSITY_OPTIONS: Array<{ value: reference.StyleImitationIntensity; label: string }> = [
+  { value: 'diagnostic_only', label: '诊断' },
+  { value: 'loose', label: '轻' },
+  { value: 'moderate', label: '中' },
+  { value: 'strong', label: '强' },
+]
+
+function profileLabel(profile: reference.StyleProfileSummary): string {
+  return `${profile.title || '未命名画像'} #${profile.profile_id}`
+}
+
+function profileSummary(profile: reference.StyleProfileSummary | undefined): string {
+  if (!profile) return '未选择风格画像'
+  const confidence = Number.isFinite(profile.aggregate_confidence)
+    ? `${Math.round(profile.aggregate_confidence * 100)}%`
+    : '无'
+  return `${profile.analyzer_source || 'unknown'} · 来源 ${profile.source_anchor_ids.length} · 置信 ${confidence}`
+}
+
+function formatStylePolicy(policy: reference.OrchestrationStylePolicy | null | undefined): string {
+  if (!policy) return '未使用风格策略'
+  const parts = [
+    policy.style_profile_ids.length > 0 ? `画像 ${policy.style_profile_ids.join(',')}` : '',
+    policy.imitation_intensity ? `强度 ${policy.imitation_intensity}` : '',
+    Number.isFinite(policy.min_style_fit) && policy.min_style_fit > 0 ? `最低拟合 ${policy.min_style_fit.toFixed(2)}` : '',
+    policy.allowed_closeness ? `接近度 ${policy.allowed_closeness}` : '',
+  ].filter(Boolean)
+  return parts.join('；') || '已启用风格策略'
 }
 
 function decisionLabel(decisionType: string): string {
@@ -133,6 +179,14 @@ export function OrchestrationPanel({
   forbiddenFacts,
   useSelectedAnchors,
   selectedAnchorCount,
+  styleProfiles,
+  styleProfileId,
+  styleIntensity,
+  styleMinFit,
+  styleAllowedCloseness,
+  styleDimensions,
+  styleRequiredEvidenceTypes,
+  styleForbiddenRisks,
   runs,
   activeRun,
   events,
@@ -142,6 +196,14 @@ export function OrchestrationPanel({
   onKnownFactsChange,
   onForbiddenFactsChange,
   onUseSelectedAnchorsChange,
+  onStyleProfileIdChange,
+  onStyleIntensityChange,
+  onStyleMinFitChange,
+  onStyleAllowedClosenessChange,
+  onStyleDimensionsChange,
+  onStyleRequiredEvidenceTypesChange,
+  onStyleForbiddenRisksChange,
+  onRefreshStyleProfiles,
   onStart,
   onSelectRun,
   onRefresh,
@@ -152,6 +214,7 @@ export function OrchestrationPanel({
   const decisionType = decision?.decision_type ?? ''
   const canResume = Boolean(activeRun && decision && canResumeDecision(activeRun, decisionType))
   const resumePayload = activeRun && decision ? payloadForDecision(activeRun, decisionType) : ''
+  const selectedStyleProfile = styleProfiles.find(profile => String(profile.profile_id) === styleProfileId)
 
   return (
     <div data-testid="reference-orchestration-panel" className="rounded-lg border border-border bg-card p-4">
@@ -214,6 +277,113 @@ export function OrchestrationPanel({
         </label>
       </div>
 
+      <div data-testid="reference-orchestration-style-panel" className="mt-4 rounded-md border border-border bg-background p-3">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Palette className="h-3.5 w-3.5 text-muted-foreground" />
+              <h4 className="text-xs font-semibold text-foreground">风格策略</h4>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              选择 active 风格画像后，默认编排会把策略写入蓝图 beat 的 style_contract，蓝图仍需用户审批。
+            </p>
+          </div>
+          <button type="button" onClick={onRefreshStyleProfiles} disabled={loading} className={actionButtonClass}>
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
+            刷新画像
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_120px]">
+          <Field label="建议画像">
+            <select
+              data-testid="reference-orchestration-style-profile"
+              value={styleProfileId}
+              onChange={event => onStyleProfileIdChange(event.target.value)}
+              className={inputClass}
+              disabled={styleProfiles.length === 0}
+            >
+              <option value="">{styleProfiles.length === 0 ? '暂无 active 画像' : '不使用风格策略'}</option>
+              {styleProfiles.map(profile => (
+                <option key={profile.profile_id} value={profile.profile_id}>{profileLabel(profile)}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="接近度">
+            <input
+              value={styleAllowedCloseness}
+              onChange={event => onStyleAllowedClosenessChange(event.target.value)}
+              className={inputClass}
+              placeholder="moderate"
+              disabled={!styleProfileId}
+            />
+          </Field>
+          <Field label="最低拟合">
+            <input
+              value={styleMinFit}
+              onChange={event => onStyleMinFitChange(event.target.value)}
+              className={inputClass}
+              inputMode="decimal"
+              placeholder="0.8"
+              disabled={!styleProfileId}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">模仿强度</span>
+            <div className="grid grid-cols-4 gap-1" role="group" aria-label="风格模仿强度">
+              {STYLE_INTENSITY_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onStyleIntensityChange(option.value)}
+                  disabled={!styleProfileId}
+                  aria-pressed={styleIntensity === option.value}
+                  className={`${styleIntensity === option.value ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-secondary/80'} rounded px-2 py-1.5 text-xs font-medium disabled:opacity-50`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded border border-border bg-card px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+            <span className="block font-medium text-foreground">{selectedStyleProfile ? profileLabel(selectedStyleProfile) : '未选择画像'}</span>
+            <span className="mt-1 block">{profileSummary(selectedStyleProfile)}</span>
+          </div>
+        </div>
+
+        {styleProfileId && (
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <Field label="风格维度">
+              <textarea
+                value={styleDimensions}
+                onChange={event => onStyleDimensionsChange(event.target.value)}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder={'dialogue_ratio\nsensory_ratio'}
+              />
+            </Field>
+            <Field label="证据类型">
+              <textarea
+                value={styleRequiredEvidenceTypes}
+                onChange={event => onStyleRequiredEvidenceTypesChange(event.target.value)}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder="dialogue_exchange"
+              />
+            </Field>
+            <Field label="禁止风险">
+              <textarea
+                value={styleForbiddenRisks}
+                onChange={event => onStyleForbiddenRisksChange(event.target.value)}
+                className={`${inputClass} min-h-16 resize-y font-mono text-[11px]`}
+                placeholder={'source_leak\nstyle_distance'}
+              />
+            </Field>
+          </div>
+        )}
+      </div>
+
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -270,6 +440,7 @@ export function OrchestrationPanel({
                   <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">每节拍最多 {activeRun.corpus_search_policy.max_results_per_beat}</span>
                   <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">授权 {formatLicensePolicy(activeRun.corpus_search_policy)}</span>
                   <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">{formatAnchorPolicy(activeRun)}</span>
+                  <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">{formatStylePolicy(activeRun.style_policy)}</span>
                 </div>
               </div>
 
