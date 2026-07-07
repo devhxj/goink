@@ -50,6 +50,7 @@ public static class DesktopBridgeComposition
         var eventSink = new PhotinoBridgeEventSink(window);
         var approvalCoordinator = new ToolApprovalCoordinator(eventSink);
         var skillService = new FileSystemSkillCatalogService(options, novelService, llmService);
+        var novelImportRunService = new FileSystemNovelImportRunService(options);
         var styleSampleService = new FileSystemStyleSampleService(options, novelService);
         var narrativePatternService = new FileSystemNarrativePatternExtractionService(options, novelService);
         var searchService = new FileSystemWorkspaceSearchService(
@@ -137,6 +138,7 @@ public static class DesktopBridgeComposition
                 writingService,
                 storyMemoryService,
                 referenceSourceFilePicker)
+            .RegisterNovelImportHandlers(novelImportRunService)
             .RegisterStyleSampleHandlers(styleSampleService)
             .RegisterNarrativePatternHandlers(narrativePatternService)
             .RegisterReferenceAnchorHandlers(referenceAnchorService)
