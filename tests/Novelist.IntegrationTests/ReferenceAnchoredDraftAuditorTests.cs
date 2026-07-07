@@ -566,6 +566,125 @@ public sealed class ReferenceAnchoredDraftAuditorTests
     }
 
     [Fact]
+    public void BuildDraftAuditFlagsGenericStyleQualityForStrongStyleContractWithoutLeakingCandidateText()
+    {
+        const string leakedPhrase = "命运的齿轮已经转动";
+        var blueprint = Blueprint(beat => beat with
+        {
+            StyleContract = new ReferenceBlueprintStyleContractPayload(
+                StyleProfileIds: [99],
+                StyleDimensions: [],
+                ImitationIntensity: ReferenceStyleImitationIntensities.Strong,
+                MinStyleFit: 0,
+                AllowedCloseness: "moderate",
+                RequiredEvidenceTypes: ["interiority", "external_evidence"],
+                ForbiddenStyleRisks: ["generic_ai_prose"])
+        });
+        var candidate = Candidate(
+            blueprint,
+            "雨声压低了整条街的呼吸，林岚意识到这一切都变得非常重要。复杂的情绪在心中涌起，她明白自己必须面对内心深处的恐惧。与此同时，她开始明白命运的齿轮已经转动，过去、现在和未来都在这一刻交汇。") with
+        {
+            RewriteLevel = ReferenceRewriteLevels.L2,
+            AuditStatus = "passed"
+        };
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("failed", audit.Status);
+        Assert.Contains(audit.AiProseRisks, item => item.Contains("generic style-quality", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.AiProseRisks, item => item.Contains("abstract summary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.AiProseRisks, item => item.Contains("emotion telling", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(audit.RequiredFixes, item => item.Contains("source-backed detail", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(audit.AiProseRisks, item => item.Contains(leakedPhrase, StringComparison.Ordinal));
+        Assert.DoesNotContain(audit.RequiredFixes, item => item.Contains(leakedPhrase, StringComparison.Ordinal));
+        Assert.NotNull(audit.ReadableReport);
+        var report = audit.ReadableReport!;
+        Assert.Contains(report.Findings, finding =>
+            string.Equals(finding.Category, "ai_prose", StringComparison.Ordinal) &&
+            finding.Message.Contains("generic style-quality", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(report.Findings, finding => finding.Message.Contains(leakedPhrase, StringComparison.Ordinal));
+        Assert.DoesNotContain(report.Findings, finding => finding.RequiredAction.Contains(leakedPhrase, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(ReferenceStyleImitationIntensities.DiagnosticOnly, "passed")]
+    [InlineData(ReferenceStyleImitationIntensities.Loose, "passed")]
+    [InlineData(ReferenceStyleImitationIntensities.Moderate, "passed")]
+    [InlineData(ReferenceStyleImitationIntensities.Strong, "failed")]
+    public void BuildDraftAuditStyleQualityThresholdMatrixHonorsImitationIntensity(
+        string imitationIntensity,
+        string expectedStatus)
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            StyleContract = new ReferenceBlueprintStyleContractPayload(
+                StyleProfileIds: [99],
+                StyleDimensions: [],
+                ImitationIntensity: imitationIntensity,
+                MinStyleFit: 0,
+                AllowedCloseness: "moderate",
+                RequiredEvidenceTypes: ["interiority"],
+                ForbiddenStyleRisks: ["generic_ai_prose"])
+        });
+        var candidate = Candidate(
+            blueprint,
+            "雨声压低了整条街的呼吸，林岚意识到这一切非常重要。复杂的情绪在心中涌起，她开始明白自己必须面对。") with
+        {
+            RewriteLevel = ReferenceRewriteLevels.L2,
+            AuditStatus = "passed"
+        };
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(expectedStatus, audit.Status);
+        if (string.Equals(imitationIntensity, ReferenceStyleImitationIntensities.Strong, StringComparison.Ordinal))
+        {
+            Assert.Contains(audit.AiProseRisks, item => item.Contains("generic style-quality", StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            Assert.DoesNotContain(audit.AiProseRisks, item => item.Contains("generic style-quality", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    [Fact]
+    public void BuildDraftAuditAllowsConcreteSourceBackedProseWithoutGenericStyleQualityRisk()
+    {
+        var blueprint = Blueprint(beat => beat with
+        {
+            StyleContract = new ReferenceBlueprintStyleContractPayload(
+                StyleProfileIds: [99],
+                StyleDimensions: [],
+                ImitationIntensity: ReferenceStyleImitationIntensities.Strong,
+                MinStyleFit: 0,
+                AllowedCloseness: "moderate",
+                RequiredEvidenceTypes: ["interiority", "external_evidence"],
+                ForbiddenStyleRisks: ["generic_ai_prose"])
+        });
+        var candidate = Candidate(
+            blueprint,
+            "雨声压低了整条街的呼吸，林岚心里一紧，手指在杯沿蜷紧。她没有立刻回答，只把掌心贴住杯壁，直到喉咙里的涩意慢慢沉下去。") with
+        {
+            RewriteLevel = ReferenceRewriteLevels.L2,
+            AuditStatus = "passed"
+        };
+
+        var audit = ReferenceAnchoredDraftAuditor.BuildDraftAudit(
+            blueprint,
+            [candidate],
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("passed", audit.Status);
+        Assert.DoesNotContain(audit.AiProseRisks, item => item.Contains("generic style-quality", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildDraftAuditFailsWhenCandidateContainsForbiddenFact()
     {
         var blueprint = Blueprint(

@@ -67,6 +67,17 @@ internal static class ReferenceAnchoredDraftAuditor
                 requiredFixes.Add($"Style-distance risk for candidate {candidate.CandidateId}: {styleDistanceFinding}");
             }
 
+            var styleQualityFindings = FindGenericStyleQualityFindings(beat, candidate.Text);
+            foreach (var styleQualityFinding in styleQualityFindings)
+            {
+                aiRisks.Add($"Candidate {candidate.CandidateId} has generic style-quality risk: {styleQualityFinding}");
+            }
+
+            if (styleQualityFindings.Count > 0)
+            {
+                requiredFixes.Add($"Replace generic style-quality risk in candidate {candidate.CandidateId} with concrete source-backed detail, observable emotion evidence, and beat-specific causal transitions before insertion.");
+            }
+
             if (string.IsNullOrWhiteSpace(candidate.Text))
             {
                 blueprintErrors.Add($"Candidate {candidate.CandidateId} text is empty.");
@@ -595,6 +606,138 @@ internal static class ReferenceAnchoredDraftAuditor
         double HookMarkerRatio,
         double PunctuationPer100Chars,
         double AverageSentenceChars);
+
+    private static IReadOnlyList<string> FindGenericStyleQualityFindings(
+        ReferenceChapterBlueprintBeatPayload beat,
+        string candidateText)
+    {
+        if (string.IsNullOrWhiteSpace(candidateText) ||
+            string.Equals(beat.StyleContract?.ImitationIntensity, ReferenceStyleImitationIntensities.DiagnosticOnly, StringComparison.Ordinal))
+        {
+            return [];
+        }
+
+        var thresholds = StyleQualityThresholds.ForIntensity(beat.StyleContract?.ImitationIntensity);
+        var abstractSummaryMarkers = CountDistinctMarkers(
+            candidateText,
+            [
+                "这一切", "非常重要", "某种意义", "意义上", "难以言说", "无法言喻",
+                "说不清", "不可名状", "改变了一切", "整个世界", "命运", "命运的齿轮",
+                "过去、现在和未来", "过去现在未来", "这一刻", "交汇"
+            ]);
+        var emotionTellingMarkers = CountDistinctMarkers(
+            candidateText,
+            [
+                "复杂的情绪", "心中涌起", "内心深处", "意识到", "突然明白",
+                "开始明白", "他明白", "她明白", "必须面对", "不得不面对",
+                "情绪翻涌", "百感交集", "感到一种", "有一种说不出的"
+            ]);
+        var mechanicalProgressionMarkers = CountDistinctMarkers(
+            candidateText,
+            [
+                "与此同时", "更重要的是", "不仅", "而且", "一方面", "另一方面",
+                "首先", "其次", "最后", "过去、现在和未来", "过去现在未来",
+                "在这一刻", "所有的一切"
+            ]);
+        var clicheFormulaMarkers = CountDistinctMarkers(
+            candidateText,
+            [
+                "命运的齿轮", "心中涌起", "内心深处", "百感交集", "无法言喻",
+                "说不清道不明", "某种力量", "仿佛有什么"
+            ]);
+        var combinedMarkers = abstractSummaryMarkers +
+            emotionTellingMarkers +
+            mechanicalProgressionMarkers +
+            clicheFormulaMarkers;
+
+        var findings = new List<string>();
+        AddStyleQualityFinding(
+            findings,
+            "abstract summary",
+            abstractSummaryMarkers,
+            thresholds.AbstractSummaryMinMarkers,
+            thresholds.Label);
+        AddStyleQualityFinding(
+            findings,
+            "emotion telling",
+            emotionTellingMarkers,
+            thresholds.EmotionTellingMinMarkers,
+            thresholds.Label);
+        AddStyleQualityFinding(
+            findings,
+            "mechanical connective/rule-of-three",
+            mechanicalProgressionMarkers,
+            thresholds.MechanicalProgressionMinMarkers,
+            thresholds.Label);
+        AddStyleQualityFinding(
+            findings,
+            "cliche formula",
+            clicheFormulaMarkers,
+            thresholds.ClicheFormulaMinMarkers,
+            thresholds.Label);
+        AddStyleQualityFinding(
+            findings,
+            "combined generic prose",
+            combinedMarkers,
+            thresholds.CombinedMinMarkers,
+            thresholds.Label);
+        return findings.ToArray();
+    }
+
+    private static void AddStyleQualityFinding(
+        List<string> findings,
+        string label,
+        int markerCount,
+        int minMarkers,
+        string thresholdLabel)
+    {
+        if (markerCount >= minMarkers)
+        {
+            findings.Add($"{label} markers {markerCount} meet {thresholdLabel}threshold {minMarkers}.");
+        }
+    }
+
+    private static int CountDistinctMarkers(string text, IReadOnlyList<string> markers)
+    {
+        return markers.Count(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed record StyleQualityThresholds(
+        string Label,
+        int AbstractSummaryMinMarkers,
+        int EmotionTellingMinMarkers,
+        int MechanicalProgressionMinMarkers,
+        int ClicheFormulaMinMarkers,
+        int CombinedMinMarkers)
+    {
+        public static StyleQualityThresholds ForIntensity(string? imitationIntensity)
+        {
+            return imitationIntensity switch
+            {
+                ReferenceStyleImitationIntensities.Strong => new StyleQualityThresholds(
+                    "strong style ",
+                    AbstractSummaryMinMarkers: 2,
+                    EmotionTellingMinMarkers: 3,
+                    MechanicalProgressionMinMarkers: 2,
+                    ClicheFormulaMinMarkers: 2,
+                    CombinedMinMarkers: 6),
+                ReferenceStyleImitationIntensities.Loose => new StyleQualityThresholds(
+                    "loose style ",
+                    AbstractSummaryMinMarkers: 6,
+                    EmotionTellingMinMarkers: 8,
+                    MechanicalProgressionMinMarkers: 5,
+                    ClicheFormulaMinMarkers: 4,
+                    CombinedMinMarkers: 12),
+                _ => new StyleQualityThresholds(
+                    string.Empty,
+                    AbstractSummaryMinMarkers: 4,
+                    EmotionTellingMinMarkers: 6,
+                    MechanicalProgressionMinMarkers: 4,
+                    ClicheFormulaMinMarkers: 3,
+                    CombinedMinMarkers: 9)
+            };
+        }
+    }
 
     internal static IReadOnlyList<string> ExtractRequiredProsePhrases(ReferenceChapterBlueprintBeatPayload beat)
     {

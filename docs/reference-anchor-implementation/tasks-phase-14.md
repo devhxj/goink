@@ -4,7 +4,7 @@
 
 ## Phase 14: Advanced Style Anchoring and High-Fidelity Imitation
 
-**Status:** Final verification as of 2026-07-07. Core implementation and regression gates are green; the main remaining implementation gap is Task 10's full style-quality taxonomy and broader style-intensity evaluation.
+**Status:** Complete as of 2026-07-07. Core implementation, style/source-leak audit coverage, product workflow gates, stress gates, and the recorded full regression matrix are green.
 
 **Description:** Phase 14 upgrades the reference-anchor layer from rule-based material extraction into an advanced style anchoring system. The target is a robust, auditable imitation engine that understands source material at multiple scales, extracts high-quality style features, retrieves materials by story purpose and style fit, generates beat-scoped candidates under explicit style contracts, and audits outputs for provenance, factual safety, POV safety, style quality, and unsafe source-text proximity.
 
@@ -12,15 +12,15 @@ This phase exists because the current material bank is useful but not deep enoug
 
 Phase 14 must not become a loose "write like this author" prompt. It must remain an anchored workflow with user-provided or authorized sources, source hashes, evidence spans, reviewable style profiles, explicit imitation intensity, rewrite limits, and audit gates before any candidate can be inserted into chapter text.
 
-## Current Gap
+## Original Gap
 
-The current extractor is deterministic and robust, but limited:
+At the start of Phase 14, the extractor was deterministic and robust, but limited:
 
 - it mainly creates sentence and paragraph/passage materials;
 - tags are rule-based first-pass labels such as dialogue, interiority, emotion evidence, environment, transition, action, POV, and sensory detail;
 - search can use narrative duty, emotion transition, prose duty, lexical score, optional embeddings, and feedback;
-- it does not yet produce scene/beat-level materials, style signatures, rhythm profiles, image motifs, pacing patterns, suspense hooks, web-fiction payoff mechanics, or evidence-backed style explanations;
-- it does not yet score whether a generated candidate truly matches a target style while staying far enough from source phrasing.
+- it did not yet produce scene/beat-level materials, style signatures, rhythm profiles, image motifs, pacing patterns, suspense hooks, web-fiction payoff mechanics, or evidence-backed style explanations;
+- it did not yet score whether a generated candidate truly matched a target style while staying far enough from source phrasing.
 
 ## Non-Negotiable Scope
 
@@ -91,7 +91,7 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 3: Deterministic Style Baseline Extractor
 
-**Status:** Complete for the deterministic baseline boundary. The deterministic baseline builder exists, is covered by pure feature tests, persists profile features, search can consume baseline profile evidence for style-fit ranking, and anchored draft audit can read persisted profile feature vectors for supported deterministic style-distance checks. Broader generic style-quality taxonomy coverage remains tracked under Task 10.
+**Status:** Complete for the deterministic baseline boundary. The deterministic baseline builder exists, is covered by pure feature tests, persists profile features, search can consume baseline profile evidence for style-fit ranking, and anchored draft audit can read persisted profile feature vectors for supported deterministic style-distance checks. Generic style-quality audit coverage is closed under Task 10.
 
 **Description:** Add deterministic style features that do not require a model: sentence length distribution, paragraph length distribution, punctuation rhythm, dialogue ratio, narration/dialogue alternation, sensory-channel counts, interiority ratio, action-afterbeat ratio, transition frequency, and hook/cliffhanger markers.
 
@@ -266,13 +266,13 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 10: Style and Source-Leak Audit
 
-**Status:** Partially complete. Reuse audit and anchored draft audit now have deterministic source-leak foundations for non-L0/L1 candidates using exact phrase reuse, n-gram overlap, candidate source coverage, source-span concentration, and bounded candidate/source edit similarity. Candidate/source similarity reports only normalized ratios and thresholds, never copied source or candidate text, and is consumed by both reuse audit and anchored draft audit. Anchored draft audit applies stricter source-leak thresholds for beats whose style contract uses strong imitation, enforces selected-link `min_style_fit`, and compares candidates against persisted deterministic profile numeric features for supported style dimensions. The anchored-draft test matrix now proves L0/L1 near-copy candidates are not source-leak-failed, L2/L3/L4 near-copy candidates are source-leak-failed, strong imitation catches a boundary source-leak candidate that diagnostic/loose/moderate modes allow, and strong style-distance tolerance is stricter than diagnostic/loose/moderate for the covered numeric-feature boundary. Anchored draft audit payloads now include candidate ids plus a structured readable report, and generated/explicit draft audits persist that report in SQLite without candidate/source text. Full style-quality taxonomy and broader style-intensity evaluation remain open.
+**Status:** Complete. Reuse audit and anchored draft audit now have deterministic source-leak foundations for non-L0/L1 candidates using exact phrase reuse, n-gram overlap, candidate source coverage, source-span concentration, and bounded candidate/source edit similarity. Candidate/source similarity reports only normalized ratios and thresholds, never copied source or candidate text, and is consumed by both reuse audit and anchored draft audit. Anchored draft audit applies stricter source-leak thresholds for beats whose style contract uses strong imitation, enforces selected-link `min_style_fit`, compares candidates against persisted deterministic profile numeric features for supported style dimensions, and now audits a deterministic generic style-quality taxonomy covering abstract summary language, emotion telling, mechanical connective/rule-of-three patterns, cliche formula phrasing, and combined generic-prose density. The anchored-draft test matrix proves L0/L1 near-copy candidates are not source-leak-failed, L2/L3/L4 near-copy candidates are source-leak-failed, strong imitation catches a boundary source-leak candidate that diagnostic/loose/moderate modes allow, strong style-distance tolerance is stricter than diagnostic/loose/moderate for the covered numeric-feature boundary, and strong style-quality thresholds reject generic prose while diagnostic/loose/moderate thresholds allow the boundary case. Anchored draft audit payloads now include candidate ids plus a structured readable report, and generated/explicit draft audits persist that report in SQLite without candidate/source text.
 
 **Description:** Add a dedicated audit layer for high-fidelity imitation risk and quality.
 
 **Acceptance criteria:**
 
-- [ ] Audit computes exact phrase overlap, n-gram overlap, source-span concentration, candidate/source similarity, style-feature distance, factual drift, POV drift, and generic AI prose signals. Reuse audit currently covers exact phrase reuse, n-gram overlap, source-span concentration, source coverage, bounded candidate/source edit similarity, rewrite level, simple fact drift, and generic AI prose phrase risk; anchored draft audit now reuses deterministic source-leak checks against selected material text and computes deterministic style-feature distance for supported baseline numeric dimensions (`dialogue_ratio`, `interiority_ratio`, `sensory_ratio`, `action_afterbeat_ratio`, `transition_ratio`, `hook_marker_ratio`, `punctuation_per_100_chars`, and `average_sentence_chars`).
+- [x] Audit computes exact phrase overlap, n-gram overlap, source-span concentration, candidate/source similarity, style-feature distance, factual drift, POV drift, and generic AI prose signals. Reuse audit covers exact phrase reuse, n-gram overlap, source-span concentration, source coverage, bounded candidate/source edit similarity, rewrite level, simple fact drift, and generic AI prose phrase risk; anchored draft audit reuses deterministic source-leak checks against selected material text, computes deterministic style-feature distance for supported baseline numeric dimensions (`dialogue_ratio`, `interiority_ratio`, `sensory_ratio`, `action_afterbeat_ratio`, `transition_ratio`, `hook_marker_ratio`, `punctuation_per_100_chars`, and `average_sentence_chars`), and applies generic style-quality taxonomy checks with imitation-intensity thresholds.
 - [x] Strong imitation mode has stricter source-leak thresholds for anchored draft audit when a beat style contract uses `imitation_intensity = "strong"`.
 - [x] Audit fails candidates that are too close to a source span or too far from required style features. Reuse audit and anchored draft audit now fail non-L0/L1 near-copy candidates that exceed deterministic source-leak thresholds, and anchored draft audit fails candidates whose selected material falls below `min_style_fit` or whose observable style features are too far from persisted deterministic profile targets for supported dimensions.
 - [x] Audit report is readable in UI and persisted with candidate ids. `GenerateReferenceAnchoredDraft` and `AuditReferenceAnchoredDraft` persist `reference_draft_audits` rows with `candidate_ids_json` and `readable_report_json`; the frontend shows the report summary, candidate ids, finding category/severity, and required action without adding candidate/source text fields.
@@ -286,6 +286,7 @@ The current extractor is deterministic and robust, but limited:
 - [x] Fixtures proving near-copy candidates fail even when style fit is high for strong style contracts.
 - [x] Fixtures proving low selected-link style fit and persisted-profile style-feature distance fail anchored draft audit.
 - [x] Exact phrase reuse tests prove long copied source phrases fail even when overall candidate/source coverage is low, and the readable audit report reports only lengths/ratios instead of copied source text.
+- [x] Fixtures proving generic style-quality taxonomy findings fail strong style contracts without leaking candidate text, while diagnostic/loose/moderate boundary cases and concrete source-backed prose remain allowed.
 
 **Dependencies:** Task 9.
 
@@ -321,7 +322,7 @@ The current extractor is deterministic and robust, but limited:
 
 ## Task 12: Product Workflow and UX
 
-**Status:** Partially complete for the default style-assisted orchestration path, high-risk recovery UX, and the first style-anchoring usability report. `StartReferenceOrchestrationRun` now accepts an optional source-text-free `style_policy`, persists it on the run, and applies it to generated blueprint beats as reviewed `style_contract` fields before blueprint approval. The default frontend workflow now loads active style profiles, suggests an available profile, shows compact profile rationale, lets users adjust imitation intensity, minimum fit, allowed closeness, style dimensions, required evidence, and forbidden style risks, and sends that policy through the real bridge payload. High-risk orchestration stops now classify material-binding gaps, retrieval/provenance gaps, source-leak risks, style-distance risks, unsupported facts, and POV drift into concrete recovery actions; the frontend renders those action ids as Chinese next-step guidance without source text, candidate text, prompts, or paths. Playwright coverage now verifies the default style-assisted run, style-policy payload, approval-summary style terms, material-gap/source-leak recovery guidance, final-insertion boundary, and no `SaveContent` call. `npm --prefix frontend run test:reference-style` now generates a sanitized Phase 14 usability report under `output/playwright/phase14/reference-style/` with no high-severity style workflow issue and one medium ergonomic-friction item for free-form advanced policy fields. Deeper story-need ranking remains open.
+**Status:** Complete for the Phase 14 default style-assisted orchestration path, high-risk recovery UX, and the first style-anchoring usability report. `StartReferenceOrchestrationRun` now accepts an optional source-text-free `style_policy`, persists it on the run, and applies it to generated blueprint beats as reviewed `style_contract` fields before blueprint approval. The default frontend workflow now loads active style profiles, suggests an available profile, shows compact profile rationale, lets users adjust imitation intensity, minimum fit, allowed closeness, style dimensions, required evidence, and forbidden style risks, and sends that policy through the real bridge payload. High-risk orchestration stops now classify material-binding gaps, retrieval/provenance gaps, source-leak risks, style-distance risks, unsupported facts, and POV drift into concrete recovery actions; the frontend renders those action ids as Chinese next-step guidance without source text, candidate text, prompts, or paths. Playwright coverage now verifies the default style-assisted run, style-policy payload, approval-summary style terms, material-gap/source-leak recovery guidance, final-insertion boundary, and no `SaveContent` call. `npm --prefix frontend run test:reference-style` now generates a sanitized Phase 14 usability report under `output/playwright/phase14/reference-style/` with no high-severity style workflow issue and one medium ergonomic-friction item for free-form advanced policy fields. Deeper story-need ranking is recorded as a post-Phase 14 refinement rather than a Phase 14 blocker.
 
 **Description:** Make advanced style anchoring usable without turning it into manual data plumbing.
 
@@ -410,13 +411,13 @@ The current extractor is deterministic and robust, but limited:
 
 ### Checkpoint C: Imitation and Audit
 
-- [ ] Tasks 8-11 complete.
+- [x] Tasks 8-11 complete.
 - [x] Candidate generation is style-guided and beat-scoped.
 - [x] Style/source-leak audit can fail unsafe candidates.
 
 ### Checkpoint D: Product Gate
 
-- [ ] Tasks 12-14 complete.
+- [x] Tasks 12-14 complete.
 - [x] Playwright style workflows and stress tests pass.
 - [x] Usability report shows no high-severity style workflow issues.
 
@@ -430,7 +431,7 @@ Phase 14 is complete only when all of the following are true:
 - [x] Style-aware retrieval works with current story context and does not require manual per-novel binding.
 - [x] Beat-level style contracts are reviewed, approved, hash-guarded, and invalidated by edits.
 - [x] Candidate generation respects style contracts while preserving fact, POV, provenance, and rewrite limits.
-- [ ] Style/source-leak audit prevents near-copy outputs and records readable findings. Current implementation covers deterministic source-leak, style-distance, selected-link style fit, candidate/source similarity, and readable report persistence; the broader generic style-quality taxonomy remains open under Task 10.
+- [x] Style/source-leak audit prevents near-copy outputs and records readable findings. Current implementation covers deterministic source-leak, style-distance, selected-link style fit, candidate/source similarity, generic style-quality taxonomy findings, imitation-intensity thresholds, and readable report persistence without source/candidate text leakage.
 - [x] UI supports profile build/inspect/compare/select, intensity controls, evidence inspection, and failure recovery.
 - [x] Agent tools remain read/search/inspect oriented and cannot import, approve, or insert.
 - [x] Full regression matrix passes:
