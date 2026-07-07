@@ -5343,8 +5343,11 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.NotNull(stopped.CurrentDecision);
         Assert.Equal(ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop, stopped.CurrentDecision.DecisionType);
         Assert.Equal(ReferenceOrchestrationStopReasons.HighRiskGateBlocked, stopped.CurrentDecision.StopReason);
-        Assert.Contains("inspect_material_binding", stopped.CurrentDecision.RequiredActions);
-        Assert.Contains("import_or_select_reference_material", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("inspect_material_binding_gap", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("import_or_restore_reference_material", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("relax_license_or_anchor_policy", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("revise_blueprint_reference_query", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("restart_or_cancel_run", stopped.CurrentDecision.RequiredActions);
         Assert.Empty(stopped.CandidateIds);
         Assert.Contains("selected reference material links", stopped.ErrorMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
@@ -5492,7 +5495,10 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.Equal(ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop, stopped.CurrentDecision.DecisionType);
         Assert.Equal(ReferenceOrchestrationStopReasons.DraftAuditFailed, stopped.CurrentDecision.StopReason);
         Assert.Contains("inspect_draft_audit", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("inspect_fact_boundary", stopped.CurrentDecision.RequiredActions);
         Assert.Contains("revise_blueprint_or_candidates", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("regenerate_candidates", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("restart_or_cancel_run", stopped.CurrentDecision.RequiredActions);
         Assert.NotEmpty(stopped.CandidateIds);
         Assert.Contains("凶手身份", stopped.ErrorMessage);
         Assert.Contains(
@@ -5537,6 +5543,98 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
                     string.Empty),
                 CancellationToken.None));
         Assert.Contains("no pending decision", finalInsertionAfterResolve.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReferenceOrchestrationRunStopsForHighRiskDecisionWhenDraftCandidateCopiesSourceMaterial()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("编排来源贴近风险测试", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        await planning.UpdateChapterPlanAsync(
+            novel.Id,
+            new UpdateChapterPlanPayload("next", "雨声压低街道，主角在门口停住。"),
+            CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "orchestration-source-leak.md",
+            """
+            # 来源贴近风险
+
+            雨声压低了整条街的呼吸，林岚在门口停住，指尖慢慢发紧，心里一紧。
+            """);
+        var persistedReferenceAnchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await persistedReferenceAnchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "来源贴近风险参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+        var materials = await persistedReferenceAnchors.SearchMaterialsAsync(
+            new SearchReferenceMaterialsPayload(
+                novel.Id,
+                [anchor.AnchorId],
+                "雨声压低",
+                [ReferenceMaterialTypes.Sentence],
+                [],
+                [],
+                [],
+                [],
+                1,
+                10),
+            CancellationToken.None);
+        var material = Assert.Single(materials.Items);
+        var materialText = material.Text;
+        var referenceAnchors = new FixedReferenceAnchorService(
+            material,
+            applySearchFilters: true,
+            adaptedTextByMaterialId: new Dictionary<string, string>
+            {
+                [material.MaterialId] = materialText
+            },
+            rewriteLevelByMaterialId: new Dictionary<string, string>
+            {
+                [material.MaterialId] = ReferenceRewriteLevels.L2
+            });
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning, referenceAnchors);
+
+        var started = await service.StartOrchestrationRunAsync(
+            new StartReferenceOrchestrationRunPayload(
+                novel.Id,
+                ChapterNumber: 12,
+                ChapterGoal: "雨声压低街道，主角在门口停住",
+                KnownFacts: ["雨声压低街道", "主角在门口停住", "指尖发凉", "呼吸慢下来"],
+                ForbiddenFacts: [],
+                AnchorIds: null,
+                CorpusSearchPolicy: new ReferenceCorpusSearchPolicyPayload(
+                    "story_context",
+                    MaxResultsPerBeat: 3,
+                    LicenseStatuses: ["user_provided"],
+                    IncludeAnchorIds: [],
+                    ExcludeAnchorIds: []),
+                SourceConfirmed: true),
+            CancellationToken.None);
+
+        var stopped = await service.ResumeOrchestrationRunAsync(
+            new ResumeReferenceOrchestrationRunPayload(
+                novel.Id,
+                started.RunId,
+                ReferenceOrchestrationDecisionTypes.ApproveBlueprint,
+                started.ReviewId),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceOrchestrationRunStatuses.WaitingForUser, stopped.Status);
+        Assert.Equal(ReferenceOrchestrationStages.DraftAudit, stopped.Stage);
+        Assert.Equal(ReferenceOrchestrationStopReasons.DraftAuditFailed, stopped.LastStopReason);
+        Assert.NotNull(stopped.CurrentDecision);
+        Assert.Contains("inspect_source_leak_findings", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("lower_imitation_intensity_or_rebind_material", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("regenerate_candidates", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("restart_or_cancel_run", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains(
+            stopped.CurrentDecision.ApprovalSummary.HighRiskFindings,
+            finding => finding.Contains("source-leak", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            stopped.CurrentDecision.RequiredActions,
+            action => action.Contains(materialText, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -5593,6 +5691,9 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.Equal(ReferenceOrchestrationStopReasons.DraftAuditFailed, stopped.LastStopReason);
         Assert.NotNull(stopped.CurrentDecision);
         Assert.Equal(ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop, stopped.CurrentDecision.DecisionType);
+        Assert.Contains("inspect_pov_boundary", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("revise_blueprint_or_candidates", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("regenerate_candidates", stopped.CurrentDecision.RequiredActions);
         Assert.Contains("凶手身份", stopped.ErrorMessage);
         Assert.Contains(
             stopped.CurrentDecision.ApprovalSummary.HighRiskFindings,
@@ -5654,6 +5755,9 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         Assert.Equal(ReferenceOrchestrationStopReasons.DraftAuditFailed, stopped.LastStopReason);
         Assert.NotNull(stopped.CurrentDecision);
         Assert.Equal(ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop, stopped.CurrentDecision.DecisionType);
+        Assert.Contains("inspect_fact_boundary", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("revise_blueprint_or_candidates", stopped.CurrentDecision.RequiredActions);
+        Assert.Contains("regenerate_candidates", stopped.CurrentDecision.RequiredActions);
         Assert.Contains("陌生档案", stopped.ErrorMessage);
         Assert.Contains(
             stopped.CurrentDecision.ApprovalSummary.HighRiskFindings,

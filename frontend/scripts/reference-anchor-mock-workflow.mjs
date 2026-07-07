@@ -85,6 +85,9 @@ async function main() {
     await runDefaultOrchestrationToFinalInsertionStop(page)
     await page.screenshot({ path: path.join(outputDir, 'reference-anchor-03-final-insertion-stop.png'), fullPage: true })
 
+    logStep('orchestration high-risk recovery actions')
+    await runOrchestrationHighRiskRecoveryActions(page)
+
     logStep('failure and recovery workflow')
     await verifyReviewAndAuditFailureRecovery(page)
     await page.screenshot({ path: path.join(outputDir, 'reference-anchor-04-failure-recovery.png'), fullPage: true })
@@ -576,6 +579,46 @@ async function runDefaultOrchestrationToFinalInsertionStop(page) {
   assert.equal(finalConfirmCount, 0, 'final insertion decision must not expose a resume confirmation button')
 }
 
+async function runOrchestrationHighRiskRecoveryActions(page) {
+  const panel = orchestrationPanel(page)
+
+  await panel.getByLabel('章节号').fill('4')
+  await panel.getByLabel('章节目标').fill('触发材料缺口恢复动作')
+  await panel.getByLabel('已知事实').fill('主角只看见桌面')
+  await panel.getByLabel('禁止事实').fill('门外身份')
+  await panel.getByRole('button', { name: /启动候选编排/ }).click()
+  await expectVisible(page.getByText('编排已启动，等待确认来源与事实边界'), 'material-gap orchestration started')
+  await panel.getByRole('button', { name: /^确认$/ }).click()
+  await expectVisible(panel.getByText('批准蓝图', { exact: true }).first(), 'material-gap blueprint approval decision')
+  await panel.getByRole('button', { name: /^确认$/ }).click()
+
+  await expectVisible(panel.getByText('确认高风险停止', { exact: true }).first(), 'material-gap high-risk decision')
+  await expectVisible(panel.getByText('检查材料缺口'), 'material-gap inspect action label')
+  await expectVisible(panel.getByText('定位没有选中材料的节拍，再决定补材料还是改查询。'), 'material-gap inspect action hint')
+  await expectVisible(panel.getByText('导入或恢复材料'), 'material-gap import action label')
+  await expectVisible(panel.getByText('放宽检索过滤'), 'material-gap relax policy action label')
+  await expectVisible(panel.getByText('修订蓝图查询'), 'material-gap revise query action label')
+  await expectVisible(panel.getByText('waiting_for_decision · high_risk_gate_blocked'), 'material-gap run status')
+
+  await panel.getByLabel('章节号').fill('5')
+  await panel.getByLabel('章节目标').fill('触发来源贴近恢复动作')
+  await panel.getByLabel('已知事实').fill('主角只看见桌面\n雨声很大')
+  await panel.getByLabel('禁止事实').fill('门外身份')
+  await panel.getByRole('button', { name: /启动候选编排/ }).click()
+  await expectVisible(page.getByText('编排已启动，等待确认来源与事实边界'), 'source-leak orchestration started')
+  await panel.getByRole('button', { name: /^确认$/ }).click()
+  await expectVisible(panel.getByText('批准蓝图', { exact: true }).first(), 'source-leak blueprint approval decision')
+  await panel.getByRole('button', { name: /^确认$/ }).click()
+
+  await expectVisible(panel.getByText('确认高风险停止', { exact: true }).first(), 'source-leak high-risk decision')
+  await expectVisible(panel.getByText('检查来源贴近风险'), 'source-leak inspect action label')
+  await expectVisible(panel.getByText('查看 source-leak 类别和候选编号，不复制来源文本继续扩写。'), 'source-leak inspect action hint')
+  await expectVisible(panel.getByText('降低模仿或重绑材料'), 'source-leak mitigation action label')
+  await expectVisible(panel.getByText('重新生成候选'), 'source-leak regeneration action label')
+  await expectVisible(panel.getByText('candidate-run-unsafe', { exact: true }), 'source-leak candidate id')
+  await expectVisible(panel.getByText('waiting_for_decision · draft_audit_failed'), 'source-leak run status')
+}
+
 async function verifyReviewAndAuditFailureRecovery(page) {
   const blueprintPanel = page.getByTestId('reference-blueprint-panel')
   await blueprintPanel.getByLabel('章节号').fill('6')
@@ -681,10 +724,11 @@ async function verifyBridgeCalls(page) {
     .filter((call) => call.method === 'ResumeReferenceOrchestrationRun')
     .map((call) => call.args[0]?.decision_type)
   assert.deepEqual(
-    resumeDecisions,
+    resumeDecisions.slice(0, 2),
     ['confirm_source_and_facts', 'approve_blueprint'],
-    'default orchestration must stop before final insertion and only resume explicit author gates',
+    'default orchestration must stop before final insertion after the first two explicit author gates',
   )
+  assert(resumeDecisions.filter((decision) => decision === 'approve_blueprint').length >= 3, 'high-risk orchestration branches must pass through blueprint approval before stopping')
   assert(!resumeDecisions.includes('approve_final_insertion'), 'final insertion must not be auto-approved through orchestration')
 
   const createCall = calls.find((call) => call.method === 'CreateReferenceAnchor')
@@ -2275,6 +2319,60 @@ function installReferenceAnchorMockBridge(options = {}) {
       const blueprint = cloneBlueprint(run.blueprint_id)
       blueprint.status = 'material_bound'
       state.blueprints[String(blueprint.blueprint_id)] = blueprint
+
+      if (run.chapter_goal.includes('材料缺口')) {
+        run.stage = 'material_binding'
+        run.status = 'waiting_for_decision'
+        run.candidate_ids = []
+        run.current_decision = decision(
+          'resolve_high_risk_stop',
+          '材料绑定没有为必需节拍选中当前可访问材料。',
+          [
+            'inspect_material_binding_gap',
+            'import_or_restore_reference_material',
+            'relax_license_or_anchor_policy',
+            'revise_blueprint_reference_query',
+            'restart_or_cancel_run',
+          ],
+          {
+            stop_reason: 'high_risk_gate_blocked',
+            material_use_plan: '材料绑定没有选中所有必需节拍。',
+            high_risk_findings: ['missing_material_link: beat-001'],
+          },
+        )
+        run.last_stop_reason = 'high_risk_gate_blocked'
+        run.updated_at = now
+        addEvent(run, 'required_decision', '材料绑定缺口阻止候选生成。', 'resolve_high_risk_stop')
+        return run
+      }
+
+      if (run.chapter_goal.includes('来源贴近')) {
+        run.stage = 'draft_audit'
+        run.status = 'waiting_for_decision'
+        run.candidate_ids = ['candidate-run-unsafe']
+        run.current_decision = decision(
+          'resolve_high_risk_stop',
+          '草稿审计发现来源贴近风险，最终正文插入被阻止。',
+          [
+            'inspect_draft_audit',
+            'inspect_source_leak_findings',
+            'lower_imitation_intensity_or_rebind_material',
+            'regenerate_candidates',
+            'restart_or_cancel_run',
+          ],
+          {
+            stop_reason: 'draft_audit_failed',
+            high_risk_findings: [
+              'required_fix: Source-leak risk for candidate candidate-run-unsafe: exact phrase reuse exceeds policy threshold.',
+            ],
+          },
+        )
+        run.last_stop_reason = 'draft_audit_failed'
+        run.updated_at = now
+        addEvent(run, 'required_decision', '来源贴近风险阻止最终插入。', 'resolve_high_risk_stop')
+        return run
+      }
+
       run.stage = 'final_insertion'
       run.status = 'waiting_for_decision'
       run.candidate_ids = ['candidate-run-001']
@@ -2321,10 +2419,10 @@ function installReferenceAnchorMockBridge(options = {}) {
     })
   }
 
-  function decision(type, summary, requiredActions) {
+  function decision(type, summary, requiredActions, overrides = {}) {
     return {
       decision_type: type,
-      stop_reason: type,
+      stop_reason: overrides.stop_reason ?? type,
       summary,
       required_actions: requiredActions,
       approval_summary: {
@@ -2332,9 +2430,9 @@ function installReferenceAnchorMockBridge(options = {}) {
         pov: 'close / 主角',
         fact_boundary_changes: ['不新增门外身份'],
         emotional_trajectory: '警觉 -> 克制 -> 暂缓确认',
-        material_use_plan: '使用工作区参考材料中的克制动作证据。 style contracts: beat 1 profiles=301 intensity=strong min_fit=0.8 closeness=moderate dims=dialogue_ratio,sensory_ratio evidence=dialogue_exchange risks=source_leak,style_distance',
+        material_use_plan: overrides.material_use_plan ?? '使用工作区参考材料中的克制动作证据。 style contracts: beat 1 profiles=301 intensity=strong min_fit=0.8 closeness=moderate dims=dialogue_ratio,sensory_ratio evidence=dialogue_exchange risks=source_leak,style_distance',
         rewrite_budget: 'L1',
-        high_risk_findings: [],
+        high_risk_findings: overrides.high_risk_findings ?? [],
       },
       proposed_blueprint_revision: null,
     }

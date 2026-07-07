@@ -4330,8 +4330,133 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop,
             ReferenceOrchestrationStopReasons.DraftAuditFailed,
             "Draft audit found high-risk issues. Inspect the audit findings and revise the blueprint, material binding, or candidates before any insertion.",
-            ["inspect_draft_audit", "revise_blueprint_or_candidates", "restart_or_cancel_run"],
+            BuildDraftAuditHighRiskRequiredActions(audit),
             BuildDraftAuditApprovalSummary(blueprint, audit));
+    }
+
+    private static IReadOnlyList<string> BuildDraftAuditHighRiskRequiredActions(
+        ReferenceAnchoredDraftAuditPayload audit)
+    {
+        var actions = new List<string> { "inspect_draft_audit" };
+        if (HasSourceLeakAuditRisk(audit))
+        {
+            actions.Add("inspect_source_leak_findings");
+            actions.Add("lower_imitation_intensity_or_rebind_material");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (HasRetrievalGapOrProvenanceAuditRisk(audit))
+        {
+            actions.Add("rebind_stronger_material");
+            actions.Add("revise_blueprint_reference_query");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (HasStyleDistanceAuditRisk(audit))
+        {
+            actions.Add("inspect_style_distance_findings");
+            actions.Add("revise_blueprint_or_style_policy");
+            actions.Add("rebind_stronger_material");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (audit.UnsupportedFactErrors.Count > 0)
+        {
+            actions.Add("inspect_fact_boundary");
+            actions.Add("revise_blueprint_or_candidates");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (audit.PovErrors.Count > 0)
+        {
+            actions.Add("inspect_pov_boundary");
+            actions.Add("revise_blueprint_or_candidates");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (audit.BlueprintErrors.Count > 0)
+        {
+            actions.Add("revise_blueprint_or_candidates");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (audit.AiProseRisks.Count > 0 || HasHighRewriteLevelAuditRisk(audit))
+        {
+            actions.Add("lower_rewrite_level");
+            actions.Add("regenerate_candidates");
+        }
+
+        if (actions.Count == 1)
+        {
+            actions.Add("revise_blueprint_or_candidates");
+            actions.Add("regenerate_candidates");
+        }
+
+        actions.Add("restart_or_cancel_run");
+        return actions
+            .Where(action => !string.IsNullOrWhiteSpace(action))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool HasSourceLeakAuditRisk(ReferenceAnchoredDraftAuditPayload audit)
+    {
+        return AnyAuditTextContains(
+            audit,
+            ["source-leak", "source leak", "source_span", "source-span", "exact phrase", "n-gram"]);
+    }
+
+    private static bool HasRetrievalGapOrProvenanceAuditRisk(ReferenceAnchoredDraftAuditPayload audit)
+    {
+        return audit.ProvenanceErrors.Count > 0 ||
+            AnyAuditTextContains(
+                audit,
+                ["retrieval gap", "weak match", "low-confidence", "missing material provenance", "no-reuse provenance"]);
+    }
+
+    private static bool HasStyleDistanceAuditRisk(ReferenceAnchoredDraftAuditPayload audit)
+    {
+        return AnyAuditTextContains(
+            audit,
+            ["style-distance", "style distance", "style_fit", "min_style_fit", "style contract"]);
+    }
+
+    private static bool HasHighRewriteLevelAuditRisk(ReferenceAnchoredDraftAuditPayload audit)
+    {
+        return AnyAuditTextContains(audit, ["high-risk rewrite level", "rewrite level L3", "rewrite level L4"]);
+    }
+
+    private static bool AnyAuditTextContains(ReferenceAnchoredDraftAuditPayload audit, IReadOnlyList<string> needles)
+    {
+        foreach (var text in EnumerateAuditTexts(audit))
+        {
+            foreach (var needle in needles)
+            {
+                if (!string.IsNullOrWhiteSpace(needle) &&
+                    text.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> EnumerateAuditTexts(ReferenceAnchoredDraftAuditPayload audit)
+    {
+        foreach (var value in audit.ProvenanceErrors) yield return value;
+        foreach (var value in audit.BlueprintErrors) yield return value;
+        foreach (var value in audit.UnsupportedFactErrors) yield return value;
+        foreach (var value in audit.PovErrors) yield return value;
+        foreach (var value in audit.AiProseRisks) yield return value;
+        foreach (var value in audit.RequiredFixes) yield return value;
+        foreach (var finding in audit.ReadableReport?.Findings ?? [])
+        {
+            yield return finding.Category;
+            yield return finding.Message;
+            yield return finding.RequiredAction;
+        }
     }
 
     private static ReferenceOrchestrationRunPayload BuildMaterialBindingHighRiskStopRun(
@@ -4358,7 +4483,13 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
             ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop,
             ReferenceOrchestrationStopReasons.HighRiskGateBlocked,
             "Material binding could not select current reference material for every required beat. Inspect the binding gap before any draft generation.",
-            ["inspect_material_binding", "import_or_select_reference_material", "revise_blueprint_or_policy", "restart_or_cancel_run"],
+            [
+                "inspect_material_binding_gap",
+                "import_or_restore_reference_material",
+                "relax_license_or_anchor_policy",
+                "revise_blueprint_reference_query",
+                "restart_or_cancel_run"
+            ],
             BuildMaterialBindingGapApprovalSummary(blueprint, missingBeatIds));
     }
 

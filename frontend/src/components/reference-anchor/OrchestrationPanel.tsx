@@ -83,6 +83,159 @@ function decisionLabel(decisionType: string): string {
   }
 }
 
+type RequiredActionCopy = {
+  label: string
+  hint: string
+}
+
+const REQUIRED_ACTION_COPY: Record<string, RequiredActionCopy> = {
+  confirm_source: {
+    label: '确认来源可信',
+    hint: '确认参考来源可用于当前章节，不继续使用来路不明材料。',
+  },
+  confirm_license_status: {
+    label: '确认授权状态',
+    hint: '检查授权过滤是否符合当前使用边界。',
+  },
+  confirm_known_facts: {
+    label: '确认已知事实',
+    hint: '补齐允许进入本章的事实，避免候选误判为新增事实。',
+  },
+  confirm_forbidden_facts: {
+    label: '确认禁止事实',
+    hint: '列出本章不能透露的信息，作为审计硬边界。',
+  },
+  inspect_blueprint_summary: {
+    label: '检查蓝图摘要',
+    hint: '先核对章节功能、POV、事实边界和材料计划。',
+  },
+  approve_blueprint: {
+    label: '批准蓝图',
+    hint: '确认蓝图无误后才会进入材料绑定和候选生成。',
+  },
+  inspect_review: {
+    label: '检查评审缺陷',
+    hint: '查看未通过项和 required fix，再决定是否修订。',
+  },
+  inspect_proposed_revision: {
+    label: '检查修订提案',
+    hint: '确认自动修订只改蓝图合同，不写入正文。',
+  },
+  revise_blueprint: {
+    label: '修订蓝图',
+    hint: '调整段落意图、查询、事实或 POV 后重新评审。',
+  },
+  approve_blueprint_revision: {
+    label: '批准蓝图修订',
+    hint: '接受提案后会回到可审计的蓝图流程。',
+  },
+  inspect_material_binding: {
+    label: '检查材料绑定',
+    hint: '确认每个必需节拍都有当前可访问材料。',
+  },
+  inspect_material_binding_gap: {
+    label: '检查材料缺口',
+    hint: '定位没有选中材料的节拍，再决定补材料还是改查询。',
+  },
+  import_or_select_reference_material: {
+    label: '导入或选择材料',
+    hint: '补充可访问参考材料，或从现有材料里重新选择。',
+  },
+  import_or_restore_reference_material: {
+    label: '导入或恢复材料',
+    hint: '补充新材料，或恢复被归档但仍适合当前节拍的材料。',
+  },
+  relax_license_or_anchor_policy: {
+    label: '放宽检索过滤',
+    hint: '检查授权、锚点包含/排除策略，避免把可用材料过滤掉。',
+  },
+  revise_blueprint_or_policy: {
+    label: '修订蓝图或策略',
+    hint: '调整蓝图材料需求，或放宽检索策略后重跑。',
+  },
+  revise_blueprint_reference_query: {
+    label: '修订蓝图查询',
+    hint: '把节拍查询改得更具体，提升材料命中和可审计性。',
+  },
+  inspect_draft_audit: {
+    label: '检查草稿审计',
+    hint: '先看高风险发现，再选择重绑、修订或重生成。',
+  },
+  inspect_source_leak_findings: {
+    label: '检查来源贴近风险',
+    hint: '查看 source-leak 类别和候选编号，不复制来源文本继续扩写。',
+  },
+  lower_imitation_intensity_or_rebind_material: {
+    label: '降低模仿或重绑材料',
+    hint: '降低风格强度、拉开接近度，或改用更合适的参考材料。',
+  },
+  rebind_stronger_material: {
+    label: '重绑更强材料',
+    hint: '选择更高拟合、更稳定来源的材料后重新生成候选。',
+  },
+  inspect_style_distance_findings: {
+    label: '检查风格距离',
+    hint: '核对不满足的风格维度，再修订风格策略或换材料。',
+  },
+  revise_blueprint_or_style_policy: {
+    label: '修订蓝图或风格策略',
+    hint: '调整节拍要求、最低拟合、接近度或风格维度后重跑。',
+  },
+  inspect_fact_boundary: {
+    label: '检查事实边界',
+    hint: '把允许事实加入已知事实，或从候选中移除未支持事实。',
+  },
+  inspect_pov_boundary: {
+    label: '检查 POV 边界',
+    hint: '确认候选没有越过视角、叙事距离或禁止知识边界。',
+  },
+  revise_blueprint_or_candidates: {
+    label: '修订蓝图或候选',
+    hint: '回到蓝图合同或候选选择处修正，再重新审计。',
+  },
+  lower_rewrite_level: {
+    label: '降低改写级别',
+    hint: '减少高风险改写，控制在当前蓝图允许的 rewrite budget 内。',
+  },
+  regenerate_candidates: {
+    label: '重新生成候选',
+    hint: '在修订策略、材料或蓝图后生成新候选并重新审计。',
+  },
+  review_candidates: {
+    label: '审阅候选',
+    hint: '最终插入前仍由作者检查候选文本和审计摘要。',
+  },
+  edit_or_select_candidate: {
+    label: '编辑或选择候选',
+    hint: '只在独立正文流程处理，不由编排自动写入正文。',
+  },
+  approve_final_insertion: {
+    label: '批准最终插入',
+    hint: '当前界面不会自动插入正文，需要作者单独处理。',
+  },
+  inspect_stale_blueprint: {
+    label: '检查过期蓝图',
+    hint: '章节规划已变化，先对比旧蓝图再决定是否重建。',
+  },
+  regenerate_blueprint: {
+    label: '重新生成蓝图',
+    hint: '用当前章节规划重建蓝图，再重新走评审和批准。',
+  },
+  restart_or_cancel_run: {
+    label: '重启或取消运行',
+    hint: '处理完缺口后重新启动；不继续时取消当前运行。',
+  },
+}
+
+function requiredActionCopy(action: string): RequiredActionCopy {
+  const normalized = action.trim()
+  if (REQUIRED_ACTION_COPY[normalized]) return REQUIRED_ACTION_COPY[normalized]
+  return {
+    label: normalized || '待处理动作',
+    hint: '',
+  }
+}
+
 function stageLabel(stage: string): string {
   switch (stage) {
     case 'source_confirmation': return '来源确认'
@@ -461,11 +614,19 @@ export function OrchestrationPanel({
                     )}
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{decision.summary}</p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {decision.required_actions.map(action => (
-                      <span key={action} className="rounded bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">{action}</span>
-                    ))}
-                  </div>
+                  <ul className="mt-2 grid gap-1.5" aria-label="恢复动作">
+                    {decision.required_actions.map(action => {
+                      const copy = requiredActionCopy(action)
+                      return (
+                        <li key={action} className="rounded border border-amber-500/20 bg-background px-2 py-1.5">
+                          <div className="text-xs font-medium text-foreground">{copy.label}</div>
+                          {copy.hint ? (
+                            <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{copy.hint}</div>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
                 </div>
               ) : (
                 <p className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">当前运行没有待确认决策。</p>
