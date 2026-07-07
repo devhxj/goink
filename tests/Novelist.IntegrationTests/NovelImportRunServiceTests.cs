@@ -16,7 +16,7 @@ public sealed class NovelImportRunServiceTests : IDisposable
     {
         var options = CreateOptions();
         await InitializeAsync(options);
-        var sourcePath = Path.Combine(_root, "fixtures", "测试锚定小说.txt");
+        var sourcePath = CreateImportFixture("测试锚定小说.txt");
         var service = new FileSystemNovelImportRunService(options);
 
         var started = await service.StartRunAsync(
@@ -168,15 +168,101 @@ public sealed class NovelImportRunServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ImportRunValidationRejectsUnsafeSourceFileBoundary()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var service = new FileSystemNovelImportRunService(options);
+
+        var missingPath = Path.Combine(_root, "fixtures", "missing.txt");
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(ValidStartPayload("import-missing", sourcePath: missingPath), CancellationToken.None));
+
+        var directoryPath = Path.Combine(_root, "fixtures", "directory.txt");
+        Directory.CreateDirectory(directoryPath);
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(ValidStartPayload("import-directory", sourcePath: directoryPath), CancellationToken.None));
+
+        var lockedPath = CreateImportFixture("locked.txt");
+        using (File.Open(lockedPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await service.StartRunAsync(ValidStartPayload("import-locked", sourcePath: lockedPath), CancellationToken.None));
+        }
+
+        var unsupportedPath = CreateImportFixture("unsupported.pdf");
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(ValidStartPayload("import-unsupported", sourcePath: unsupportedPath), CancellationToken.None));
+
+        var markdownPath = CreateImportFixture("mismatch.md");
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(
+                ValidStartPayload("import-mismatch", sourcePath: markdownPath, importKind: NovelImportKinds.Txt),
+                CancellationToken.None));
+
+        var outsidePath = CreateImportFixture("outside.txt");
+        var traversalPath = Path.Combine(_root, "fixtures", "..", Path.GetFileName(outsidePath));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(ValidStartPayload("import-traversal", sourcePath: traversalPath), CancellationToken.None));
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(
+                ValidStartPayload("import-url", sourcePath: "https://example.test/book.txt"),
+                CancellationToken.None));
+
+        var devicePath = OperatingSystem.IsWindows()
+            ? @"\\?\C:\novelist\book.txt"
+            : "/dev/null";
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(ValidStartPayload("import-device", sourcePath: devicePath), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ImportRunValidationRejectsOversizedSourceFiles()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var service = new FileSystemNovelImportRunService(options);
+
+        var oversizedTextPath = CreateImportFixture("too-large.txt", length: (50L * 1024 * 1024) + 1);
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(ValidStartPayload("import-oversized-txt", sourcePath: oversizedTextPath), CancellationToken.None));
+
+        var oversizedMarkdownPath = CreateImportFixture("too-large.markdown", length: (50L * 1024 * 1024) + 1);
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(
+                ValidStartPayload("import-oversized-markdown", sourcePath: oversizedMarkdownPath, importKind: NovelImportKinds.Markdown),
+                CancellationToken.None));
+
+        var oversizedEpubPath = CreateImportFixture("too-large.epub", length: (100L * 1024 * 1024) + 1);
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await service.StartRunAsync(
+                ValidStartPayload("import-oversized-epub", sourcePath: oversizedEpubPath, importKind: NovelImportKinds.Epub),
+                CancellationToken.None));
+    }
+
+    [Fact]
     public async Task BridgeNovelImportHandlersPersistAndClassifyRecoveryState()
     {
         var options = CreateOptions();
         await InitializeAsync(options);
         var service = new FileSystemNovelImportRunService(options);
-        var sourcePath = JsonEncodedText.Encode(Path.Combine(_root, "fixtures", "bridge.txt")).ToString();
+        var bridgeSourcePath = CreateImportFixture("bridge.txt");
+        var selectedImportPath = CreateImportFixture("selected.epub");
+        var sourcePath = JsonEncodedText.Encode(bridgeSourcePath).ToString();
         var dispatcher = new BridgeDispatcher()
             .RegisterCompatibilityAppMethodHandlers()
-            .RegisterNovelImportHandlers(service);
+            .RegisterNovelImportHandlers(service, new RecordingNovelImportFilePicker(selectedImportPath));
+
+        using var pickedImportFile = ParseOutbound(await dispatcher.DispatchAsync("""
+            {
+              "kind": "request",
+              "id": "req_import_pick",
+              "method": "PickNovelImportFile",
+              "payload": {}
+            }
+            """));
+        Assert.Equal(selectedImportPath, pickedImportFile.RootElement.GetProperty("result").GetString());
 
         using var startJson = ParseOutbound(await dispatcher.DispatchAsync($$"""
             {
@@ -271,13 +357,42 @@ public sealed class NovelImportRunServiceTests : IDisposable
 
     private StartNovelImportPayload ValidStartPayload(string taskId)
     {
+        var sourcePath = CreateImportFixture($"{(string.IsNullOrWhiteSpace(taskId) ? "fixture" : taskId)}.txt");
+        return ValidStartPayload(taskId, sourcePath);
+    }
+
+    private StartNovelImportPayload ValidStartPayload(
+        string taskId,
+        string sourcePath,
+        string? sourceDisplayName = null,
+        string importKind = NovelImportKinds.Txt)
+    {
         return new StartNovelImportPayload(
             TaskId: taskId,
-            SourcePath: Path.Combine(_root, "fixtures", $"{taskId}.txt"),
-            SourceDisplayName: $"{taskId}.txt",
-            ImportKind: NovelImportKinds.Txt,
+            SourcePath: sourcePath,
+            SourceDisplayName: sourceDisplayName ?? Path.GetFileName(sourcePath),
+            ImportKind: importKind,
             RequestedTitle: "测试导入",
             CommitMessage: "import novel");
+    }
+
+    private string CreateImportFixture(
+        string fileName,
+        string content = "第一章\n导入测试内容。",
+        long? length = null)
+    {
+        var fixtureDirectory = Path.Combine(_root, "fixtures");
+        Directory.CreateDirectory(fixtureDirectory);
+        var path = Path.Combine(fixtureDirectory, fileName);
+        if (length is null)
+        {
+            File.WriteAllText(path, content);
+            return path;
+        }
+
+        using var stream = File.Create(path);
+        stream.SetLength(length.Value);
+        return path;
     }
 
     private static CopyableDiagnosticPayload Error(string code, string message, string taskId)
@@ -312,5 +427,21 @@ public sealed class NovelImportRunServiceTests : IDisposable
         Assert.Equal(expectedId, root.GetProperty("id").GetString());
         Assert.False(root.GetProperty("ok").GetBoolean());
         Assert.Equal(expectedCode, root.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    private sealed class RecordingNovelImportFilePicker : INovelImportFilePicker
+    {
+        private readonly string? _path;
+
+        public RecordingNovelImportFilePicker(string? path)
+        {
+            _path = path;
+        }
+
+        public ValueTask<string?> PickImportFileAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(_path);
+        }
     }
 }

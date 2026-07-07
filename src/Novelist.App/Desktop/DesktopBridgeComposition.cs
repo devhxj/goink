@@ -118,6 +118,7 @@ public static class DesktopBridgeComposition
             settingsService,
             new PhotinoNovelExportDestinationPicker(window));
         var referenceSourceFilePicker = new PhotinoReferenceSourceFilePicker(window);
+        var novelImportFilePicker = new PhotinoNovelImportFilePicker(window);
         var dispatcher = new BridgeDispatcher()
             .RegisterDefaultNovelistHandlers(new PhotinoBridgeRuntimeHost(
                 window,
@@ -138,7 +139,7 @@ public static class DesktopBridgeComposition
                 writingService,
                 storyMemoryService,
                 referenceSourceFilePicker)
-            .RegisterNovelImportHandlers(novelImportRunService)
+            .RegisterNovelImportHandlers(novelImportRunService, novelImportFilePicker)
             .RegisterStyleSampleHandlers(styleSampleService)
             .RegisterNarrativePatternHandlers(narrativePatternService)
             .RegisterReferenceAnchorHandlers(referenceAnchorService)

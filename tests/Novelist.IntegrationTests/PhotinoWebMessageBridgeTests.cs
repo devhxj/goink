@@ -182,6 +182,39 @@ public sealed class PhotinoWebMessageBridgeTests
         Assert.Contains(window.LastOpenFileFilters, filter => filter.Patterns.Contains("*.txt", StringComparer.Ordinal));
     }
 
+    [Fact]
+    public async Task NovelImportFilePickerReturnsSelectedWindowPathAndFiltersSupportedFormats()
+    {
+        var selectedPath = Path.Combine(Path.GetTempPath(), "import.epub");
+        var window = new RecordingWindow { OpenFilePath = selectedPath };
+        var picker = new PhotinoNovelImportFilePicker(window);
+
+        var path = await picker.PickImportFileAsync(CancellationToken.None);
+
+        Assert.Equal(selectedPath, path);
+        Assert.Equal("选择导入小说文件", window.LastOpenFileTitle);
+        var patterns = window.LastOpenFileFilters
+            .SelectMany(filter => filter.Patterns)
+            .ToArray();
+        Assert.Contains("*.epub", patterns);
+        Assert.Contains("*.txt", patterns);
+        Assert.Contains("*.md", patterns);
+        Assert.Contains("*.markdown", patterns);
+        Assert.DoesNotContain("*.*", patterns);
+    }
+
+    [Fact]
+    public async Task NovelImportFilePickerReturnsNullWhenSelectionIsCancelled()
+    {
+        var window = new RecordingWindow { OpenFilePath = null };
+        var picker = new PhotinoNovelImportFilePicker(window);
+
+        var path = await picker.PickImportFileAsync(CancellationToken.None);
+
+        Assert.Null(path);
+        Assert.Equal("选择导入小说文件", window.LastOpenFileTitle);
+    }
+
     private sealed class RecordingWindow : IPhotinoWindow
     {
         public List<string> SentMessages { get; } = [];

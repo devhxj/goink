@@ -9,10 +9,17 @@ public static class NovelImportBridgeHandlers
 {
     public static BridgeDispatcher RegisterNovelImportHandlers(
         this BridgeDispatcher dispatcher,
-        INovelImportRunService service)
+        INovelImportRunService service,
+        INovelImportFilePicker? filePicker = null)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(service);
+
+        if (filePicker is not null)
+        {
+            dispatcher.Register("PickNovelImportFile", async (_, cancellationToken) =>
+                await filePicker.PickImportFileAsync(cancellationToken));
+        }
 
         dispatcher.Register("StartNovelImport", async (context, cancellationToken) =>
             await service.StartRunAsync(

@@ -53,6 +53,11 @@ public interface IReferenceSourceFilePicker
     ValueTask<string?> PickSourceFileAsync(CancellationToken cancellationToken);
 }
 
+public interface INovelImportFilePicker
+{
+    ValueTask<string?> PickImportFileAsync(CancellationToken cancellationToken);
+}
+
 public sealed record NovelExportDestinationRequest(
     string DefaultFileName,
     string Format,

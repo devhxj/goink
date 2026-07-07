@@ -12,6 +12,8 @@ public sealed class FileSystemNovelImportRunService : INovelImportRunService
     private const int MaxTaskIdLength = 160;
     private const int MaxSourcePathLength = 4_096;
     private const int MaxSourceDisplayNameLength = 255;
+    private const long MaxTextOrMarkdownImportBytes = 50L * 1024 * 1024;
+    private const long MaxCompressedEpubImportBytes = 100L * 1024 * 1024;
     private const int MaxRequestedTitleLength = 200;
     private const int MaxCommitMessageLength = 500;
     private const int MaxStageLength = 128;
@@ -52,9 +54,10 @@ public sealed class FileSystemNovelImportRunService : INovelImportRunService
     {
         ArgumentNullException.ThrowIfNull(input);
         var taskId = NormalizeRequiredText(input.TaskId, nameof(input.TaskId), MaxTaskIdLength, allowLineBreaks: false);
-        var sourcePathHash = HashSourcePath(input.SourcePath);
         var sourceDisplayName = NormalizeSourceDisplayName(input.SourceDisplayName);
         var parserType = NormalizeImportKind(input.ImportKind);
+        var sourcePath = ValidateSourceFilePath(input.SourcePath, parserType);
+        var sourcePathHash = HashSourcePath(sourcePath);
         var requestedTitle = NormalizeOptionalText(input.RequestedTitle, nameof(input.RequestedTitle), MaxRequestedTitleLength, allowLineBreaks: false);
         var commitMessage = NormalizeOptionalText(input.CommitMessage, nameof(input.CommitMessage), MaxCommitMessageLength, allowLineBreaks: false);
 
@@ -352,6 +355,150 @@ public sealed class FileSystemNovelImportRunService : INovelImportRunService
         {
             throw new ArgumentException("Source path must be a valid absolute local path.", nameof(sourcePath), ex);
         }
+    }
+
+    private static string ValidateSourceFilePath(string? sourcePath, string parserType)
+    {
+        var normalized = NormalizeRequiredText(sourcePath, nameof(sourcePath), MaxSourcePathLength, allowLineBreaks: false);
+        if (LooksLikeAbsoluteUri(normalized))
+        {
+            throw new ArgumentException("Source path must be a local filesystem path, not a URI.", nameof(sourcePath));
+        }
+
+        if (ContainsTraversalSegment(normalized))
+        {
+            throw new ArgumentException("Source path must not contain traversal segments.", nameof(sourcePath));
+        }
+
+        if (LooksLikeUnsupportedDevicePath(normalized))
+        {
+            throw new ArgumentException("Source path must not use an unsupported device path.", nameof(sourcePath));
+        }
+
+        string fullPath;
+        try
+        {
+            if (!Path.IsPathFullyQualified(normalized))
+            {
+                throw new ArgumentException("Source path must be absolute.", nameof(sourcePath));
+            }
+
+            fullPath = Path.GetFullPath(normalized);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new ArgumentException("Source path must be a valid absolute local path.", nameof(sourcePath), ex);
+        }
+
+        if (LooksLikeUnsupportedDevicePath(fullPath))
+        {
+            throw new ArgumentException("Source path must not use an unsupported device path.", nameof(sourcePath));
+        }
+
+        if (Directory.Exists(fullPath))
+        {
+            throw new ArgumentException("Source path must point to a file, not a directory.", nameof(sourcePath));
+        }
+
+        var expectedKind = ImportKindForExtension(Path.GetExtension(fullPath));
+        if (expectedKind is null)
+        {
+            throw new ArgumentException("Source path extension is not supported for novel import.", nameof(sourcePath));
+        }
+
+        if (!string.Equals(expectedKind, parserType, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Source path extension does not match the requested import kind.", nameof(sourcePath));
+        }
+
+        var fileInfo = new FileInfo(fullPath);
+        if (!fileInfo.Exists)
+        {
+            throw new ArgumentException("Source path must point to an existing file.", nameof(sourcePath));
+        }
+
+        long sourceBytes;
+        try
+        {
+            sourceBytes = fileInfo.Length;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or NotSupportedException)
+        {
+            throw new ArgumentException("Source path must point to a readable file.", nameof(sourcePath), ex);
+        }
+
+        var limitBytes = MaxSourceBytesForKind(parserType);
+        if (sourceBytes > limitBytes)
+        {
+            throw new ArgumentException(
+                $"Source file is too large for '{parserType}' import. Limit: {limitBytes} bytes.",
+                nameof(sourcePath));
+        }
+
+        try
+        {
+            using var stream = new FileStream(
+                fullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            _ = stream.Length;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or NotSupportedException)
+        {
+            throw new ArgumentException("Source path must point to a readable file.", nameof(sourcePath), ex);
+        }
+
+        return fullPath;
+    }
+
+    private static bool LooksLikeAbsoluteUri(string value)
+    {
+        return value.Contains("://", StringComparison.Ordinal) ||
+            value.StartsWith("file:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsTraversalSegment(string value)
+    {
+        return value
+            .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+            .Any(segment => segment is "." or "..");
+    }
+
+    private static bool LooksLikeUnsupportedDevicePath(string value)
+    {
+        var windowsStyle = value.Replace('/', '\\');
+        if (windowsStyle.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+            windowsStyle.StartsWith(@"\\.\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var unixStyle = value.Replace('\\', '/');
+        return unixStyle.Equals("/dev", StringComparison.Ordinal) ||
+            unixStyle.StartsWith("/dev/", StringComparison.Ordinal);
+    }
+
+    private static string? ImportKindForExtension(string extension)
+    {
+        return extension.ToLowerInvariant() switch
+        {
+            ".epub" => NovelImportKinds.Epub,
+            ".txt" => NovelImportKinds.Txt,
+            ".md" => NovelImportKinds.Markdown,
+            ".markdown" => NovelImportKinds.Markdown,
+            _ => null
+        };
+    }
+
+    private static long MaxSourceBytesForKind(string importKind)
+    {
+        return importKind switch
+        {
+            NovelImportKinds.Epub => MaxCompressedEpubImportBytes,
+            NovelImportKinds.Txt or NovelImportKinds.Markdown => MaxTextOrMarkdownImportBytes,
+            _ => throw new ArgumentException($"Unsupported novel import kind '{importKind}'.", nameof(importKind))
+        };
     }
 
     private static string NormalizeSourceDisplayName(string? value)

@@ -4,7 +4,7 @@
 
 ## Phase 15: Goink-Master Feature Merge, Import Pipeline, Style Library, Narrative Pattern Extraction, Git History UI, and Product Robustness
 
-**Status:** Open as of 2026-07-07. Task 1 is complete: Phase 15 payload contracts, compatibility method names, owned frontend adapter method declarations, representative serialization/front-back registry tests, long-running `task_id` coverage, and app/build update-check endpoint configuration are in place. Task 2 is complete for the storage and migration model: app-settings persistence, style-sample storage, narrative pattern run storage, import-run storage/state-machine behavior, and copy-first/additive migration preservation are implemented and covered. Remaining Phase 15 bridge methods intentionally stay at the compatibility boundary until their corresponding service tasks land.
+**Status:** Open as of 2026-07-07. Task 1 is complete: Phase 15 payload contracts, compatibility method names, owned frontend adapter method declarations, representative serialization/front-back registry tests, long-running `task_id` coverage, and app/build update-check endpoint configuration are in place. Task 2 is complete for the storage and migration model: app-settings persistence, style-sample storage, narrative pattern run storage, import-run storage/state-machine behavior, and copy-first/additive migration preservation are implemented and covered. Task 3 is partially complete for the backend/desktop boundary: the dedicated novel-import picker is registered in the Photino bridge, supported import extensions are filtered at picker level, and `StartNovelImport` validates real readable local files, extension/kind matching, traversal/device/URI rejection, and default size limits before storing a run. Drag/drop UI feedback remains pending. Remaining Phase 15 bridge methods intentionally stay at the compatibility boundary until their corresponding service tasks land.
 
 **Description:** Phase 15 merges the latest user-facing product capabilities from the legacy `goink-master` snapshot into the current Novelist .NET 10 + Photino.NET + React/Vite architecture. The source snapshot is useful as a behavior reference, not as an implementation target. The merge must port product semantics, data contracts, progress reporting, edge-case handling, and regression coverage into Novelist modules without reviving legacy Go/Wails/Python runtime paths.
 
@@ -186,16 +186,16 @@ Work should be delivered in vertical slices where possible, but schema/contracts
 
 **Acceptance criteria:**
 
-- [ ] Desktop file picker filters `.epub`, `.txt`, `.md`, `.markdown`.
+- [x] Desktop file picker filters `.epub`, `.txt`, `.md`, `.markdown`.
 - [ ] Drag/drop accepts only supported file extensions and rejects folders, URLs, multiple unsupported files, and empty drops with visible feedback.
 - [ ] Dropped paths are passed only to the import service, not to generic arbitrary file-read bridge methods.
-- [ ] Path validation blocks traversal, device paths where unsupported, unreadable files, overly large files above configured limit, and non-file inputs.
-- [ ] Tests can inject temporary fixture paths without touching real user projects.
+- [x] Path validation blocks traversal, device paths where unsupported, unreadable files, overly large files above configured limit, and non-file inputs.
+- [x] Tests can inject temporary fixture paths without touching real user projects.
 
 **Verification:**
 
-- [ ] Unit tests for extension and path validation.
-- [ ] Desktop/bridge tests for picker cancellation and selected path payload.
+- [x] Integration tests for extension, path, readability, kind-mismatch, traversal/device/URI, and size-limit validation.
+- [x] Desktop/bridge tests for picker cancellation and selected path payload.
 - [ ] Playwright tests for drag/drop accepted/rejected states using mocked bridge.
 
 **Dependencies:** Tasks 1-2.
