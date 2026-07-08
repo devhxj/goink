@@ -7,6 +7,13 @@ public interface IPhotinoWindowFactory
     IPhotinoWindow Create(PhotinoWindowSettings settings);
 }
 
+public sealed record PhotinoWindowBounds(
+    int? X,
+    int? Y,
+    int Width,
+    int Height,
+    bool Maximized);
+
 public interface IPhotinoWindow
 {
     void WaitForClose();
@@ -30,6 +37,8 @@ public interface IPhotinoWindow
     void ToggleMaximize();
 
     bool IsMaximized();
+
+    PhotinoWindowBounds GetBounds();
 
     void Close();
 }

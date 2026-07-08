@@ -150,7 +150,6 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
   function beginCreate() {
     setForm(EMPTY_FORM)
     setDetail(null)
-    setError(null)
   }
 
   async function beginEdit(sample: styleSample.StyleSample) {

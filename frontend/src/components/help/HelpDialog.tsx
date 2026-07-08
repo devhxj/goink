@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BookOpen, Wrench, Bot, Wand2, Cpu, Zap, ShieldCheck } from 'lucide-react'
 
-type Tab = 'quickstart' | 'tools' | 'subagents' | 'skills' | 'llm' | 'context' | 'approval'
+type Tab = 'quickstart' | 'phase15' | 'tools' | 'subagents' | 'skills' | 'llm' | 'context' | 'approval'
 
 interface Props {
   open: boolean
@@ -87,6 +87,7 @@ const subAgentCards = [
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'quickstart', label: '快速入门', icon: <BookOpen className="w-4 h-4" /> },
+  { id: 'phase15', label: '导入与素材', icon: <BookOpen className="w-4 h-4" /> },
   { id: 'tools', label: '工具参考', icon: <Wrench className="w-4 h-4" /> },
   { id: 'subagents', label: '子代理', icon: <Bot className="w-4 h-4" /> },
   { id: 'skills', label: '技能系统', icon: <Wand2 className="w-4 h-4" /> },
@@ -136,6 +137,7 @@ export default function HelpDialog({ open, onClose }: Props) {
 
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'quickstart' && <QuickStartTab />}
+            {activeTab === 'phase15' && <ImportStylePatternTab />}
             {activeTab === 'tools' && <ToolsTab />}
             {activeTab === 'subagents' && <SubAgentsTab />}
             {activeTab === 'skills' && <SkillsTab />}
@@ -202,6 +204,57 @@ function QuickStartTab() {
           <p><span className="text-foreground font-medium">子代理（Sub-agents）</span> —— 专门执行特定任务的独立 AI，如记忆检索和章节审稿。它们拥有独立的上下文窗口，不会干扰主对话。</p>
           <p><span className="text-foreground font-medium">技能（Skills）</span> —— 预定义的写作技法和流程模板，AI 可以根据需要调用。你也可以创建自己的技能。</p>
           <p><span className="text-foreground font-medium">审批模式</span> —— 聊天面板底部可切换自动/手动审批。手动模式下 AI 的编辑和删除操作需要你确认后才会执行。</p>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function ImportStylePatternTab() {
+  return (
+    <div className="space-y-6 max-w-none">
+      <section>
+        <h2 className="text-lg font-semibold mb-2">导入、素材与版本历史</h2>
+        <p className="text-muted-foreground leading-relaxed">
+          这些功能用于把已有文本带入项目、沉淀可复用写作材料，并检查项目变化。它们不会绕过正文保存、来源审计或人工确认边界。
+        </p>
+      </section>
+
+      <section>
+        <h3 className="text-base font-medium mb-2">小说导入</h3>
+        <div className="space-y-2 text-sm text-muted-foreground leading-relaxed">
+          <p>书架支持通过桌面文件选择或拖放导入 EPUB、TXT、Markdown。拖放 URL、文件夹、空内容或不支持格式会直接显示反馈。</p>
+          <p>TXT/Markdown 会检测 UTF-8、UTF-16 LE/BE 和 GB18030。无法可靠识别的二进制或低置信文本会拒绝导入，避免静默乱码。</p>
+          <p>默认大小限制为 TXT/Markdown 50 MB、压缩 EPUB 100 MB、EPUB 解压后累计 250 MB。超限、解析失败、写入失败和 Git 警告都会显示可复制诊断。</p>
+          <p>导入在写入前后记录运行状态；失败会尽量清理已创建的小说和文件，启动时也会恢复或标记需要人工处理的未完成导入。</p>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-base font-medium mb-2">风格素材库</h3>
+        <div className="space-y-2 text-sm text-muted-foreground leading-relaxed">
+          <p>风格素材可以是全局样本，也可以限定到当前小说。样本支持标签、搜索、分页和确定性统计，详情内容只在打开样本时读取。</p>
+          <p>从样本生成 Skill 时，会先生成可预览的草稿并校验 frontmatter 和内容；保存是单独动作，失败不会修改章节正文。</p>
+          <p>样本可用于构建参考风格画像，但不会把来源审计、相似度检查或蓝图审批变成自动通过。</p>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-base font-medium mb-2">叙事模式抽取</h3>
+        <div className="space-y-2 text-sm text-muted-foreground leading-relaxed">
+          <p>叙事模式抽取支持全书或多段章节范围，运行时会展示边界识别、摘要、阶段压缩和 Skill 预览等进度。</p>
+          <p>模型返回的 JSON 和最终 Skill 都会严格校验；空输出、压缩停滞、取消和无效内容会进入失败或取消状态并保留诊断。</p>
+          <p>叙事模式只生成写作指导 Skill，不会自动改章节、批准蓝图或插入最终正文。</p>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-base font-medium mb-2">Git 历史、更新与作者设置</h3>
+        <div className="space-y-2 text-sm text-muted-foreground leading-relaxed">
+          <p>Git 历史面板是只读视图，可分页查看提交、文件变化、重命名、删除、二进制文件和懒加载 diff。大文本 diff 会截断，避免界面卡顿。</p>
+          <p>应用使用内置 LibGit2Sharp/libgit2 读取和写入本地版本历史，不要求额外安装系统 Git。</p>
+          <p>设置里的 Git 作者名称和邮箱会写入 repo-local Git config；留空时使用安全默认身份。导入提交和普通保存提交都会使用这组设置。</p>
+          <p>更新检查需要配置 HTTPS release endpoint。自动检查默认关闭且不会阻塞启动；打开发布页必须由你显式点击。</p>
         </div>
       </section>
     </div>

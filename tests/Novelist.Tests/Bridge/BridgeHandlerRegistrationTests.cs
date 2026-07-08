@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Novelist.Contracts.App;
 using Novelist.Contracts.Bridge;
 using Novelist.Core.Bridge;
 
@@ -44,6 +45,31 @@ public sealed class BridgeHandlerRegistrationTests
         using var json = ParseOutbound(result);
         Assert.True(json.RootElement.GetProperty("ok").GetBoolean());
         Assert.True(json.RootElement.GetProperty("result").GetBoolean());
+    }
+
+    [Fact]
+    public async Task RuntimeHandlerReturnsWindowBounds()
+    {
+        var runtime = new RecordingRuntimeHost();
+        var dispatcher = new BridgeDispatcher().RegisterRuntimeHandlers(runtime);
+
+        var result = await dispatcher.DispatchAsync("""
+            {
+              "kind": "request",
+              "id": "req_window_bounds",
+              "method": "runtime.window.getBounds",
+              "payload": {}
+            }
+            """);
+
+        using var json = ParseOutbound(result);
+        Assert.True(json.RootElement.GetProperty("ok").GetBoolean());
+        var bounds = json.RootElement.GetProperty("result");
+        Assert.Equal(160, bounds.GetProperty("x").GetInt32());
+        Assert.Equal(120, bounds.GetProperty("y").GetInt32());
+        Assert.Equal(1280, bounds.GetProperty("width").GetInt32());
+        Assert.Equal(840, bounds.GetProperty("height").GetInt32());
+        Assert.False(bounds.GetProperty("maximized").GetBoolean());
     }
 
     [Fact]
@@ -145,10 +171,11 @@ public sealed class BridgeHandlerRegistrationTests
     [Fact]
     public void RuntimeMethodListHasExpectedCoverage()
     {
-        Assert.Equal(5, BridgeRuntimeMethodNames.All.Count);
+        Assert.Equal(6, BridgeRuntimeMethodNames.All.Count);
         Assert.Contains(BridgeRuntimeMethodNames.WindowMinimize, BridgeRuntimeMethodNames.All);
         Assert.Contains(BridgeRuntimeMethodNames.WindowToggleMaximize, BridgeRuntimeMethodNames.All);
         Assert.Contains(BridgeRuntimeMethodNames.WindowIsMaximized, BridgeRuntimeMethodNames.All);
+        Assert.Contains(BridgeRuntimeMethodNames.WindowGetBounds, BridgeRuntimeMethodNames.All);
         Assert.Contains(BridgeRuntimeMethodNames.AppQuit, BridgeRuntimeMethodNames.All);
         Assert.Contains(BridgeRuntimeMethodNames.ShellOpenExternal, BridgeRuntimeMethodNames.All);
     }
@@ -196,6 +223,12 @@ public sealed class BridgeHandlerRegistrationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(IsMaximized);
+        }
+
+        public ValueTask<WindowSettingsPayload> GetWindowBoundsAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new WindowSettingsPayload(160, 120, 1280, 840, IsMaximized));
         }
 
         public ValueTask QuitApplicationAsync(CancellationToken cancellationToken)

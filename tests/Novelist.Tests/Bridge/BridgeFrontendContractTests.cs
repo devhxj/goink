@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Novelist.Contracts.App;
 using Novelist.Contracts.Bridge;
 using Novelist.Core.Bridge;
 
@@ -174,6 +175,11 @@ public sealed class BridgeFrontendContractTests
         public ValueTask<bool> IsWindowMaximizedAsync(CancellationToken cancellationToken)
         {
             return ValueTask.FromResult(false);
+        }
+
+        public ValueTask<WindowSettingsPayload> GetWindowBoundsAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new WindowSettingsPayload(160, 120, 1280, 840, false));
         }
 
         public ValueTask QuitApplicationAsync(CancellationToken cancellationToken)

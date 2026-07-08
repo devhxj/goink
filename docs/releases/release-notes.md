@@ -1,5 +1,17 @@
 # Release Notes
 
+### 2026-07-08
+
+- Phase 15 mock browser coverage now includes focused compact and stress slices for import, style samples, narrative pattern extraction, Git history, settings, update checks, and visible error feedback. The `test:phase15` workflow writes screenshots, traces, bridge-call logs, diagnostics, and stress metrics under `output/playwright/phase15/`.
+- EPUB parsing now enforces a cumulative uncompressed expansion limit in addition to compressed archive and per-entry limits. Oversized EPUB expansion fails with structured `import.epub.expanded_too_large` diagnostics instead of reading unbounded archive content.
+- Backend regression coverage now includes invalid ZIP files, compressed EPUB parser limits, import storage failure before workspace creation, narrative-pattern retry exhaustion, Git binary diffs, large diff truncation, and all tracked Git lock files.
+- Git history remains backed by LibGit2Sharp/libgit2 runtime assets instead of a local `git.exe`; tests cover empty repositories, invalid metadata, lock-file refusal, binary/large diff behavior, rename/delete handling, and configured Git author identity.
+- Desktop window persistence now captures native Photino bounds through `runtime.window.getBounds` and restores x/y/width/height/maximized state with monitor work-area clamping to avoid off-screen launches.
+- The app-wide mock workflow entry remains small while Git history fixtures are split into `mock-git-service.mjs`; the mock bridge also covers native-window bounds for layout tests.
+- Visible error feedback now preserves copyable diagnostics across unrelated create/edit actions, dialog reopening, copy-feedback rerenders, and ordinary editor edits; legacy metadata, novel, style, skill, and editor surfaces clear errors only on retry/success or explicit close.
+- Phase 15 user documentation now describes supported import formats, style material samples, narrative pattern extraction, read-only Git history, update checks, configurable Git authors, and the remaining rule that `goink-master` is only a read-only legacy behavior reference.
+- Latest verification run for this slice: `npm --prefix frontend run lint`, `npm --prefix frontend run test:layout`, `npm --prefix frontend run test:layout-ui`, `npm --prefix frontend run test:git`, `npm --prefix frontend run test:error-ui`, `npm --prefix frontend run test:reference-anchor`, `npm --prefix frontend run test:app`, `npm --prefix frontend run test:app:full`, `npm --prefix frontend run test:app:stress`, `npm --prefix frontend run test:app:usability`, `npm --prefix frontend run test:phase15`, `npm --prefix frontend run build` with `ESBUILD_WORKER_THREADS=0`, targeted Photino bridge/desktop integration tests, targeted Git/import integration tests, and `dotnet test Novelist.slnx --no-restore -v minimal`.
+
 ### 2026-07-07
 
 - 书架现在提供小说导入入口，支持通过桌面文件选择或拖放本地 EPUB/TXT/Markdown 文件启动导入；拖放文件夹、URL、空内容和不支持格式时会直接显示反馈，且导入路径只会进入小说导入流程。

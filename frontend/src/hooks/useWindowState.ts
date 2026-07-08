@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '@/hooks/useApp'
-import { WindowIsMaximised, WindowToggleMaximise } from '@/lib/novelist/runtime'
+import { WindowGetBounds, WindowIsMaximised, WindowToggleMaximise } from '@/lib/novelist/runtime'
 import {
   DEFAULT_WINDOW_SETTINGS,
   clampWindowSettings,
@@ -19,19 +19,37 @@ export function useWindowState() {
     maximisedRef.current = isMaximised
   }, [isMaximised])
 
-  const saveWindowSettings = useCallback(async (maximized = maximisedRef.current) => {
-    const payload = windowSettingsFromViewport({
+  const captureWindowSettings = useCallback(async (maximized = maximisedRef.current) => {
+    const screenBounds = safeScreenBounds()
+    const fallback = windowSettingsFromViewport({
       previous: previousSettingsRef.current,
       maximized,
-      screenBounds: safeScreenBounds(),
+      screenBounds,
     })
+
+    try {
+      const bounds = await WindowGetBounds()
+      return clampWindowSettings(
+        {
+          ...bounds,
+          maximized,
+        },
+        screenBounds,
+      )
+    } catch {
+      return fallback
+    }
+  }, [])
+
+  const saveWindowSettings = useCallback(async (maximized = maximisedRef.current) => {
+    const payload = await captureWindowSettings(maximized)
     try {
       const saved = await app.SaveWindowSettings(payload)
       previousSettingsRef.current = clampWindowSettings(saved, safeScreenBounds())
     } catch {
       // Window state persistence is best-effort and should not block startup or writing.
     }
-  }, [app])
+  }, [app, captureWindowSettings])
 
   const toggleMaximise = useCallback(async () => {
     const optimistic = !maximisedRef.current

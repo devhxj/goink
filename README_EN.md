@@ -105,6 +105,16 @@ It does not treat AI as the independent author. Story direction, character relat
   </tbody>
 </table>
 
+## Phase 15 Features
+
+The current Phase 15 line ports user-facing behavior from the legacy `goink-master` snapshot into the active `.NET 10 + Photino.NET + React/Vite` architecture. `goink-master` is a read-only behavior reference only; it is not an implementation directory or build path.
+
+- **Novel import**: the bookshelf can import `.epub`, `.txt`, `.md`, and `.markdown` files through the desktop picker or drag and drop. TXT/Markdown parsing detects UTF-8, UTF-16 LE/BE, GB18030, and related edge cases. Import runs expose progress, cancellation, skipped-chapter diagnostics, Git commits, failure cleanup, and startup recovery. Default limits are 50 MB for TXT/Markdown, 100 MB for compressed EPUB, and 250 MB for cumulative EPUB uncompressed content inspected during parsing.
+- **Style material library**: save global or per-novel style samples, filter by tags/scope/search, inspect deterministic text statistics, and generate previewed, validated Skill drafts from selected samples. Samples can feed reference style profiles, but they do not bypass source audit or approval boundaries.
+- **Narrative pattern extraction**: analyze all chapters or selected chapter ranges to produce boundaries, summaries, narrative phases, and reusable narrative Skill drafts. Runs show progress, trace entries, cancellation, and strict model-output validation, and they never mutate chapter prose directly.
+- **Git history panel**: local history is read through bundled LibGit2Sharp/libgit2 assets, not the system Git CLI. The UI supports paged commits, changed-file lists, rename/delete/binary markers, and lazy read-only diffs with truncation for large text.
+- **Update checks and Git author identity**: settings expose a release endpoint, manual update check, dismissed version, and Git commit author name/email. Startup automatic checks are disabled by default and non-blocking; Git author settings fall back to safe defaults and are applied before import and normal save commits.
+
 ## Reference Anchoring
 
 Skills store writing methods. Reference anchoring constrains material use and risk. Sources, factual boundaries, POV, blueprints, material bindings, and draft audits leave records here, so the model does not invent freely, leak source text, or write risky prose directly into the manuscript.

@@ -45,6 +45,18 @@ export function safeViewportHeight(fallback = DEFAULT_WINDOW_SETTINGS.height): n
   return finiteNumber(window.innerHeight, fallback)
 }
 
+export function safeWindowX(fallback: number | null = null): number | null {
+  if (typeof window === 'undefined') return fallback
+  const windowWithLegacyPosition = window as Window & { screenLeft?: number }
+  return optionalFiniteNumber(window.screenX) ?? optionalFiniteNumber(windowWithLegacyPosition.screenLeft) ?? fallback
+}
+
+export function safeWindowY(fallback: number | null = null): number | null {
+  if (typeof window === 'undefined') return fallback
+  const windowWithLegacyPosition = window as Window & { screenTop?: number }
+  return optionalFiniteNumber(window.screenY) ?? optionalFiniteNumber(windowWithLegacyPosition.screenTop) ?? fallback
+}
+
 export function safeScreenBounds(): ScreenBounds {
   if (typeof window === 'undefined' || !window.screen) return {}
   const screenWithPosition = window.screen as Screen & {
@@ -134,6 +146,8 @@ export function clampWindowSettings(
 
 export function windowSettingsFromViewport(input: {
   previous?: Partial<layout.WindowSettings> | null
+  viewportX?: number | null
+  viewportY?: number | null
   viewportWidth?: number
   viewportHeight?: number
   maximized?: boolean
@@ -142,8 +156,8 @@ export function windowSettingsFromViewport(input: {
   const previous = clampWindowSettings(input.previous, input.screenBounds)
   return clampWindowSettings(
     {
-      x: previous.x,
-      y: previous.y,
+      x: input.viewportX ?? safeWindowX(previous.x),
+      y: input.viewportY ?? safeWindowY(previous.y),
       width: input.viewportWidth ?? safeViewportWidth(),
       height: input.viewportHeight ?? safeViewportHeight(),
       maximized: input.maximized ?? previous.maximized,

@@ -51,7 +51,6 @@ export default function SkillEditForm({ content, novelId, filePath, readOnly, on
       setAuthor(m.author || '')
       setVersion(m.version || '1')
       setBodyText(b || '')
-      setError(null)
       const extras: [string, string][] = []
       for (const [k, v] of Object.entries(m)) {
         if (!KNOWN_FIELDS.includes(k)) {

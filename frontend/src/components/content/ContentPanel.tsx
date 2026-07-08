@@ -172,8 +172,8 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
   const doSave = useCallback(async (tabId: string, path: string, content: string) => {
     if (!novelIdRef.current) return
     try {
-      setSaveError(null)
       await app.SaveContent({ novel_id: novelIdRef.current, path, content })
+      setSaveError(current => current?.tabId === tabId ? null : current)
       updateTab(tabId, { isDirty: false })
       if (savingRef.current?.id === tabId && savingRef.current.path === path && savingRef.current.content === content) {
         savingRef.current = null
@@ -220,7 +220,6 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
   const handleEditorChange = useCallback((tabId: string, value: string | undefined) => {
     const content = value ?? ''
     updateTab(tabId, { content, isDirty: true })
-    setSaveError(current => current?.tabId === tabId ? null : current)
     onContentChange?.(content)
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -615,6 +614,7 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
           compact
           className="rounded-none border-x-0 border-t-0 px-4"
           onRetry={() => {
+            setSaveError(current => current?.tabId === activeTab.id ? null : current)
             void doSave(activeTab.id, activeTab.path, activeTab.content ?? '').catch(() => undefined)
           }}
           retryLabel="重试保存"

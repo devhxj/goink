@@ -344,6 +344,11 @@ public sealed class PhotinoReferenceWorkflowSmokeTests : IDisposable
             return Maximized;
         }
 
+        public PhotinoWindowBounds GetBounds()
+        {
+            return new PhotinoWindowBounds(160, 120, 1280, 840, Maximized);
+        }
+
         public void Close()
         {
             Closed = true;

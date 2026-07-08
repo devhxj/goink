@@ -206,14 +206,12 @@ export default function TimelineView({ novelId, focusEntryId }: Props) {
   // ── CRUD handlers ────────────────────────────────────
 
   function openCreate() {
-    setError(null)
     setForm({ ...EDIT_FORM_EMPTY, target_chapter: Math.max(1, windowCenter) })
     setCreateCat('foreshadowing')
     setEditMode({ type: 'create' })
   }
 
   function openEdit(entry: timeline.TimelineEntry) {
-    setError(null)
     setForm({
       title: entry.title,
       content: entry.content || '',
@@ -227,7 +225,6 @@ export default function TimelineView({ novelId, focusEntryId }: Props) {
   }
 
   function openPlanEdit(scope: string, content: string) {
-    setError(null)
     setForm({ ...EDIT_FORM_EMPTY, content })
     setEditMode({ type: 'plan', scope, content })
   }

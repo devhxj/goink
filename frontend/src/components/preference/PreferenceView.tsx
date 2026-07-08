@@ -84,13 +84,11 @@ export default function PreferenceView({ novelId }: Props) {
   // ── CRUD handlers ────────────────────────────────────
 
   function openCreate(isGlobal: boolean) {
-    setError(null)
     setForm(EMPTY_FORM)
     setEditMode({ type: 'create', isGlobal })
   }
 
   function openEdit(item: novel.PreferenceItem) {
-    setError(null)
     setForm({ category: item.category, content: item.content })
     setEditMode({ type: 'edit', item })
   }

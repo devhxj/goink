@@ -1,3 +1,4 @@
+using System.Drawing;
 using Novelist.App.Desktop;
 using Novelist.Contracts.App;
 using Novelist.Core.App;
@@ -13,6 +14,8 @@ public sealed class PhotinoDesktopHostTests
         var settings = PhotinoLaunchMode.CreateSettings([PhotinoLaunchMode.DesktopFlag]);
 
         Assert.Equal("novelist", settings.Title);
+        Assert.Null(settings.X);
+        Assert.Null(settings.Y);
         Assert.Equal(1280, settings.Width);
         Assert.Equal(840, settings.Height);
         Assert.False(settings.Maximized);
@@ -80,8 +83,8 @@ public sealed class PhotinoDesktopHostTests
             await new FileSystemAppSettingsService(options)
                 .SaveWindowSettingsAsync(
                     new SaveWindowSettingsPayload(
-                        X: null,
-                        Y: null,
+                        X: 160,
+                        Y: 120,
                         Width: 1440,
                         Height: 900,
                         Maximized: true),
@@ -91,6 +94,8 @@ public sealed class PhotinoDesktopHostTests
                 [PhotinoLaunchMode.DesktopFlag],
                 appOptions: options);
 
+            Assert.Equal(160, settings.X);
+            Assert.Equal(120, settings.Y);
             Assert.Equal(1440, settings.Width);
             Assert.Equal(900, settings.Height);
             Assert.True(settings.Maximized);
@@ -106,6 +111,31 @@ public sealed class PhotinoDesktopHostTests
     }
 
     [Fact]
+    public void WindowPlacementClampsOffscreenLocationToNearestWorkArea()
+    {
+        var location = PhotinoWindowPlacement.ClampLocationToVisibleWorkArea(
+            new Point(5000, -200),
+            new Size(1200, 900),
+            [new Rectangle(0, 0, 1920, 1040)]);
+
+        Assert.Equal(new Point(720, 0), location);
+    }
+
+    [Fact]
+    public void WindowPlacementKeepsLocationOnContainingMonitor()
+    {
+        var location = PhotinoWindowPlacement.ClampLocationToVisibleWorkArea(
+            new Point(2050, 100),
+            new Size(1000, 800),
+            [
+                new Rectangle(0, 0, 1920, 1040),
+                new Rectangle(1920, 0, 1280, 984)
+            ]);
+
+        Assert.Equal(new Point(2050, 100), location);
+    }
+
+    [Fact]
     public void HasStartUrlOverrideDetectsViteDebugUrl()
     {
         Assert.False(PhotinoLaunchMode.HasStartUrlOverride([PhotinoLaunchMode.DesktopFlag]));
@@ -117,7 +147,7 @@ public sealed class PhotinoDesktopHostTests
     {
         var factory = new CapturingWindowFactory();
         var host = new PhotinoDesktopHost(factory);
-        var settings = new PhotinoWindowSettings("novelist", 1280, 840, "about:blank");
+        var settings = new PhotinoWindowSettings("novelist", null, null, 1280, 840, "about:blank");
 
         host.Run(settings);
 
@@ -244,6 +274,11 @@ public sealed class PhotinoDesktopHostTests
         public bool IsMaximized()
         {
             return Maximized;
+        }
+
+        public PhotinoWindowBounds GetBounds()
+        {
+            return new PhotinoWindowBounds(160, 120, 1280, 840, Maximized);
         }
 
         public void Close()

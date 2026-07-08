@@ -331,7 +331,7 @@ export default function GeneralConfigTab() {
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] text-muted-foreground">留空时使用安全默认身份；保存后会在下一次仓库初始化或提交前写入 repo-local Git config。</p>
+          <p className="text-[11px] text-muted-foreground">留空时使用安全默认身份；保存后会在下一次仓库初始化、小说导入提交或普通保存提交前写入 repo-local Git config。</p>
           <button
             type="button"
             onClick={handleSaveGitAuthor}
@@ -385,7 +385,7 @@ export default function GeneralConfigTab() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] text-muted-foreground">
-              {updateDismissedVersion ? `已忽略版本：${updateDismissedVersion}` : '自动检查不会阻塞启动；打开发布页需要手动点击。'}
+              {updateDismissedVersion ? `已忽略版本：${updateDismissedVersion}` : '自动检查默认关闭且不会阻塞启动；打开发布页需要手动点击。'}
             </p>
             <div className="flex items-center gap-2">
               <button

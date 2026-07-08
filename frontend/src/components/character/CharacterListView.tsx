@@ -87,13 +87,11 @@ export default function CharacterListView({ novelId, focusId }: Props) {
   // ── CRUD handlers ─────────────────────────────────────
 
   function openCreate() {
-    setError(null)
     setForm(EMPTY_FORM)
     setEditMode({ type: 'create' })
   }
 
   function openEdit(c: character.Character) {
-    setError(null)
     setForm({
       name: c.name,
       description: c.description || '',

@@ -44,13 +44,15 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
       setSample('')
       setPhase('input')
       setResult(null)
-      setError(null)
 
       try {
         const [modelList, settings] = await Promise.all([
           app.GetModels(),
           app.GetSettings(),
         ])
+        if (!cancelled) {
+          setError(current => current?.diagnostic.bridge_method === 'GetModels' ? null : current)
+        }
         if (!cancelled && modelList && modelList.length > 0) {
           setModels(modelList)
           let key = settings?.selected_model_key || ''

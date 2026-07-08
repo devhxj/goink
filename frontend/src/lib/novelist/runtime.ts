@@ -1,9 +1,11 @@
 import { bridge, novelist } from './bridge'
+import type { layout } from './types'
 
 export const runtimeBridgeMethods = {
   windowMinimize: 'runtime.window.minimize',
   windowToggleMaximize: 'runtime.window.toggleMaximize',
   windowIsMaximized: 'runtime.window.isMaximized',
+  windowGetBounds: 'runtime.window.getBounds',
   appQuit: 'runtime.app.quit',
   shellOpenExternal: 'runtime.shell.openExternal',
 } as const
@@ -18,6 +20,10 @@ export function toggleMaximize(): Promise<void> {
 
 export function isMaximized(): Promise<boolean> {
   return bridge.invoke<boolean>(runtimeBridgeMethods.windowIsMaximized)
+}
+
+export function getBounds(): Promise<layout.WindowSettings> {
+  return bridge.invoke<layout.WindowSettings>(runtimeBridgeMethods.windowGetBounds)
 }
 
 export function quit(): Promise<void> {
@@ -35,6 +41,7 @@ export const runtime = {
     minimize,
     toggleMaximize,
     isMaximized,
+    getBounds,
   },
   app: {
     quit,
@@ -54,6 +61,10 @@ export function WindowToggleMaximise(): Promise<void> {
 
 export function WindowIsMaximised(): Promise<boolean> {
   return isMaximized()
+}
+
+export function WindowGetBounds(): Promise<layout.WindowSettings> {
+  return getBounds()
 }
 
 export function Quit(): Promise<void> {

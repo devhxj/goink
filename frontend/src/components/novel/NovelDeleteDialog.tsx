@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import ErrorCallout from '@/components/shared/ErrorCallout'
 import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
 import type { diagnostics } from '@/lib/novelist/types'
@@ -17,16 +17,11 @@ export default function NovelDeleteDialog({ open, novelId = null, novelTitle, on
   const [error, setError] = useState('')
   const [errorDiagnostic, setErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const timer = window.setTimeout(() => {
-      setConfirmText('')
-      setDeleting(false)
-      setError('')
-      setErrorDiagnostic(null)
-    }, 0)
-    return () => window.clearTimeout(timer)
-  }, [open])
+  function handleClose() {
+    setConfirmText('')
+    setDeleting(false)
+    onClose()
+  }
 
   if (!open) return null
 
@@ -59,16 +54,16 @@ export default function NovelDeleteDialog({ open, novelId = null, novelTitle, on
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') onClose()
+    if (e.key === 'Escape') handleClose()
     if (e.key === 'Enter' && canDelete) handleDelete()
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={handleKeyDown}>
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
       <div className="relative bg-background rounded-xl shadow-2xl border w-[420px] max-w-[90vw] p-6">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           ✕
@@ -106,7 +101,7 @@ export default function NovelDeleteDialog({ open, novelId = null, novelTitle, on
 
         <div className="flex justify-end gap-2">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="h-9 px-4 rounded-md text-sm border hover:bg-muted transition-colors"
           >
             取消

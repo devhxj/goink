@@ -100,6 +100,19 @@ try {
     { x: 40, y: 60, width: 1440, height: 900, maximized: true },
     'saving from viewport preserves known coordinates and updates size/maximized state',
   )
+
+  assert.deepEqual(
+    windowSettingsFromViewport({
+      previous: { x: null, y: null, width: 1280, height: 840, maximized: false },
+      viewportX: 320,
+      viewportY: 180,
+      viewportWidth: 1366,
+      viewportHeight: 768,
+      maximized: false,
+    }),
+    { x: 320, y: 180, width: 1366, height: 768, maximized: false },
+    'saving from viewport can capture explicit window coordinates when runtime bounds are unavailable',
+  )
 } finally {
   await rm(tempDir, { recursive: true, force: true })
 }

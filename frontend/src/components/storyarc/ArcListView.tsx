@@ -223,13 +223,11 @@ export default function ArcListView({ novelId, focusArcId }: Props) {
   // ── Arc CRUD ─────────────────────────────────────────
 
   function openCreateArc() {
-    setError(null)
     setArcForm(EMPTY_ARC)
     setEditMode({ type: 'create_arc' })
   }
 
   function openEditArc(arc: storyarc.StoryArc) {
-    setError(null)
     setArcForm({
       name: arc.name,
       arc_type: arc.arc_type,
@@ -302,13 +300,11 @@ export default function ArcListView({ novelId, focusArcId }: Props) {
   // ── Node CRUD ────────────────────────────────────────
 
   function openCreateNode(arcId?: number) {
-    setError(null)
     setNodeForm({ ...EMPTY_NODE, story_arc_id: arcId ?? arcs[0]?.id ?? 0, target_chapter: Math.max(1, windowCenter) })
     setEditMode({ type: 'create_node' })
   }
 
   function openEditNode(node: storyarc.ArcNode) {
-    setError(null)
     setNodeForm({
       story_arc_id: node.story_arc_id,
       title: node.title,

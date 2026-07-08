@@ -158,11 +158,17 @@ public sealed class PhotinoWebMessageBridgeTests
         await host.MinimizeWindowAsync(CancellationToken.None);
         await host.ToggleMaximizeWindowAsync(CancellationToken.None);
         var isMaximized = await host.IsWindowMaximizedAsync(CancellationToken.None);
+        var bounds = await host.GetWindowBoundsAsync(CancellationToken.None);
         await host.OpenExternalAsync(new Uri("https://example.com/"), CancellationToken.None);
         await host.QuitApplicationAsync(CancellationToken.None);
 
         Assert.True(window.Minimized);
         Assert.True(isMaximized);
+        Assert.Equal(160, bounds.X);
+        Assert.Equal(120, bounds.Y);
+        Assert.Equal(1280, bounds.Width);
+        Assert.Equal(840, bounds.Height);
+        Assert.True(bounds.Maximized);
         Assert.True(window.Closed);
         Assert.Equal(new Uri("https://example.com/"), opener.LastUrl);
     }
@@ -273,6 +279,11 @@ public sealed class PhotinoWebMessageBridgeTests
         public bool IsMaximized()
         {
             return Maximized;
+        }
+
+        public PhotinoWindowBounds GetBounds()
+        {
+            return new PhotinoWindowBounds(160, 120, 1280, 840, Maximized);
         }
 
         public void Close()

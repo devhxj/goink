@@ -1,3 +1,4 @@
+using Novelist.Contracts.App;
 using Novelist.Core.Bridge;
 
 namespace Novelist.App.Desktop;
@@ -31,6 +32,18 @@ public sealed class PhotinoBridgeRuntimeHost : IBridgeRuntimeHost
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(_window.IsMaximized());
+    }
+
+    public ValueTask<WindowSettingsPayload> GetWindowBoundsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var bounds = _window.GetBounds();
+        return ValueTask.FromResult(new WindowSettingsPayload(
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            bounds.Maximized));
     }
 
     public ValueTask QuitApplicationAsync(CancellationToken cancellationToken)

@@ -30,6 +30,8 @@ public static class PhotinoLaunchMode
 
         return new PhotinoWindowSettings(
             Title: "novelist",
+            X: windowSettings.X,
+            Y: windowSettings.Y,
             Width: windowSettings.Width,
             Height: windowSettings.Height,
             StartUrl: string.IsNullOrWhiteSpace(startUrl) ? defaultStartUrl ?? "about:blank" : startUrl,
@@ -47,18 +49,18 @@ public static class PhotinoLaunchMode
                 .AsTask()
                 .GetAwaiter()
                 .GetResult();
-            return new RestoredWindowSettings(settings.Width, settings.Height, settings.Maximized);
+            return new RestoredWindowSettings(settings.X, settings.Y, settings.Width, settings.Height, settings.Maximized);
         }
         catch (AppNotInitializedException)
         {
-            return new RestoredWindowSettings(DefaultWidth, DefaultHeight, Maximized: false);
+            return new RestoredWindowSettings(null, null, DefaultWidth, DefaultHeight, Maximized: false);
         }
         catch (Exception exception)
         {
             DesktopLaunchLog.Write("Window settings not restored; using safe defaults.", exception);
-            return new RestoredWindowSettings(DefaultWidth, DefaultHeight, Maximized: false);
+            return new RestoredWindowSettings(null, null, DefaultWidth, DefaultHeight, Maximized: false);
         }
     }
 
-    private sealed record RestoredWindowSettings(int Width, int Height, bool Maximized);
+    private sealed record RestoredWindowSettings(int? X, int? Y, int Width, int Height, bool Maximized);
 }

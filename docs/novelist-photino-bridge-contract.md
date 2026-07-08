@@ -159,6 +159,40 @@ BindReferenceBlueprintMaterials, CancelReferenceOrchestrationRun,
 GenerateReferenceAnchoredDraft, GenerateReferenceChapterBlueprint
 ```
 
+Phase 15 adds product-specific methods to the same Photino app bridge. They are grouped here because future agents should not re-create legacy Wails bindings or route these through an HTTP side channel:
+
+```text
+PickNovelImportFile,
+StartNovelImport, CancelNovelImport, GetNovelImportRun,
+GetNovelImportRecoveryStatus, ReconcileNovelImportRuns,
+CreateStyleSample, UpdateStyleSample, DeleteStyleSample,
+GetStyleSample, SearchStyleSamples,
+ExtractStyleSkillFromSamples, CancelStyleSkillExtraction,
+GetStyleSkillExtractionRun,
+StartNarrativePatternExtraction, CancelNarrativePatternExtraction,
+GetNarrativePatternRun, GetNarrativePatternTrace,
+GetGitCommits, GetGitCommitFiles, GetGitFileDiff,
+GetGitAuthorSettings, SaveGitAuthorSettings,
+CheckForUpdates, GetUpdateCheckSettings, SaveUpdateCheckSettings,
+GetLayoutSettings, SaveLayoutSettings,
+GetWindowSettings, SaveWindowSettings
+```
+
+These methods live in the current `.NET 10 + Photino.NET + React/Vite` architecture. The legacy `goink-master` tree remains a read-only behavior reference; do not add new implementations under legacy `app/`, `internal/`, `python-master/`, or `frontend/src/lib/wailsjs/`, and do not reintroduce Go/Wails build commands for Phase 15 behavior.
+
+Runtime-only desktop methods stay under the `runtime.*` namespace and are not app data methods:
+
+```text
+runtime.window.minimize,
+runtime.window.toggleMaximize,
+runtime.window.isMaximized,
+runtime.window.getBounds,
+runtime.app.quit,
+runtime.shell.openExternal
+```
+
+`runtime.window.getBounds` returns `{ x, y, width, height, maximized }` from the active Photino window. The frontend uses it before `SaveWindowSettings` so desktop coordinates come from the native window when available, with browser viewport fallback only for Vite/browser-only development.
+
 ## Event Coverage
 
 Bridge event names remain compatible:
@@ -168,8 +202,24 @@ Bridge event names remain compatible:
 - `file:changed`
 - `chat:session_created`
 - `chat:title_updated`
+- `novel_import:progress`
+- `style_skill_extraction:progress`
+- `narrative_pattern_extraction:progress`
 
 The `AgentEvent.type` numeric enum remains unchanged: `0` thinking, `1` thinking done, `2` content, `3` tool call, `4` usage, `5` error, `6` compression.
+
+## Phase 15 Guardrails
+
+- Novel import accepts only desktop-picked or drag/dropped local files that pass kind, path, readability, and size validation. Source paths are not exposed in progress messages or persisted as raw paths.
+- Import failures before durable completion use compensating cleanup; startup recovery reconciles incomplete runs before normal workspace use.
+- Style sample extraction and narrative pattern extraction produce validated Skill previews. Saving a Skill is an explicit user action, and neither path calls `SaveContent`.
+- Git history bridge methods are read-only. Revert, checkout, reset, cherry-pick, restore, and arbitrary Git mutation are out of scope.
+- Update checks use configured release endpoints and explicit `ShellOpenExternal` for release pages; startup checks must remain timeout-bounded and non-blocking.
+- Agent tools must not expose Phase 15 import, file-picker, update, Git history, style-sample CRUD, style extraction, narrative pattern extraction, or final-insertion abilities unless a later authority design explicitly changes that boundary.
+
+Known deferred scope:
+
+- Task 21 still tracks the broad legacy-surface error lifecycle audit; existing shared callouts and representative surfaces are covered, but unrelated legacy rerender paths should not be considered fully audited until that task is closed.
 
 ## Verification
 
@@ -177,3 +227,4 @@ The `AgentEvent.type` numeric enum remains unchanged: `0` thinking, `1` thinking
 - Dispatcher tests cover success, unknown method, malformed message, validation failure, cancellation, and event dispatch.
 - Frontend bridge tests cover request id correlation, timeout, unsubscribe, and error conversion.
 - Golden fixtures continue to validate payload shapes; their `api` filenames are historical and do not imply HTTP transport.
+- Phase 15 bridge guardrails are covered by mocked Playwright workflows and backend registry tests; `npm --prefix frontend run test:phase15` exercises import/style/pattern/Git/update/error surfaces without reviving Wails bindings.

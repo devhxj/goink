@@ -5,6 +5,7 @@ public static class BridgeRuntimeMethodNames
     public const string WindowMinimize = "runtime.window.minimize";
     public const string WindowToggleMaximize = "runtime.window.toggleMaximize";
     public const string WindowIsMaximized = "runtime.window.isMaximized";
+    public const string WindowGetBounds = "runtime.window.getBounds";
     public const string AppQuit = "runtime.app.quit";
     public const string ShellOpenExternal = "runtime.shell.openExternal";
 
@@ -13,6 +14,7 @@ public static class BridgeRuntimeMethodNames
         WindowMinimize,
         WindowToggleMaximize,
         WindowIsMaximized,
+        WindowGetBounds,
         AppQuit,
         ShellOpenExternal
     ];

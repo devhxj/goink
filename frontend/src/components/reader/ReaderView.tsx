@@ -176,13 +176,11 @@ export default function ReaderView({ novelId, focusId }: Props) {
   // ── CRUD handlers ────────────────────────────────────
 
   function openCreate() {
-    setError(null)
     setForm({ ...EMPTY_FORM, planted_chapter: Math.max(1, windowCenter) })
     setEditMode({ type: 'create' })
   }
 
   function openEdit(item: reader.ReaderPerspective) {
-    setError(null)
     setForm({
       type: item.type,
       content: item.content,

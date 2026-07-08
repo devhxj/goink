@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Diagnostics;
 using System.Text;
 using Novelist.Contracts.App;
 using Novelist.Core.App;
@@ -716,24 +715,72 @@ public sealed class NovelImportServiceTests : IDisposable
 
     private static async Task<string> ReadGitConfigAsync(string workspace, string key)
     {
-        var startInfo = new ProcessStartInfo
+        var parts = key.Split('.', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)
         {
-            FileName = "git",
-            WorkingDirectory = workspace,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("config");
-        startInfo.ArgumentList.Add(key);
-        using var process = Process.Start(startInfo);
-        Assert.NotNull(process);
-        var stdout = await process.StandardOutput.ReadToEndAsync();
-        var stderr = await process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        Assert.True(process.ExitCode == 0, stderr);
-        return stdout.Trim();
+            throw new ArgumentException("Git config key must use section.name format.", nameof(key));
+        }
+
+        var gitDirectory = ResolveGitDirectory(workspace);
+        Assert.True(Directory.Exists(gitDirectory), $"Git directory not found: {gitDirectory}");
+        var configPath = Path.Combine(gitDirectory, "config");
+        Assert.True(File.Exists(configPath), $"Git config not found: {configPath}");
+
+        var section = string.Empty;
+        foreach (var rawLine in await File.ReadAllLinesAsync(configPath))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#') || line.StartsWith(';'))
+            {
+                continue;
+            }
+
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                section = line[1..^1].Split(' ', 2)[0].Trim();
+                continue;
+            }
+
+            if (!string.Equals(section, parts[0], StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var separator = line.IndexOf('=');
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            var name = line[..separator].Trim();
+            if (string.Equals(name, parts[1], StringComparison.OrdinalIgnoreCase))
+            {
+                return line[(separator + 1)..].Trim();
+            }
+        }
+
+        throw new InvalidOperationException($"Git config key not found: {key}");
+    }
+
+    private static string ResolveGitDirectory(string workspace)
+    {
+        var gitPath = Path.Combine(workspace, ".git");
+        if (Directory.Exists(gitPath))
+        {
+            return gitPath;
+        }
+
+        Assert.True(File.Exists(gitPath), $"Git metadata not found: {gitPath}");
+        var firstLine = File.ReadLines(gitPath).FirstOrDefault();
+        const string prefix = "gitdir:";
+        Assert.True(
+            firstLine?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) == true,
+            $"Unsupported Git metadata file: {gitPath}");
+        var gitDirectory = firstLine[prefix.Length..].Trim();
+        Assert.False(string.IsNullOrWhiteSpace(gitDirectory), $"Unsupported Git metadata file: {gitPath}");
+        return Path.GetFullPath(Path.IsPathRooted(gitDirectory)
+            ? gitDirectory
+            : Path.Combine(workspace, gitDirectory));
     }
 
     private sealed class RecordingRagIndexRefreshNotifier : IRagIndexRefreshNotifier

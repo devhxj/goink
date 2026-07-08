@@ -29,6 +29,11 @@ public static class BridgeHandlerRegistration
             return await runtimeHost.IsWindowMaximizedAsync(cancellationToken);
         });
 
+        dispatcher.Register(BridgeRuntimeMethodNames.WindowGetBounds, async (_, cancellationToken) =>
+        {
+            return await runtimeHost.GetWindowBoundsAsync(cancellationToken);
+        });
+
         dispatcher.Register(BridgeRuntimeMethodNames.AppQuit, async (_, cancellationToken) =>
         {
             await runtimeHost.QuitApplicationAsync(cancellationToken);

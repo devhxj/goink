@@ -12,7 +12,7 @@
 | Node.js | 24.x | 安装前端依赖并运行 Vite 构建 |
 | npm | 随 Node.js | 前端依赖锁定安装 |
 | Git Bash | Git for Windows 自带 | 运行 `scripts/*.sh` |
-| Git | 任意近期版本 | 本地开发、测试和运行时版本历史；当前 Windows 安装包不内置 Git |
+| Git | 任意近期版本 | 本地开发和 release workflow/tag 操作；应用运行时版本历史使用 LibGit2Sharp，不依赖系统 Git |
 | Inno Setup | 6.x | 生成 Windows 安装包 |
 
 ## 依赖安装
@@ -123,7 +123,7 @@ VERSION=1.0.0 bash scripts/novelist-package-windows.sh
 5. `npm --prefix frontend run build`；
 6. `dotnet test Novelist.slnx --no-restore -v minimal`。
 
-`.github/workflows/release.yml` 只构建 Windows 安装器。workflow 使用完整 Git history/tag 运行 MinVer，校验 `v*` release tag 与 MinVer 解析结果一致，然后上传 `.exe` 和 `sha256sums.txt` 到 GitHub Release。安装包不内置 Git；本地版本历史使用用户系统中的 Git。
+`.github/workflows/release.yml` 只构建 Windows 安装器。workflow 使用完整 Git history/tag 运行 MinVer，校验 `v*` release tag 与 MinVer 解析结果一致，然后上传 `.exe` 和 `sha256sums.txt` 到 GitHub Release。安装包不内置 Git 可执行文件；应用内版本历史通过 `LibGit2Sharp` 和 NuGet 发布的 native libgit2 运行时资产工作，不要求用户系统安装 Git。
 
 ## 清理
 

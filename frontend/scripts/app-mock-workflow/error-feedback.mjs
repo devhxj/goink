@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -23,6 +24,7 @@ export async function verifyErrorFeedbackWorkflow(context) {
   await verifyStyleSampleLibraryErrorFeedback(context)
   await verifyMetadataCrudErrorFeedback(context)
   await verifyLegacySaveExportErrorFeedback(context)
+  await verifyLegacySurfaceErrorLifecycle(context)
 
   await clickActivity(page, '角色')
   await clickCardAction(page.locator('main'), '林岚', '删除')
@@ -87,6 +89,14 @@ export async function verifyErrorFeedbackWorkflow(context) {
   await assertNoSensitiveDiagnosticsVisible(page)
   await assertCopyableDiagnostic(page, createNovelAlert, 'CreateNovel')
   await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
+  await expectErrorPersistsAfter(
+    async () => { await page.getByRole('button', { name: '新建作品' }).last().click() },
+    createNovelAlert,
+    expectVisible,
+    'create novel error after reopening create dialog',
+    page,
+  )
+  await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
 
   const updateNovelBefore = await bridgeCallCount(page, 'UpdateNovel')
   await page.getByRole('button', { name: '编辑作品 全局回归小说', exact: true }).click({ force: true })
@@ -108,6 +118,14 @@ export async function verifyErrorFeedbackWorkflow(context) {
   await expectVisible(deleteNovelAlert, 'delete novel dialog error callout')
   await assertNoSensitiveDiagnosticsVisible(page)
   await assertCopyableDiagnostic(page, deleteNovelAlert, 'DeleteNovel')
+  await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
+  await expectErrorPersistsAfter(
+    async () => { await page.getByRole('button', { name: '删除作品 全局回归小说', exact: true }).click({ force: true }) },
+    deleteNovelAlert,
+    expectVisible,
+    'delete novel error after reopening delete dialog',
+    page,
+  )
   await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
 
   const patternBefore = await bridgeCallCount(page, 'StartNarrativePatternExtraction')
@@ -597,6 +615,355 @@ async function verifyStyleSampleLibraryErrorFeedback(context) {
   await detailPage.close()
 }
 
+async function verifyLegacySurfaceErrorLifecycle(context) {
+  await verifyCharacterAndLocationErrorLifecycle(context)
+  await verifyStoryArcErrorLifecycle(context)
+  await verifyTimelineErrorLifecycle(context)
+  await verifyReaderPreferenceErrorLifecycle(context)
+  await verifyStyleSampleErrorLifecycle(context)
+}
+
+async function verifyCharacterAndLocationErrorLifecycle(context) {
+  const {
+    browser,
+    url,
+    consoleErrors,
+    pageErrors,
+    newAppPage,
+    installClipboardSpy,
+    sensitiveDiagnosticDetails,
+    clickActivity,
+    clickCardAction,
+    waitForBridgeCallCountAfter,
+    bridgeCallCount,
+    errorAlert,
+    expectVisible,
+  } = context
+
+  const page = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    confirmResult: true,
+    faults: {
+      DeleteCharacter: lifecycleFault('CHARACTER_DELETE_LIFECYCLE_FAILED', '角色删除失败：Bearer live-error-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+      DeleteLocation: lifecycleFault('LOCATION_DELETE_LIFECYCLE_FAILED', '地点删除失败：Bearer live-error-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+    },
+  }, undefined, 'character-location-error-lifecycle')
+  await installClipboardSpy(page)
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'workspace title before character/location lifecycle review')
+
+  await clickActivity(page, '角色')
+  const characterDeleteBefore = await bridgeCallCount(page, 'DeleteCharacter')
+  await clickCardAction(page.locator('main'), '林岚', '删除')
+  await waitForBridgeCallCountAfter(page, 'DeleteCharacter', characterDeleteBefore)
+  const characterAlert = errorAlert(page, '角色删除失败')
+  await expectVisible(characterAlert, 'character delete lifecycle error callout')
+  await expectErrorPersistsAfter(
+    async () => { await page.getByRole('button', { name: '新建角色' }).click() },
+    characterAlert,
+    expectVisible,
+    'character delete error after opening create form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await clickCardAction(page.locator('main'), '林岚', '编辑') },
+    characterAlert,
+    expectVisible,
+    'character delete error after opening edit form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+
+  await clickActivity(page, '地点')
+  const locationDeleteBefore = await bridgeCallCount(page, 'DeleteLocation')
+  await clickCardAction(page.locator('main'), '旧城门', '删除')
+  await waitForBridgeCallCountAfter(page, 'DeleteLocation', locationDeleteBefore)
+  const locationAlert = errorAlert(page, '地点删除失败')
+  await expectVisible(locationAlert, 'location delete lifecycle error callout')
+  await expectErrorPersistsAfter(
+    async () => { await page.getByRole('button', { name: '新建地点' }).click() },
+    locationAlert,
+    expectVisible,
+    'location delete error after opening create form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await clickCardAction(page.locator('main'), '旧城门', '编辑') },
+    locationAlert,
+    expectVisible,
+    'location delete error after opening edit form',
+  )
+  await page.close()
+}
+
+async function verifyStoryArcErrorLifecycle(context) {
+  const {
+    browser,
+    url,
+    consoleErrors,
+    pageErrors,
+    newAppPage,
+    installClipboardSpy,
+    sensitiveDiagnosticDetails,
+    clickActivity,
+    clickCardAction,
+    waitForBridgeCallCountAfter,
+    bridgeCallCount,
+    errorAlert,
+    expectVisible,
+  } = context
+
+  const page = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      CreateStoryArc: lifecycleFault('STORY_ARC_CREATE_LIFECYCLE_FAILED', '创建弧线失败：Bearer story-arc-create-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+    },
+  }, undefined, 'story-arc-error-lifecycle')
+  await installClipboardSpy(page)
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'workspace title before story arc lifecycle review')
+  await clickActivity(page, '弧线')
+  await expectVisible(page.getByRole('heading', { name: /弧线节点/ }), 'story arc view before lifecycle failure')
+
+  const createBefore = await bridgeCallCount(page, 'CreateStoryArc')
+  await page.locator('main').getByRole('button', { name: '新弧线' }).click()
+  await page.getByPlaceholder('弧线名称').fill('生命周期弧线')
+  await page.getByPlaceholder('弧线整体描述').fill('生命周期错误仍应保留。')
+  await page.locator('main').getByRole('button', { name: '保存' }).last().click()
+  await waitForBridgeCallCountAfter(page, 'CreateStoryArc', createBefore)
+  const alert = errorAlert(page, '创建弧线失败')
+  await expectVisible(alert, 'story arc lifecycle error callout')
+
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await page.locator('main').getByRole('button', { name: '新弧线' }).click() },
+    alert,
+    expectVisible,
+    'story arc create error after reopening create arc form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await page.locator('button').filter({ hasText: '雨夜调查线' }).getByTitle('编辑').click({ force: true }) },
+    alert,
+    expectVisible,
+    'story arc create error after opening edit arc form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await page.locator('main').getByRole('button', { name: '新建节点' }).click() },
+    alert,
+    expectVisible,
+    'story arc create error after opening create node form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await clickCardAction(page.locator('main'), '桌面水痕触发调查', '编辑') },
+    alert,
+    expectVisible,
+    'story arc create error after opening edit node form',
+  )
+  await page.close()
+}
+
+async function verifyTimelineErrorLifecycle(context) {
+  const {
+    browser,
+    url,
+    consoleErrors,
+    pageErrors,
+    newAppPage,
+    installClipboardSpy,
+    sensitiveDiagnosticDetails,
+    clickActivity,
+    clickCardAction,
+    waitForBridgeCallCountAfter,
+    bridgeCallCount,
+    errorAlert,
+    expectVisible,
+  } = context
+
+  const page = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      UpdateChapterPlan: lifecycleFault('CHAPTER_PLAN_LIFECYCLE_FAILED', '保存计划失败：Bearer timeline-plan-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+    },
+  }, undefined, 'timeline-error-lifecycle')
+  await installClipboardSpy(page)
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'workspace title before timeline lifecycle review')
+  await clickActivity(page, '时间线')
+  await expectVisible(page.getByRole('heading', { name: /章节计划/ }), 'timeline view before lifecycle failure')
+
+  const planSection = page.locator('section').filter({ hasText: '章节计划' })
+  const planBefore = await bridgeCallCount(page, 'UpdateChapterPlan')
+  await planSection.getByTitle('编辑').click({ force: true })
+  await page.getByPlaceholder('下一章计划内容...').fill('生命周期计划错误仍应保留。')
+  await planSection.getByRole('button', { name: '保存' }).click()
+  await waitForBridgeCallCountAfter(page, 'UpdateChapterPlan', planBefore)
+  const alert = errorAlert(page, '保存计划失败')
+  await expectVisible(alert, 'timeline plan lifecycle error callout')
+
+  await planSection.getByRole('button', { name: '取消' }).click()
+  await expectErrorPersistsAfter(
+    async () => { await page.locator('section').filter({ hasText: '伏笔与指令' }).getByRole('button', { name: '新建' }).click() },
+    alert,
+    expectVisible,
+    'timeline plan error after opening create entry form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await planSection.getByTitle('编辑').click({ force: true }) },
+    alert,
+    expectVisible,
+    'timeline plan error after reopening plan edit form',
+  )
+  await planSection.getByRole('button', { name: '取消' }).click()
+  await expectErrorPersistsAfter(
+    async () => { await clickCardAction(page.locator('main'), '桌面水痕', '编辑') },
+    alert,
+    expectVisible,
+    'timeline plan error after opening entry edit form',
+  )
+  await page.close()
+}
+
+async function verifyReaderPreferenceErrorLifecycle(context) {
+  const {
+    browser,
+    url,
+    consoleErrors,
+    pageErrors,
+    newAppPage,
+    installClipboardSpy,
+    sensitiveDiagnosticDetails,
+    clickActivity,
+    clickCardAction,
+    waitForBridgeCallCountAfter,
+    bridgeCallCount,
+    errorAlert,
+    expectVisible,
+  } = context
+
+  const page = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      CreateReaderPerspective: lifecycleFault('READER_CREATE_LIFECYCLE_FAILED', '创建读者视角失败：Bearer reader-create-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+      CreatePreference: lifecycleFault('PREFERENCE_CREATE_LIFECYCLE_FAILED', '创建偏好失败：Bearer preference-create-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+    },
+  }, undefined, 'reader-preference-error-lifecycle')
+  await installClipboardSpy(page)
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'workspace title before reader/preference lifecycle review')
+
+  await clickActivity(page, '读者视角')
+  const readerBefore = await bridgeCallCount(page, 'CreateReaderPerspective')
+  await page.locator('main').getByRole('button', { name: '新建' }).click()
+  await page.getByPlaceholder('读者知道/想知道/误以为的事情').fill('生命周期读者视角错误仍应保留。')
+  await page.getByPlaceholder('真实情况是什么').fill('旧城门还没有安全。')
+  await page.locator('main').getByRole('button', { name: '创建' }).last().click()
+  await waitForBridgeCallCountAfter(page, 'CreateReaderPerspective', readerBefore)
+  const readerAlert = errorAlert(page, '创建读者视角失败')
+  await expectVisible(readerAlert, 'reader lifecycle error callout')
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await page.locator('main').getByRole('button', { name: '新建' }).click() },
+    readerAlert,
+    expectVisible,
+    'reader create error after reopening create form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await clickCardAction(page.locator('main'), '读者知道林岚正在调查旧城门', '编辑') },
+    readerAlert,
+    expectVisible,
+    'reader create error after opening edit form',
+  )
+
+  await clickActivity(page, '偏好')
+  const preferenceBefore = await bridgeCallCount(page, 'CreatePreference')
+  await page.locator('section').filter({ hasText: '全局偏好' }).getByRole('button', { name: '添加' }).click()
+  await page.getByPlaceholder('风格、对话、世界观...').fill('生命周期')
+  await page.getByPlaceholder('偏好内容').fill('生命周期偏好错误仍应保留。')
+  await page.locator('main').getByRole('button', { name: '创建' }).last().click()
+  await waitForBridgeCallCountAfter(page, 'CreatePreference', preferenceBefore)
+  const preferenceAlert = errorAlert(page, '创建偏好失败')
+  await expectVisible(preferenceAlert, 'preference lifecycle error callout')
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await page.locator('section').filter({ hasText: '全局偏好' }).getByRole('button', { name: '添加' }).click() },
+    preferenceAlert,
+    expectVisible,
+    'preference create error after reopening create form',
+  )
+  await page.locator('main').getByRole('button', { name: '取消' }).last().click()
+  await expectErrorPersistsAfter(
+    async () => { await clickCardAction(page.locator('main'), '保持受限视角', '编辑') },
+    preferenceAlert,
+    expectVisible,
+    'preference create error after opening edit form',
+  )
+  await page.close()
+}
+
+async function verifyStyleSampleErrorLifecycle(context) {
+  const {
+    browser,
+    url,
+    consoleErrors,
+    pageErrors,
+    newAppPage,
+    installClipboardSpy,
+    sensitiveDiagnosticDetails,
+    clickActivity,
+    waitForBridgeCallCountAfter,
+    bridgeCallCount,
+    errorAlert,
+    expectVisible,
+  } = context
+
+  const page = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      GetStyleSample: lifecycleFault('STYLE_SAMPLE_DETAIL_LIFECYCLE_FAILED', '加载样本详情失败：Bearer style-sample-detail-token-abcdefghijklmnopqrstuvwxyz', sensitiveDiagnosticDetails()),
+    },
+  }, undefined, 'style-sample-error-lifecycle')
+  await installClipboardSpy(page)
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'workspace title before style sample lifecycle review')
+  await clickActivity(page, '风格素材')
+  await expectVisible(page.getByText('全局雨夜节奏').first(), 'style sample card before lifecycle failure')
+  const detailBefore = await bridgeCallCount(page, 'GetStyleSample')
+  await page.getByRole('button', { name: '查看样本 全局雨夜节奏' }).click()
+  await waitForBridgeCallCountAfter(page, 'GetStyleSample', detailBefore)
+  const alert = errorAlert(page, '加载样本详情失败')
+  await expectVisible(alert, 'style sample detail lifecycle error callout')
+  await expectErrorPersistsAfter(
+    async () => { await page.getByRole('button', { name: '新建样本' }).click() },
+    alert,
+    expectVisible,
+    'style sample detail error after opening create form',
+  )
+  await page.close()
+}
+
+function lifecycleFault(code, message, details) {
+  return {
+    mode: 'storage',
+    code,
+    message,
+    details,
+    retryable: true,
+  }
+}
+
+async function expectErrorPersistsAfter(action, alert, expectVisible, description, page = null) {
+  await action()
+  if (page) {
+    await page.waitForTimeout(75)
+  }
+  assert.equal(await alert.isVisible(), true, `Expected error to persist: ${description}`)
+  await expectVisible(alert, description)
+}
+
 async function verifyLegacySaveExportErrorFeedback(context) {
   const {
     browser,
@@ -678,6 +1045,15 @@ async function verifyLegacySaveExportErrorFeedback(context) {
   await expectVisible(contentSaveAlert, 'content save error callout')
   await assertNoSensitiveDiagnosticsVisible(chapterSavePage)
   await assertCopyableDiagnostic(chapterSavePage, contentSaveAlert, 'SaveContent')
+  await expectErrorPersistsAfter(
+    async () => {
+      await replaceEditorText(chapterSavePage, '错误反馈保存正文。\n\n继续编辑时，保存失败提示仍应保留。')
+    },
+    contentSaveAlert,
+    expectVisible,
+    'content save error after editing content',
+    chapterSavePage,
+  )
   await chapterSavePage.close()
 
   const skillEditPage = await newAppPage(browser, consoleErrors, pageErrors, {
@@ -735,6 +1111,14 @@ async function verifyLegacySaveExportErrorFeedback(context) {
   await expectVisible(extractAlert, 'legacy style extract error callout')
   await assertNoSensitiveDiagnosticsVisible(extractPage)
   await assertCopyableDiagnostic(extractPage, extractAlert, 'ExtractStyle')
+  await extractPage.locator('.fixed').getByRole('button', { name: '✕' }).click()
+  await expectErrorPersistsAfter(
+    async () => { await extractPage.locator('aside').getByTitle('提取写作风格').click() },
+    extractAlert,
+    expectVisible,
+    'legacy style extract error after reopening dialog',
+    extractPage,
+  )
   await extractPage.close()
 
   const extractSavePage = await newAppPage(browser, consoleErrors, pageErrors, {

@@ -26,17 +26,52 @@ public sealed class PhotinoWindowFactory : IPhotinoWindowFactory
         var adapter = new PhotinoWindowAdapter(window);
         var bridge = DesktopBridgeComposition.CreateBridge(adapter, settings.AppOptions);
 
+        var hasStoredLocation = settings.X.HasValue && settings.Y.HasValue;
         window
             .SetTitle(settings.Title)
             .SetUseOsDefaultSize(false)
             .SetSize(new Size(settings.Width, settings.Height))
-            .Center()
+            .SetUseOsDefaultLocation(!hasStoredLocation)
             .SetResizable(true)
-            .RegisterWebMessageReceivedHandler((_, message) => bridge.Post(message))
-            .Load(settings.StartUrl);
+            .RegisterWebMessageReceivedHandler((_, message) => bridge.Post(message));
+        if (hasStoredLocation)
+        {
+            window.MoveTo(ResolveLaunchLocation(window, settings), allowOutsideWorkArea: false);
+        }
+        else
+        {
+            window.Center();
+        }
+        window.Load(settings.StartUrl);
         window.Maximized = settings.Maximized;
 
         return adapter;
+    }
+
+    private static Point ResolveLaunchLocation(PhotinoWindow window, PhotinoWindowSettings settings)
+    {
+        var requested = new Point(settings.X!.Value, settings.Y!.Value);
+        var size = new Size(settings.Width, settings.Height);
+        return PhotinoWindowPlacement.ClampLocationToVisibleWorkArea(
+            requested,
+            size,
+            SafeMonitorWorkAreas(window).ToArray());
+    }
+
+    private static IEnumerable<Rectangle> SafeMonitorWorkAreas(PhotinoWindow window)
+    {
+        try
+        {
+            return window.Monitors
+                .Select(monitor => monitor.WorkArea)
+                .Where(area => area.Width > 0 && area.Height > 0)
+                .ToArray();
+        }
+        catch (Exception exception)
+        {
+            DesktopLaunchLog.Write("Unable to read monitor work areas; using stored window location without pre-clamp.", exception);
+            return [];
+        }
     }
 
     private static string? TryCreateWebViewDataPath(string? key)
@@ -143,6 +178,18 @@ public sealed class PhotinoWindowFactory : IPhotinoWindowFactory
         public bool IsMaximized()
         {
             return _window.Maximized;
+        }
+
+        public PhotinoWindowBounds GetBounds()
+        {
+            var location = _window.Location;
+            var size = _window.Size;
+            return new PhotinoWindowBounds(
+                location.X,
+                location.Y,
+                size.Width,
+                size.Height,
+                _window.Maximized);
         }
 
         public void Close()

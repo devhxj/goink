@@ -105,13 +105,11 @@ export default function LocationListView({ novelId, focusId }: Props) {
   // ── CRUD handlers ─────────────────────────────────────
 
   function openCreate(parentId?: number) {
-    setError(null)
     setForm({ ...EMPTY_FORM, parent_location_id: parentId })
     setEditMode({ type: 'create' })
   }
 
   function openEdit(loc: location.Location) {
-    setError(null)
     setForm({
       name: loc.name,
       location_type: loc.location_type || '',
