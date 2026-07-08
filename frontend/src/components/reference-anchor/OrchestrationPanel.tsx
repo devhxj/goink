@@ -537,7 +537,7 @@ export function OrchestrationPanel({
         )}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="mt-4 grid grid-cols-1 gap-4">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <FileClock className="h-3.5 w-3.5 text-muted-foreground" />
@@ -598,11 +598,11 @@ export function OrchestrationPanel({
               </div>
 
               {decision ? (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                <div data-testid="reference-orchestration-current-decision" className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex w-full min-w-0 items-center gap-2 sm:flex-1">
                       <ShieldAlert className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-                      <p className="truncate text-xs font-semibold text-foreground">{decisionLabel(decision.decision_type)}</p>
+                      <p className="text-xs font-semibold leading-snug text-foreground">{decisionLabel(decision.decision_type)}</p>
                     </div>
                     {decisionType === 'approve_final_insertion' ? (
                       <span className="rounded bg-background px-2 py-1 text-[11px] text-muted-foreground">候选已就绪</span>

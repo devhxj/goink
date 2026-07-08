@@ -5,6 +5,7 @@ import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
+import { assertNoUnnamedVisibleInteractiveControls } from './app-mock-workflow/accessibility-helpers.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(__dirname, '..')
@@ -74,7 +75,7 @@ async function main() {
     await expectHidden(page.getByText('材料搜索', { exact: true }), 'material search hidden by default')
     await expectHidden(page.getByRole('button', { name: /生成蓝图/ }), 'manual blueprint generation hidden by default')
     await expectHidden(page.getByText('当前节拍字段', { exact: true }), 'manual blueprint detail hidden by default')
-    await openAdvancedMode(page)
+    await verifyReferenceAccessibilityReview(page)
 
     logStep('create/rebuild/search')
     await createRebuildAndSearchReferenceMaterial(page)
@@ -545,7 +546,7 @@ async function runDefaultOrchestrationToFinalInsertionStop(page) {
 
   await panel.getByRole('button', { name: /启动候选编排/ }).click()
   await expectVisible(page.getByText('编排已启动，等待确认来源与事实边界'), 'orchestration started message')
-  await expectVisible(panel.getByText('确认来源与事实边界', { exact: true }), 'source confirmation decision')
+  await expectVisible(currentDecision(panel).getByText('确认来源与事实边界', { exact: true }), 'source confirmation decision')
   await expectVisible(panel.getByText('检索策略'), 'corpus search policy heading')
   await expectVisible(panel.getByText('story_context'), 'story context search policy')
   await expectVisible(panel.getByText('可访问工作区语料', { exact: true }), 'workspace corpus search scope')
@@ -556,7 +557,7 @@ async function runDefaultOrchestrationToFinalInsertionStop(page) {
   await panel.getByRole('button', { name: /^确认$/ }).click()
 
   await expectVisible(page.getByText('编排已继续'), 'orchestration resumed message')
-  await expectVisible(panel.getByText('批准蓝图', { exact: true }).first(), 'blueprint approval decision')
+  await expectVisible(currentDecision(panel).getByText('批准蓝图', { exact: true }), 'blueprint approval decision')
   await expectVisible(panel.getByText('章节功能'), 'approval summary chapter function')
   await expectVisible(panel.getByText('POV', { exact: true }), 'approval summary pov label')
   await expectVisible(panel.getByText('事实边界', { exact: true }), 'approval summary fact boundary label')
@@ -592,10 +593,10 @@ async function runOrchestrationHighRiskRecoveryActions(page) {
   await panel.getByRole('button', { name: /启动候选编排/ }).click()
   await expectVisible(page.getByText('编排已启动，等待确认来源与事实边界'), 'material-gap orchestration started')
   await panel.getByRole('button', { name: /^确认$/ }).click()
-  await expectVisible(panel.getByText('批准蓝图', { exact: true }).first(), 'material-gap blueprint approval decision')
+  await expectVisible(currentDecision(panel).getByText('批准蓝图', { exact: true }), 'material-gap blueprint approval decision')
   await panel.getByRole('button', { name: /^确认$/ }).click()
 
-  await expectVisible(panel.getByText('确认高风险停止', { exact: true }).first(), 'material-gap high-risk decision')
+  await expectVisible(currentDecision(panel).getByText('确认高风险停止', { exact: true }), 'material-gap high-risk decision')
   await expectVisible(panel.getByText('检查材料缺口'), 'material-gap inspect action label')
   await expectVisible(panel.getByText('定位没有选中材料的节拍，再决定补材料还是改查询。'), 'material-gap inspect action hint')
   await expectVisible(panel.getByText('导入或恢复材料'), 'material-gap import action label')
@@ -610,10 +611,10 @@ async function runOrchestrationHighRiskRecoveryActions(page) {
   await panel.getByRole('button', { name: /启动候选编排/ }).click()
   await expectVisible(page.getByText('编排已启动，等待确认来源与事实边界'), 'source-leak orchestration started')
   await panel.getByRole('button', { name: /^确认$/ }).click()
-  await expectVisible(panel.getByText('批准蓝图', { exact: true }).first(), 'source-leak blueprint approval decision')
+  await expectVisible(currentDecision(panel).getByText('批准蓝图', { exact: true }), 'source-leak blueprint approval decision')
   await panel.getByRole('button', { name: /^确认$/ }).click()
 
-  await expectVisible(panel.getByText('确认高风险停止', { exact: true }).first(), 'source-leak high-risk decision')
+  await expectVisible(currentDecision(panel).getByText('确认高风险停止', { exact: true }), 'source-leak high-risk decision')
   await expectVisible(panel.getByText('检查来源贴近风险'), 'source-leak inspect action label')
   await expectVisible(panel.getByText('查看 source-leak 类别和候选编号，不复制来源文本继续扩写。'), 'source-leak inspect action hint')
   await expectVisible(panel.getByText('降低模仿或重绑材料'), 'source-leak mitigation action label')
@@ -1331,6 +1332,10 @@ function orchestrationPanel(page) {
   return page.getByTestId('reference-orchestration-panel')
 }
 
+function currentDecision(panel) {
+  return panel.getByTestId('reference-orchestration-current-decision')
+}
+
 async function expectVisible(locator, description) {
   await locator.waitFor({ state: 'visible', timeout: 10_000 }).catch((error) => {
     throw new Error(`Expected visible: ${description}`, { cause: error })
@@ -1343,13 +1348,18 @@ async function expectHidden(locator, description) {
   })
 }
 
-async function openAdvancedMode(page) {
+async function verifyReferenceAccessibilityReview(page) {
+  const referenceSurface = page.locator('main')
+  await assertNoUnnamedVisibleInteractiveControls(referenceSurface, 'reference-anchor default surface')
+
   const button = page.getByRole('button', { name: '打开高级模式' })
-  await expectVisible(button, 'open advanced mode button')
-  await button.click()
-  await expectVisible(page.getByText('材料搜索', { exact: true }), 'material search visible in advanced mode')
-  await expectVisible(page.getByRole('button', { name: /生成蓝图/ }), 'manual blueprint generation visible in advanced mode')
-  await expectVisible(blueprintDetail(page), 'manual blueprint detail visible in advanced mode')
+  await expectVisible(button, 'open advanced mode button before accessibility keyboard check')
+  await button.focus()
+  await page.keyboard.press('Enter')
+  await expectVisible(page.getByText('材料搜索', { exact: true }), 'material search visible after keyboard opening advanced mode')
+  await expectVisible(page.getByRole('button', { name: /生成蓝图/ }), 'manual blueprint generation visible after keyboard opening advanced mode')
+  await expectVisible(blueprintDetail(page), 'manual blueprint detail visible after keyboard opening advanced mode')
+  await assertNoUnnamedVisibleInteractiveControls(referenceSurface, 'reference-anchor advanced surface')
 }
 
 async function assertDisabled(locator, description) {

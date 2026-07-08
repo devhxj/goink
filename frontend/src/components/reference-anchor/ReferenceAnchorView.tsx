@@ -514,6 +514,31 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   )
   const hasMaterialLibraryPageQuery = materialLibraryPageQuery.trim().length > 0
 
+  const referenceError = useCallback((
+    errorValue: unknown,
+    {
+      fallbackMessage = '操作失败',
+      operation = 'ReferenceAnchorOperation',
+      bridgeMethod = null,
+      detail = {},
+    }: ReferenceRunOptions = {},
+  ): Exclude<ReferenceErrorState, string> => {
+    return {
+      title: fallbackMessage,
+      message: diagnosticMessage(errorValue, fallbackMessage),
+      diagnostic: buildCopyableDiagnostic({
+        error: errorValue,
+        fallbackMessage,
+        operation,
+        bridgeMethod,
+        detail: {
+          novel_id: novelId,
+          ...detail,
+        },
+      }),
+    }
+  }, [novelId])
+
   const loadAnchors = useCallback(async () => {
     if (!novelId) {
       setAnchors([])
@@ -575,13 +600,20 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       try {
         await Promise.all([loadAnchors(), loadBlueprints(), loadOrchestrationRuns(), loadStyleProfiles()])
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : '加载失败')
+        if (!cancelled) {
+          setError(referenceError(err, {
+            fallbackMessage: '参考锚定数据加载失败',
+            operation: 'LoadReferenceAnchorSurface',
+            bridgeMethod: null,
+            detail: { phase: 'initial_load' },
+          }))
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [loadAnchors, loadBlueprints, loadOrchestrationRuns, loadStyleProfiles])
+  }, [loadAnchors, loadBlueprints, loadOrchestrationRuns, loadStyleProfiles, referenceError])
 
   useEffect(() => {
     let cancelled = false
@@ -595,36 +627,18 @@ export default function ReferenceAnchorView({ novelId }: Props) {
         const list = await app.GetReferenceOrchestrationRunEvents(novelId, activeOrchestrationRun.run_id)
         if (!cancelled) setOrchestrationEvents(list ?? [])
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : '加载编排事件失败')
+        if (!cancelled) {
+          setError(referenceError(err, {
+            fallbackMessage: '加载编排事件失败',
+            operation: 'GetReferenceOrchestrationRunEvents',
+            bridgeMethod: 'GetReferenceOrchestrationRunEvents',
+            detail: { run_id: activeOrchestrationRun.run_id },
+          }))
+        }
       }
     })()
     return () => { cancelled = true }
-  }, [app, novelId, activeOrchestrationRun])
-
-  function referenceError(
-    errorValue: unknown,
-    {
-      fallbackMessage = '操作失败',
-      operation = 'ReferenceAnchorOperation',
-      bridgeMethod = null,
-      detail = {},
-    }: ReferenceRunOptions = {},
-  ): Exclude<ReferenceErrorState, string> {
-    return {
-      title: fallbackMessage,
-      message: diagnosticMessage(errorValue, fallbackMessage),
-      diagnostic: buildCopyableDiagnostic({
-        error: errorValue,
-        fallbackMessage,
-        operation,
-        bridgeMethod,
-        detail: {
-          novel_id: novelId,
-          ...detail,
-        },
-      }),
-    }
-  }
+  }, [app, novelId, activeOrchestrationRun, referenceError])
 
   async function run<T>(
     task: () => Promise<T>,
@@ -772,7 +786,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
   }
 
   async function rebuildAnchor(anchorId: number) {
-    await run(() => app.RebuildReferenceAnchor(novelId, anchorId), '锚点已重建', {
+    const rebuilt = await run(() => app.RebuildReferenceAnchor(novelId, anchorId), '锚点已重建', {
       fallbackMessage: '锚点重建失败',
       operation: 'RebuildReferenceAnchor',
       bridgeMethod: 'RebuildReferenceAnchor',
@@ -780,7 +794,9 @@ export default function ReferenceAnchorView({ novelId }: Props) {
         anchor_id: anchorId,
       },
     })
-    await loadAnchors()
+    if (rebuilt) {
+      await loadAnchors()
+    }
   }
 
   async function promoteAnchorToWorkspaceCorpus(anchor: reference.Anchor) {
@@ -816,7 +832,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       })
       setMessage(`已批量提升 ${anchorIds.length} 个参考锚点为工作区语料`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      setError(referenceError(err, {
+        fallbackMessage: '批量提升为工作区语料失败',
+        operation: 'PromoteReferenceAnchorsToWorkspaceCorpus',
+        bridgeMethod: 'PromoteReferenceAnchorsToWorkspaceCorpus',
+        detail: { anchor_count: anchorIds.length },
+      }))
       setLoading(false)
       return
     } finally {
@@ -836,7 +857,15 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       await app.DeleteReferenceAnchor(novelId, anchor.anchor_id)
       setMessage(isWorkspaceCorpus ? '工作区语料已归档为受限' : '参考锚点已删除')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      setError(referenceError(err, {
+        fallbackMessage: isWorkspaceCorpus ? '工作区语料归档失败' : '参考锚点删除失败',
+        operation: 'DeleteReferenceAnchor',
+        bridgeMethod: 'DeleteReferenceAnchor',
+        detail: {
+          anchor_id: anchor.anchor_id,
+          owner_scope: anchor.owner_scope,
+        },
+      }))
       setLoading(false)
       return
     } finally {
@@ -875,7 +904,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       })
       setMessage(`已批量归档 ${anchorIds.length} 个工作区语料`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      setError(referenceError(err, {
+        fallbackMessage: '批量归档工作区语料失败',
+        operation: 'DeleteReferenceAnchors',
+        bridgeMethod: 'DeleteReferenceAnchors',
+        detail: { anchor_count: anchorIds.length },
+      }))
       setLoading(false)
       return
     } finally {
@@ -1198,7 +1232,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       })
       setMessage(`材料库已归档 ${archivedIds.length} 条材料`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      setError(referenceError(err, {
+        fallbackMessage: '材料库归档失败',
+        operation: 'DeleteReferenceMaterials',
+        bridgeMethod: 'DeleteReferenceMaterials',
+        detail: { material_count: archivedIds.length },
+      }))
       setLoading(false)
       return
     } finally {
@@ -1228,7 +1267,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
       })
       setMessage(`材料库已恢复 ${restoredIds.length} 条材料`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      setError(referenceError(err, {
+        fallbackMessage: '材料库恢复失败',
+        operation: 'RestoreReferenceMaterials',
+        bridgeMethod: 'RestoreReferenceMaterials',
+        detail: { material_count: restoredIds.length },
+      }))
       setLoading(false)
       return
     } finally {
@@ -1446,7 +1490,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
         const events = await app.GetReferenceOrchestrationRunEvents(novelId, runId)
         setOrchestrationEvents(events ?? [])
       } catch (err) {
-        setError(err instanceof Error ? err.message : '加载编排事件失败')
+        setError(referenceError(err, {
+          fallbackMessage: '加载编排事件失败',
+          operation: 'GetReferenceOrchestrationRunEvents',
+          bridgeMethod: 'GetReferenceOrchestrationRunEvents',
+          detail: { run_id: runId, phase: 'after_resume' },
+        }))
       }
     }
   }
@@ -1469,7 +1518,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
         const events = await app.GetReferenceOrchestrationRunEvents(novelId, runId)
         setOrchestrationEvents(events ?? [])
       } catch (err) {
-        setError(err instanceof Error ? err.message : '加载编排事件失败')
+        setError(referenceError(err, {
+          fallbackMessage: '加载编排事件失败',
+          operation: 'GetReferenceOrchestrationRunEvents',
+          bridgeMethod: 'GetReferenceOrchestrationRunEvents',
+          detail: { run_id: runId, phase: 'after_cancel' },
+        }))
       }
     }
   }
