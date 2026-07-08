@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import {
-  AlertTriangle,
   BarChart3,
   CheckSquare,
   ChevronLeft,
@@ -14,8 +13,10 @@ import {
   Tags,
   Trash2,
 } from 'lucide-react'
+import ErrorCallout from '@/components/shared/ErrorCallout'
 import { useApp } from '@/hooks/useApp'
-import type { styleSample } from '@/lib/novelist/types'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics, styleSample } from '@/lib/novelist/types'
 import StyleExtractionPanel from './StyleExtractionPanel'
 
 interface Props {
@@ -28,6 +29,11 @@ type SampleFormState = {
   name: string
   content: string
   tags: string
+}
+
+type StyleSampleError = {
+  message: string
+  diagnostic: diagnostics.CopyableDiagnostic
 }
 
 const PAGE_SIZE = 2
@@ -53,7 +59,7 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<StyleSampleError | null>(null)
   const [form, setForm] = useState<SampleFormState | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -75,9 +81,16 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
       setTotal(result.total ?? 0)
       setTotalPages(Math.max(1, result.total_pages || 1))
       setPage(result.page || targetPage)
-      setError(null)
+      clearErrorForBridgeMethod(setError, 'SearchStyleSamples')
     } catch (err) {
-      setError(errorText(err, '加载风格素材失败'))
+      setError(styleSampleError(err, '加载风格素材失败', '加载风格素材列表', 'SearchStyleSamples', {
+        novel_id: novelId,
+        include_global: includeGlobal,
+        query,
+        tags: parsedTagFilter,
+        page: targetPage,
+        size: PAGE_SIZE,
+      }))
     } finally {
       setLoading(false)
     }
@@ -102,10 +115,19 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
           setTotal(result.total ?? 0)
           setTotalPages(Math.max(1, result.total_pages || 1))
           setPage(result.page || page)
-          setError(null)
+          clearErrorForBridgeMethod(setError, 'SearchStyleSamples')
         }
       } catch (err) {
-        if (!cancelled) setError(errorText(err, '加载风格素材失败'))
+        if (!cancelled) {
+          setError(styleSampleError(err, '加载风格素材失败', '加载风格素材列表', 'SearchStyleSamples', {
+            novel_id: novelId,
+            include_global: includeGlobal,
+            query,
+            tags: parsedTagFilter,
+            page,
+            size: PAGE_SIZE,
+          }))
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -117,9 +139,11 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
     try {
       const result = await app.GetStyleSample({ sample_id: sampleId })
       setDetail(result)
-      setError(null)
+      clearErrorForBridgeMethod(setError, 'GetStyleSample')
     } catch (err) {
-      setError(errorText(err, '加载样本详情失败'))
+      setError(styleSampleError(err, '加载样本详情失败', '加载风格样本详情', 'GetStyleSample', {
+        sample_id: sampleId,
+      }))
     }
   }
 
@@ -133,7 +157,9 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
     try {
       const result = await app.GetStyleSample({ sample_id: sample.sample_id })
       if (!result) {
-        setError('样本不存在或已被删除')
+        setError(styleSampleError('样本不存在或已被删除', '样本不存在或已被删除', '加载风格样本详情', 'GetStyleSample', {
+          sample_id: sample.sample_id,
+        }))
         return
       }
 
@@ -145,9 +171,11 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
         tags: result.tags.join('; '),
       })
       setDetail(result)
-      setError(null)
+      clearErrorForBridgeMethod(setError, 'GetStyleSample')
     } catch (err) {
-      setError(errorText(err, '加载编辑内容失败'))
+      setError(styleSampleError(err, '加载编辑内容失败', '加载风格样本详情', 'GetStyleSample', {
+        sample_id: sample.sample_id,
+      }))
     }
   }
 
@@ -157,29 +185,29 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
     const name = form.name.trim()
     const content = form.content.trim()
     if (!name) {
-      setError('请输入样本名称')
+      setError(styleSampleError('请输入样本名称', '请输入样本名称', '校验风格样本表单', null))
       return
     }
     if (!content) {
-      setError('请输入样本内容')
+      setError(styleSampleError('请输入样本内容', '请输入样本内容', '校验风格样本表单', null))
       return
+    }
+
+    const input = {
+      novel_id: form.isGlobal ? null : novelId,
+      is_global: form.isGlobal,
+      name,
+      content,
+      tags: parseTags(form.tags),
+      source_metadata: {
+        source_type: 'manual',
+        source_id: form.sampleId ? `style-sample-${form.sampleId}` : 'style-sample-ui',
+        source_hash: `ui-${stableHash(content)}`,
+      },
     }
 
     setSaving(true)
     try {
-      const input = {
-        novel_id: form.isGlobal ? null : novelId,
-        is_global: form.isGlobal,
-        name,
-        content,
-        tags: parseTags(form.tags),
-        source_metadata: {
-          source_type: 'manual',
-          source_id: form.sampleId ? `style-sample-${form.sampleId}` : 'style-sample-ui',
-          source_hash: `ui-${stableHash(content)}`,
-        },
-      }
-
       const saved = form.sampleId
         ? await app.UpdateStyleSample({ sample_id: form.sampleId, ...input })
         : await app.CreateStyleSample(input)
@@ -189,7 +217,20 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
       setSelectedIds(ids => ids.includes(saved.sample_id) ? ids : [saved.sample_id, ...ids])
       setError(null)
     } catch (err) {
-      setError(errorText(err, '保存风格样本失败'))
+      setError(styleSampleError(
+        err,
+        '保存风格样本失败',
+        form.sampleId ? '更新风格样本' : '创建风格样本',
+        form.sampleId ? 'UpdateStyleSample' : 'CreateStyleSample',
+        {
+          sample_id: form.sampleId,
+          novel_id: input.novel_id,
+          is_global: input.is_global,
+          name: input.name,
+          tags: input.tags,
+          source_metadata: input.source_metadata,
+        },
+      ))
     } finally {
       setSaving(false)
     }
@@ -203,7 +244,10 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
       await loadSamples(page)
       setError(null)
     } catch (err) {
-      setError(errorText(err, '删除风格样本失败'))
+      setError(styleSampleError(err, '删除风格样本失败', '删除风格样本', 'DeleteStyleSample', {
+        sample_id: sample.sample_id,
+        name: sample.name,
+      }))
     }
   }
 
@@ -244,13 +288,12 @@ export default function StyleSampleLibraryView({ novelId }: Props) {
         </header>
 
         {error && (
-          <section
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-danger-border bg-danger-bg px-3 py-2 text-sm text-foreground"
-          >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <span className="min-w-0 break-words">{error}</span>
-          </section>
+          <ErrorCallout
+            message={error.message}
+            diagnostic={error.diagnostic}
+            className="rounded-md"
+            onClose={() => setError(null)}
+          />
         )}
 
         <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -623,10 +666,30 @@ function parseTags(value: string | string[]): string[] {
   return tags
 }
 
-function errorText(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
+function styleSampleError(
+  error: unknown,
+  fallbackMessage: string,
+  operation: string,
+  bridgeMethod: string | null,
+  detail?: unknown,
+): StyleSampleError {
+  return {
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
+}
+
+function clearErrorForBridgeMethod(
+  setError: Dispatch<SetStateAction<StyleSampleError | null>>,
+  bridgeMethod: string,
+): void {
+  setError(current => current?.diagnostic.bridge_method === bridgeMethod ? null : current)
 }
 
 function scopeButtonClass(active: boolean): string {

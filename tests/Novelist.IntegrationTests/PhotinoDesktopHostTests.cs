@@ -1,5 +1,7 @@
 using Novelist.App.Desktop;
+using Novelist.Contracts.App;
 using Novelist.Core.App;
+using Novelist.Infrastructure.App;
 
 namespace Novelist.IntegrationTests;
 
@@ -13,6 +15,7 @@ public sealed class PhotinoDesktopHostTests
         Assert.Equal("novelist", settings.Title);
         Assert.Equal(1280, settings.Width);
         Assert.Equal(840, settings.Height);
+        Assert.False(settings.Maximized);
         Assert.Equal("about:blank", settings.StartUrl);
         Assert.NotNull(settings.AppOptions);
         Assert.True(settings.AppOptions.EnableLegacyMigration);
@@ -57,6 +60,49 @@ public sealed class PhotinoDesktopHostTests
         Assert.Equal("https://updates.example.test/novelist/releases.json", settings.AppOptions.UpdateCheckEndpointUrl);
         Assert.True(settings.AppOptions.UpdateChecksEnabledByDefault);
         Assert.Equal(2500, settings.AppOptions.UpdateCheckTimeoutMs);
+    }
+
+    [Fact]
+    public async Task LaunchSettingsUsePersistedWindowSizeWhenAppIsInitialized()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "novelist-desktop-window-" + Guid.NewGuid().ToString("N"));
+        var options = new AppInitializationOptions
+        {
+            ConfigDirectory = Path.Combine(root, "config"),
+            DefaultDataDirectory = Path.Combine(root, "data"),
+            EnableLegacyMigration = false
+        };
+
+        try
+        {
+            await new FileSystemAppInitializationService(options)
+                .InitializeAsync(options.DefaultDataDirectory, CancellationToken.None);
+            await new FileSystemAppSettingsService(options)
+                .SaveWindowSettingsAsync(
+                    new SaveWindowSettingsPayload(
+                        X: null,
+                        Y: null,
+                        Width: 1440,
+                        Height: 900,
+                        Maximized: true),
+                    CancellationToken.None);
+
+            var settings = PhotinoLaunchMode.CreateSettings(
+                [PhotinoLaunchMode.DesktopFlag],
+                appOptions: options);
+
+            Assert.Equal(1440, settings.Width);
+            Assert.Equal(900, settings.Height);
+            Assert.True(settings.Maximized);
+            Assert.Same(options, settings.AppOptions);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 
     [Fact]

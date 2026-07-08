@@ -6,6 +6,9 @@ import { useApp } from '@/hooks/useApp'
 import { useEditorTabs } from '@/hooks/useEditorTabs'
 import { useTheme, type Theme } from '@/hooks/useTheme'
 import { EventsOn } from '@/lib/novelist/events'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
+import ErrorCallout from '@/components/shared/ErrorCallout'
 import TabBar from './TabBar'
 import ContentEditor from './ContentEditor'
 import OutlineViewer from './OutlineViewer'
@@ -30,12 +33,7 @@ interface FileChangedEvent {
 interface SaveErrorState {
   tabId: string
   message: string
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
+  diagnostic: diagnostics.CopyableDiagnostic
 }
 
 function saveErrorText(message: string): string {
@@ -185,7 +183,22 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
         saveTimerRef.current = null
       }
     } catch (error) {
-      setSaveError({ tabId, message: errorMessage(error, '保存失败，请重试') })
+      const fallbackMessage = '保存失败，请重试'
+      setSaveError({
+        tabId,
+        message: diagnosticMessage(error, fallbackMessage),
+        diagnostic: buildCopyableDiagnostic({
+          error,
+          fallbackMessage,
+          operation: isSkillPath(path) ? '保存技能' : '保存正文',
+          bridgeMethod: 'SaveContent',
+          detail: {
+            novel_id: novelIdRef.current,
+            path,
+            source_text: content,
+          },
+        }),
+      })
       throw error
     }
   }, [app, updateTab])
@@ -595,22 +608,18 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
         </div>
       </div>
       {saveError?.tabId === activeTab.id && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs leading-relaxed text-destructive"
-        >
-          <span>{saveErrorText(saveError.message)}</span>
-          <button
-            type="button"
-            onClick={() => {
-              void doSave(activeTab.id, activeTab.path, activeTab.content ?? '').catch(() => undefined)
-            }}
-            className="shrink-0 rounded border border-destructive/30 px-2 py-1 text-xs font-medium hover:bg-destructive/10"
-          >
-            重试保存
-          </button>
-        </div>
+        <ErrorCallout
+          title="保存失败"
+          message={saveErrorText(saveError.message)}
+          diagnostic={saveError.diagnostic}
+          compact
+          className="rounded-none border-x-0 border-t-0 px-4"
+          onRetry={() => {
+            void doSave(activeTab.id, activeTab.path, activeTab.content ?? '').catch(() => undefined)
+          }}
+          retryLabel="重试保存"
+          onClose={() => setSaveError(null)}
+        />
       )}
 
       <div className="flex-1 min-h-0">
@@ -623,6 +632,8 @@ const ContentPanel = forwardRef<ContentPanelHandle, Props>(function ContentPanel
         ) : viewMode === 'edit' ? (
           <SkillEditForm
             content={activeTab.content ?? ''}
+            novelId={novelId}
+            filePath={activeTab.path}
             readOnly={activeTab.readOnly}
             onSave={async (newContent) => {
               await doSave(activeTab.id, activeTab.path, newContent as string)

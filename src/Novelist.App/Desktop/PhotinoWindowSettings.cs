@@ -7,5 +7,6 @@ public sealed record PhotinoWindowSettings(
     int Width,
     int Height,
     string StartUrl,
+    bool Maximized = false,
     string? WebViewDataPathKey = null,
     AppInitializationOptions? AppOptions = null);

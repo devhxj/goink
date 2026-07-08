@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react'
 import { BellRing, Folder, GitCommitHorizontal, RefreshCw } from 'lucide-react'
+import ErrorCallout from '@/components/shared/ErrorCallout'
 import { useApp, type novel } from '@/hooks/useApp'
-import type { update } from '@/lib/novelist/types'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics, update } from '@/lib/novelist/types'
 import UpdateDialog from '@/components/update/UpdateDialog'
+
+type UpdateFeedback =
+  | { kind: 'success'; message: string }
+  | {
+    kind: 'error'
+    title: string
+    message: string
+    diagnostic: diagnostics.CopyableDiagnostic | null
+  }
 
 export default function GeneralConfigTab() {
   const app = useApp()
@@ -19,7 +30,7 @@ export default function GeneralConfigTab() {
   const [updateDismissedVersion, setUpdateDismissedVersion] = useState('')
   const [updateSaving, setUpdateSaving] = useState(false)
   const [updateChecking, setUpdateChecking] = useState(false)
-  const [updateMessage, setUpdateMessage] = useState('')
+  const [updateFeedback, setUpdateFeedback] = useState<UpdateFeedback | null>(null)
   const [updateResult, setUpdateResult] = useState<update.UpdateCheckResult | null>(null)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
 
@@ -46,8 +57,10 @@ export default function GeneralConfigTab() {
       setUpdateEnabled(settings?.enabled === true)
       setUpdateEndpoint(settings?.endpoint_url || '')
       setUpdateDismissedVersion(settings?.dismissed_version || '')
-    }).catch(() => {
-      setUpdateMessage('更新检查设置加载失败')
+    }).catch((err) => {
+      setUpdateError(err, '更新检查设置加载失败', 'GetUpdateCheckSettings', 'GetUpdateCheckSettings', {
+        phase: 'load_update_settings',
+      })
     })
   }, [app])
 
@@ -95,17 +108,17 @@ export default function GeneralConfigTab() {
   async function handleSaveUpdateSettings(nextDismissedVersion = updateDismissedVersion) {
     const endpoint = updateEndpoint.trim()
     if (updateEnabled && !endpoint) {
-      setUpdateMessage('启用更新检查时必须填写 HTTPS endpoint')
+      setUpdateValidationError('启用更新检查时必须填写 HTTPS endpoint', endpoint)
       return
     }
 
     if (endpoint && !isHttpsUrl(endpoint)) {
-      setUpdateMessage('更新检查 endpoint 必须是 HTTPS 地址')
+      setUpdateValidationError('更新检查 endpoint 必须是 HTTPS 地址', endpoint)
       return
     }
 
     setUpdateSaving(true)
-    setUpdateMessage('')
+    clearUpdateFeedback()
     try {
       const saved = await app.SaveUpdateCheckSettings({
         enabled: updateEnabled,
@@ -115,10 +128,14 @@ export default function GeneralConfigTab() {
       setUpdateEnabled(saved.enabled)
       setUpdateEndpoint(saved.endpoint_url)
       setUpdateDismissedVersion(saved.dismissed_version)
-      setUpdateMessage(saved.enabled ? '更新检查设置已保存' : '更新检查已关闭')
-      window.setTimeout(() => setUpdateMessage(''), 2400)
+      setUpdateSuccess(saved.enabled ? '更新检查设置已保存' : '更新检查已关闭')
     } catch (err) {
-      setUpdateMessage(errorText(err, '更新检查设置保存失败'))
+      setUpdateError(err, '更新检查设置保存失败', 'SaveUpdateCheckSettings', 'SaveUpdateCheckSettings', {
+        phase: 'save_update_settings',
+        enabled: updateEnabled,
+        dismissed_version_present: nextDismissedVersion.trim().length > 0,
+        endpoint_host: endpointHost(endpoint),
+      })
     } finally {
       setUpdateSaving(false)
     }
@@ -127,40 +144,50 @@ export default function GeneralConfigTab() {
   async function handleManualUpdateCheck() {
     const endpoint = updateEndpoint.trim()
     if (!endpoint) {
-      setUpdateMessage('请先填写更新检查 endpoint')
+      setUpdateValidationError('请先填写更新检查 endpoint', endpoint)
       return
     }
 
     if (!isHttpsUrl(endpoint)) {
-      setUpdateMessage('更新检查 endpoint 必须是 HTTPS 地址')
+      setUpdateValidationError('更新检查 endpoint 必须是 HTTPS 地址', endpoint)
       return
     }
 
     setUpdateChecking(true)
-    setUpdateMessage('')
+    clearUpdateFeedback()
     try {
       await app.SaveUpdateCheckSettings({
         enabled: updateEnabled,
         endpoint_url: endpoint,
         dismissed_version: updateDismissedVersion,
       })
+      const taskId = `update-manual-${Date.now().toString(36)}`
       const result = await app.CheckForUpdates({
-        task_id: `update-manual-${Date.now().toString(36)}`,
+        task_id: taskId,
         manual: true,
       })
       setUpdateResult(result)
       if (result.status === 'update_available') {
         setShowUpdateDialog(true)
-        setUpdateMessage(`发现新版本 ${result.latest_version || ''}`.trim())
+        setUpdateSuccess(`发现新版本 ${result.latest_version || ''}`.trim())
       } else if (result.status === 'no_update') {
-        setUpdateMessage('当前已是最新版本')
+        setUpdateSuccess('当前已是最新版本')
       } else if (result.status === 'failed') {
-        setUpdateMessage(result.error_message || '更新检查失败')
+        setUpdateError(result.error_message || '更新检查失败', '更新检查失败', 'CheckForUpdates', 'CheckForUpdates', {
+          phase: 'manual_update_check',
+          result,
+          endpoint_host: endpointHost(endpoint),
+        }, result.task_id || taskId)
       } else {
-        setUpdateMessage('更新检查已完成')
+        setUpdateSuccess('更新检查已完成')
       }
     } catch (err) {
-      setUpdateMessage(errorText(err, '更新检查失败'))
+      setUpdateError(err, '更新检查失败', 'CheckForUpdates', 'CheckForUpdates', {
+        phase: 'manual_update_check',
+        enabled: updateEnabled,
+        dismissed_version_present: updateDismissedVersion.trim().length > 0,
+        endpoint_host: endpointHost(endpoint),
+      })
     } finally {
       setUpdateChecking(false)
     }
@@ -174,7 +201,47 @@ export default function GeneralConfigTab() {
       dismissed_version: version,
     })
     setUpdateDismissedVersion(saved.dismissed_version)
-    setUpdateMessage(`已忽略版本 ${version}`)
+    setUpdateSuccess(`已忽略版本 ${version}`)
+  }
+
+  function clearUpdateFeedback() {
+    setUpdateFeedback(null)
+  }
+
+  function setUpdateSuccess(message: string) {
+    setUpdateFeedback({ kind: 'success', message })
+  }
+
+  function setUpdateValidationError(message: string, endpoint: string) {
+    setUpdateError(message, '更新检查设置无效', 'UpdateCheckSettingsValidation', null, {
+      phase: 'validate_update_settings',
+      enabled: updateEnabled,
+      endpoint_present: endpoint.trim().length > 0,
+      endpoint_protocol: endpointProtocol(endpoint),
+    })
+  }
+
+  function setUpdateError(
+    errorValue: unknown,
+    fallbackMessage: string,
+    operation: string,
+    bridgeMethod: string | null,
+    detail: Record<string, unknown>,
+    taskId?: string | null,
+  ) {
+    setUpdateFeedback({
+      kind: 'error',
+      title: fallbackMessage,
+      message: diagnosticMessage(errorValue, fallbackMessage),
+      diagnostic: buildCopyableDiagnostic({
+        error: errorValue,
+        fallbackMessage,
+        operation,
+        bridgeMethod,
+        taskId,
+        detail,
+      }),
+    })
   }
 
   return (
@@ -291,10 +358,20 @@ export default function GeneralConfigTab() {
               </button>
             </div>
           </div>
-          {updateMessage && (
-            <p className={`text-xs ${updateMessage.includes('失败') || updateMessage.includes('必须') || updateMessage.includes('HTTPS') ? 'text-red-500' : 'text-emerald-600'}`}>
-              {updateMessage}
+          {updateFeedback?.kind === 'success' && (
+            <p role="status" className="text-xs text-emerald-600">
+              {updateFeedback.message}
             </p>
+          )}
+          {updateFeedback?.kind === 'error' && (
+            <ErrorCallout
+              compact
+              title={updateFeedback.title}
+              message={updateFeedback.message}
+              diagnostic={updateFeedback.diagnostic}
+              className="rounded-md"
+              onClose={clearUpdateFeedback}
+            />
           )}
         </div>
       </div>
@@ -352,5 +429,21 @@ function isHttpsUrl(value: string) {
     return new URL(value).protocol === 'https:'
   } catch {
     return false
+  }
+}
+
+function endpointHost(value: string) {
+  try {
+    return new URL(value).host
+  } catch {
+    return ''
+  }
+}
+
+function endpointProtocol(value: string) {
+  try {
+    return new URL(value).protocol
+  } catch {
+    return ''
   }
 }

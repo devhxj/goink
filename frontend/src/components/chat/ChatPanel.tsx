@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
 import { MessageSquare, Loader2, History, Plus } from 'lucide-react'
 import { EventsOn } from '@/lib/novelist/events'
 import { useApp } from '@/hooks/useApp'
@@ -18,8 +19,12 @@ import type { UsageInfo } from './ContextRing'
 import SettingsDialog from '@/components/settings/SettingsDialog'
 import RecentSessions from './RecentSessions'
 import SessionHistory from './SessionHistory'
+import { LAYOUT_LIMITS, clampPanelWidth } from '@/lib/layout'
 
 interface Props {
+  width: number
+  onWidthChange: (width: number) => void
+  onWidthCommit: (width: number) => void
   novelId: number
   onApprove: (toolId: string, feedback: string) => Promise<void>
   onReject: (toolId: string, feedback: string) => Promise<void>
@@ -29,9 +34,6 @@ interface Props {
   }) => void
 }
 
-const MIN_WIDTH = 280
-const MAX_WIDTH = 600
-const DEFAULT_WIDTH = 360
 const EVENT_REORDER_TIMEOUT = 120
 
 interface EventQueue {
@@ -45,12 +47,20 @@ interface ChatStartedEvent {
   turn_id: number
 }
 
-export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFileEdit }: Props) {
+export default function ChatPanel({
+  width,
+  onWidthChange,
+  onWidthCommit,
+  novelId,
+  onApprove,
+  onReject,
+  onApprovalFileEdit,
+}: Props) {
   const app = useApp()
-  const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [isDragging, setIsDragging] = useState(false)
   const startXRef = useRef(0)
-  const startWidthRef = useRef(DEFAULT_WIDTH)
+  const startWidthRef = useRef(width)
+  const latestWidthRef = useRef(width)
   const [turns, setTurns] = useState<Turn[]>([])
   const [sessionId, setSessionId] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -84,6 +94,10 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
   useEffect(() => { onApprovalFileEditRef.current = onApprovalFileEdit }, [onApprovalFileEdit])
   const lastSessionIdRef = useRef('')
 
+  useEffect(() => {
+    latestWidthRef.current = width
+  }, [width])
+
   // 加载模型列表并恢复持久化设置
   useEffect(() => {
     setInitLoadError(false)
@@ -115,12 +129,6 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
       const mode = settings?.approval_mode
       if (mode === 'manual' || mode === 'auto') {
         setApprovalMode(mode)
-      }
-
-      // 恢复面板宽度
-      const w = settings?.chat_panel_width
-      if (w && w >= MIN_WIDTH && w <= MAX_WIDTH) {
-        setWidth(w)
       }
 
       // 暂存上次会话 ID，等 novelId 加载后恢复
@@ -178,7 +186,7 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
     }).finally(() => setIsLoadingHistory(false))
   }, [app, activeSessionId, novelId, historyLoadRetry])
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: ReactMouseEvent) => {
     e.preventDefault()
     setIsDragging(true)
     startXRef.current = e.clientX
@@ -187,22 +195,56 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
 
   useEffect(() => {
     if (!isDragging) return
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
     const handleMouseMove = (e: MouseEvent) => {
-      const delta = e.clientX - startXRef.current
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidthRef.current - delta))
-      setWidth(newWidth)
+      const delta = startXRef.current - e.clientX
+      const nextWidth = clampPanelWidth(
+        startWidthRef.current + delta,
+        LAYOUT_LIMITS.chat.min,
+        LAYOUT_LIMITS.chat.max,
+        LAYOUT_LIMITS.chat.fallback,
+      )
+      latestWidthRef.current = nextWidth
+      onWidthChange(nextWidth)
     }
     const handleMouseUp = () => {
       setIsDragging(false)
-      app.SetChatPanelWidth(Math.round(width)).catch(() => {})
+      onWidthCommit(latestWidthRef.current)
     }
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
     return () => {
+      document.body.style.userSelect = previousUserSelect
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, width, app])
+  }, [isDragging, onWidthChange, onWidthCommit])
+
+  const handleResizeKeyDown = useCallback((e: ReactKeyboardEvent) => {
+    const step = e.shiftKey ? 40 : 16
+    let nextWidth: number
+    if (e.key === 'ArrowLeft') {
+      nextWidth = width + step
+    } else if (e.key === 'ArrowRight') {
+      nextWidth = width - step
+    } else if (e.key === 'Home') {
+      nextWidth = LAYOUT_LIMITS.chat.min
+    } else if (e.key === 'End') {
+      nextWidth = LAYOUT_LIMITS.chat.max
+    } else {
+      return
+    }
+    e.preventDefault()
+    const clamped = clampPanelWidth(
+      nextWidth,
+      LAYOUT_LIMITS.chat.min,
+      LAYOUT_LIMITS.chat.max,
+      LAYOUT_LIMITS.chat.fallback,
+    )
+    onWidthChange(clamped)
+    onWidthCommit(clamped)
+  }, [onWidthChange, onWidthCommit, width])
 
   // 清理事件监听器
   useEffect(() => {
@@ -869,9 +911,17 @@ export default function ChatPanel({ novelId, onApprove, onReject, onApprovalFile
   return (
     <aside className="shrink-0 flex flex-col bg-sidebar border-l relative overflow-hidden" style={{ width }}>
       <div
-        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors z-10 select-none"
+        role="separator"
+        aria-label="调整对话面板宽度"
+        aria-orientation="vertical"
+        aria-valuemin={LAYOUT_LIMITS.chat.min}
+        aria-valuemax={LAYOUT_LIMITS.chat.max}
+        aria-valuenow={Math.round(width)}
+        tabIndex={0}
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 focus-visible:bg-primary/30 focus-visible:outline-none transition-colors z-10 select-none"
         style={{ marginLeft: -2 }}
         onMouseDown={handleMouseDown}
+        onKeyDown={handleResizeKeyDown}
       />
 
       <div className="px-4 py-2.5 border-b shrink-0 flex items-center justify-between select-none">

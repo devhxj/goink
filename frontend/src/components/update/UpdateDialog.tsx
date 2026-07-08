@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { BellRing, Download, ExternalLink, X } from 'lucide-react'
 import Markdown from '@/components/Markdown'
-import { runtime } from '@/lib/novelist/runtime'
-import type { update } from '@/lib/novelist/types'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import { runtime, runtimeBridgeMethods } from '@/lib/novelist/runtime'
+import type { diagnostics, update } from '@/lib/novelist/types'
 
 interface Props {
   result: update.UpdateCheckResult | null
@@ -13,6 +15,7 @@ interface Props {
 
 export default function UpdateDialog({ result, open, onClose, onDismissVersion }: Props) {
   const [actionError, setActionError] = useState('')
+  const [actionErrorDiagnostic, setActionErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
   const [dismissing, setDismissing] = useState(false)
 
   if (!open || !result) return null
@@ -21,29 +24,62 @@ export default function UpdateDialog({ result, open, onClose, onDismissVersion }
   const releaseUrl = result.release_url || ''
   const downloadUrl = result.download_url || ''
 
-  async function openUrl(url: string) {
-    if (!url) return
+  function clearActionError() {
     setActionError('')
+    setActionErrorDiagnostic(null)
+  }
+
+  function closeDialog() {
+    clearActionError()
+    onClose()
+  }
+
+  async function openUrl(url: string, urlKind: 'download' | 'release') {
+    if (!url) return
+    clearActionError()
     try {
       await runtime.shell.openExternal(url)
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : '打开链接失败')
+      const fallbackMessage = urlKind === 'download' ? '打开下载链接失败' : '打开发布页失败'
+      setActionError(diagnosticMessage(error, fallbackMessage))
+      setActionErrorDiagnostic(buildCopyableDiagnostic({
+        error,
+        fallbackMessage,
+        operation: 'UpdateDialog.openUrl',
+        bridgeMethod: runtimeBridgeMethods.shellOpenExternal,
+        detail: {
+          phase: 'open_update_url',
+          url_kind: urlKind,
+          latest_version: latestVersion || null,
+        },
+      }))
     }
   }
 
   async function dismissVersion() {
     if (!latestVersion || !onDismissVersion) {
-      onClose()
+      closeDialog()
       return
     }
 
     setDismissing(true)
-    setActionError('')
+    clearActionError()
     try {
       await onDismissVersion(latestVersion)
-      onClose()
+      closeDialog()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : '忽略版本失败')
+      const fallbackMessage = '忽略版本失败'
+      setActionError(diagnosticMessage(error, fallbackMessage))
+      setActionErrorDiagnostic(buildCopyableDiagnostic({
+        error,
+        fallbackMessage,
+        operation: 'UpdateDialog.dismissVersion',
+        bridgeMethod: 'SaveUpdateCheckSettings',
+        detail: {
+          phase: 'dismiss_update_version',
+          latest_version: latestVersion || null,
+        },
+      }))
     } finally {
       setDismissing(false)
     }
@@ -51,7 +87,7 @@ export default function UpdateDialog({ result, open, onClose, onDismissVersion }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/45" onClick={closeDialog} />
       <section
         role="dialog"
         aria-modal="true"
@@ -73,7 +109,7 @@ export default function UpdateDialog({ result, open, onClose, onDismissVersion }
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeDialog}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="关闭更新提示"
           >
@@ -88,9 +124,13 @@ export default function UpdateDialog({ result, open, onClose, onDismissVersion }
             <p className="text-sm text-muted-foreground">此版本没有提供发布说明。</p>
           )}
           {actionError && (
-            <p role="alert" className="mt-3 rounded-md border border-danger-border bg-danger-bg px-3 py-2 text-xs text-destructive">
-              {actionError}
-            </p>
+            <ErrorCallout
+              compact
+              title="更新操作失败"
+              message={actionError}
+              diagnostic={actionErrorDiagnostic}
+              className="mt-3 rounded-md"
+            />
           )}
         </div>
 
@@ -107,7 +147,7 @@ export default function UpdateDialog({ result, open, onClose, onDismissVersion }
             {downloadUrl && (
               <button
                 type="button"
-                onClick={() => void openUrl(downloadUrl)}
+                onClick={() => void openUrl(downloadUrl, 'download')}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs transition-colors hover:bg-muted"
               >
                 <Download className="h-3.5 w-3.5" />
@@ -117,7 +157,7 @@ export default function UpdateDialog({ result, open, onClose, onDismissVersion }
             {releaseUrl && (
               <button
                 type="button"
-                onClick={() => void openUrl(releaseUrl)}
+                onClick={() => void openUrl(releaseUrl, 'release')}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <ExternalLink className="h-3.5 w-3.5" />

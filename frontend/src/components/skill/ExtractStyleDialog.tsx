@@ -5,6 +5,9 @@ import type { llm } from '@/hooks/useApp'
 import PopSelect from '@/components/chat/PopSelect'
 import Markdown from '@/components/Markdown'
 import { splitFrontmatter } from '@/components/content/types'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props {
   open: boolean
@@ -15,8 +18,10 @@ interface Props {
 
 type Phase = 'input' | 'extracting' | 'preview' | 'saving'
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+type DialogError = {
+  title: string
+  message: string
+  diagnostic: diagnostics.CopyableDiagnostic
 }
 
 export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: Props) {
@@ -27,7 +32,7 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
   const [sample, setSample] = useState('')
   const [phase, setPhase] = useState<Phase>('input')
   const [result, setResult] = useState<{ name: string; filePath: string; rawContent: string } | null>(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<DialogError | null>(null)
 
   // 加载模型列表并同步当前聊天模型
   useEffect(() => {
@@ -39,7 +44,7 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
       setSample('')
       setPhase('input')
       setResult(null)
-      setError('')
+      setError(null)
 
       try {
         const [modelList, settings] = await Promise.all([
@@ -55,11 +60,15 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
           setSelectedKey(key)
         }
       } catch (err) {
-        console.error('Load models for extract style failed', err)
+        if (!cancelled) {
+          setError(dialogError(err, '加载模型列表失败', '加载模型列表失败', '加载风格提取模型', 'GetModels', {
+            novel_id: novelId,
+          }))
+        }
       }
     })()
     return () => { cancelled = true }
-  }, [app, open])
+  }, [app, novelId, open])
 
   const selected = models.find(m => m.Key === selectedKey)
 
@@ -69,14 +78,15 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
     if (!providerName || !modelID) return
 
     setPhase('extracting')
-    setError('')
+    setError(null)
 
     const reasoningEffort = selected?.ReasoningLevels?.[0] || ''
+    const sourceText = sample.trim()
 
     try {
       const res = await app.ExtractStyle({
         novel_id: novelId,
-        sample: sample.trim(),
+        sample: sourceText,
         provider_name: providerName,
         model_id: modelID,
         reasoning_effort: reasoningEffort,
@@ -88,7 +98,13 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
       })
       setPhase('preview')
     } catch (e: unknown) {
-      setError(errorMessage(e, '提取失败，请重试'))
+      setError(dialogError(e, '提取失败，请重试', '提取失败', '提取写作风格', 'ExtractStyle', {
+        novel_id: novelId,
+        provider_name: providerName,
+        model_id: modelID,
+        reasoning_effort: reasoningEffort,
+        source_text: sourceText,
+      }))
       setPhase('input')
     }
   }, [sample, selectedKey, selected, novelId, app])
@@ -96,7 +112,7 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
   const handleSave = useCallback(async () => {
     if (!result) return
     setPhase('saving')
-    setError('')
+    setError(null)
     try {
       await app.SaveContent({
         novel_id: novelId,
@@ -106,7 +122,11 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
       onSaved()
       onClose()
     } catch (e: unknown) {
-      setError(errorMessage(e, '保存失败，请重试'))
+      setError(dialogError(e, '保存失败，请重试', '保存技能失败', '保存提取的风格技能', 'SaveContent', {
+        novel_id: novelId,
+        path: result.filePath,
+        source_text: result.rawContent,
+      }))
       setPhase('preview')
     }
   }, [result, novelId, app, onSaved, onClose])
@@ -145,9 +165,14 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
 
         {/* 错误提示 */}
         {error && (
-          <div className="mx-5 mt-3 px-3 py-2 text-xs text-red-600 bg-danger-bg border border-danger-border rounded-md shrink-0">
-            {error}
-          </div>
+          <ErrorCallout
+            title={error.title}
+            message={error.message}
+            diagnostic={error.diagnostic}
+            className="mx-5 mt-3 shrink-0 rounded-md"
+            compact
+            onClose={() => setError(null)}
+          />
         )}
 
         {/* 模型选择 + 输入区（shrink-0，不裁剪 PopSelect dropdown） */}
@@ -253,4 +278,25 @@ export default function ExtractStyleDialog({ open, novelId, onClose, onSaved }: 
       </div>
     </div>
   )
+}
+
+function dialogError(
+  error: unknown,
+  fallbackMessage: string,
+  title: string,
+  operation: string,
+  bridgeMethod: string | null,
+  detail?: unknown,
+): DialogError {
+  return {
+    title,
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }

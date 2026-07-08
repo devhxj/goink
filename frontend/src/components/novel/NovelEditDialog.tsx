@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 import type { novel } from '@/hooks/useApp'
 
 const GENRE_PRESETS = ['玄幻', '科幻', '都市', '历史', '悬疑', '武侠', '言情', '其他']
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
-}
 
 interface Props {
   open: boolean
@@ -20,6 +19,7 @@ export default function NovelEditDialog({ open, novel, onClose, onSave }: Props)
   const [genre, setGenre] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [errorDiagnostic, setErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -29,6 +29,7 @@ export default function NovelEditDialog({ open, novel, onClose, onSave }: Props)
       setGenre(novel?.genre ?? '')
       setSaving(false)
       setError('')
+      setErrorDiagnostic(null)
     }, 0)
     return () => window.clearTimeout(timer)
   }, [open, novel])
@@ -42,10 +43,24 @@ export default function NovelEditDialog({ open, novel, onClose, onSave }: Props)
     if (!canSave || saving) return
     setSaving(true)
     setError('')
+    setErrorDiagnostic(null)
     try {
       await onSave({ title: title.trim(), description: description.trim(), genre: genre.trim() })
     } catch (e: unknown) {
-      setError(errorMessage(e, '保存失败，请重试'))
+      const fallbackMessage = isEdit ? '更新作品失败' : '创建作品失败'
+      setError(diagnosticMessage(e, fallbackMessage))
+      setErrorDiagnostic(buildCopyableDiagnostic({
+        error: e,
+        fallbackMessage,
+        operation: isEdit ? 'UpdateNovel' : 'CreateNovel',
+        bridgeMethod: isEdit ? 'UpdateNovel' : 'CreateNovel',
+        detail: {
+          phase: isEdit ? 'update_novel_dialog' : 'create_novel_dialog',
+          novel_id: novel?.id ?? null,
+          title: title.trim(),
+          genre: genre.trim(),
+        },
+      }))
     } finally {
       setSaving(false)
     }
@@ -73,7 +88,17 @@ export default function NovelEditDialog({ open, novel, onClose, onSave }: Props)
         <h2 className="text-base font-semibold mb-5">{isEdit ? '编辑作品' : '新建作品'}</h2>
 
         {error && (
-          <p className="text-sm text-red-600 bg-danger-bg border border-danger-border rounded-md px-3 py-2 mb-4">{error}</p>
+          <ErrorCallout
+            compact
+            title={isEdit ? '更新作品失败' : '创建作品失败'}
+            message={error}
+            diagnostic={errorDiagnostic}
+            className="mb-4 rounded-md"
+            onClose={() => {
+              setError('')
+              setErrorDiagnostic(null)
+            }}
+          />
         )}
 
         <div className="space-y-4">

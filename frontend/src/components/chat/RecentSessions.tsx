@@ -1,5 +1,7 @@
 import { MessageSquare } from 'lucide-react'
 import type { app } from '@/hooks/useApp'
+import { useRelativeTimeTicker } from '@/hooks/useRelativeTimeTicker'
+import { formatAbsoluteDateTime, formatInteger, formatRelativeTime } from '@/lib/time'
 
 interface Props {
   sessions: app.SessionMeta[]
@@ -8,19 +10,11 @@ interface Props {
   onViewAll: () => void
 }
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
-  const hour = Math.floor(min / 60)
-  if (hour < 24) return `${hour} 小时前`
-  const day = Math.floor(hour / 24)
-  if (day < 30) return `${day} 天前`
-  return `${Math.floor(day / 30)} 个月前`
-}
+const LOCALE = 'zh-CN'
 
 export default function RecentSessions({ sessions, total, onSelectSession, onViewAll }: Props) {
+  const nowMs = useRelativeTimeTicker(sessions.map(session => session.updated_at), sessions.length > 0)
+
   return (
     <div className="flex flex-col h-full">
       {sessions.length > 0 && (
@@ -36,7 +30,12 @@ export default function RecentSessions({ sessions, total, onSelectSession, onVie
                 <MessageSquare className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs truncate">{s.title || '新对话'}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{timeAgo(s.updated_at)}</div>
+                  <div
+                    className="text-[10px] text-muted-foreground mt-0.5"
+                    title={formatAbsoluteDateTime(s.updated_at, { locale: LOCALE })}
+                  >
+                    {formatRelativeTime(s.updated_at, { now: nowMs, locale: LOCALE })}
+                  </div>
                 </div>
               </button>
             ))}
@@ -47,7 +46,7 @@ export default function RecentSessions({ sessions, total, onSelectSession, onVie
               onClick={onViewAll}
               className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-2 transition-colors cursor-pointer select-none"
             >
-              查看全部（{total} 个）
+              查看全部（{formatInteger(total, { locale: LOCALE })} 个）
             </button>
           )}
         </div>

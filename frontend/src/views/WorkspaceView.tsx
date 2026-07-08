@@ -30,9 +30,12 @@ import HelpDialog from '@/components/help/HelpDialog'
 import UpdateDialog from '@/components/update/UpdateDialog'
 import ProfileView from '@/components/profile/ProfileView'
 import { Settings, User, HelpCircle, Moon, Sun, AlertTriangle, CheckCircle2, Clipboard, X } from 'lucide-react'
-import { WindowMinimise, WindowToggleMaximise, WindowIsMaximised, Quit } from '@/lib/novelist/runtime'
+import { WindowMinimise, Quit } from '@/lib/novelist/runtime'
 import Logo from '@/components/Logo'
 import { useTheme, type Theme } from '@/hooks/useTheme'
+import { useLayoutState } from '@/hooks/useLayoutState'
+import { useWindowState } from '@/hooks/useWindowState'
+import { copyTextToClipboard } from '@/lib/clipboard'
 
 const THEME_ICON: Record<Theme, React.ReactNode> = { light: <Moon className="w-5 h-5" />, dark: <Sun className="w-5 h-5" /> }
 const THEME_LABEL: Record<Theme, string> = { light: '深色模式', dark: '浅色模式' }
@@ -68,13 +71,14 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
   const [activeContent, setActiveContent] = useState('')
   const [isDirty, setIsDirty] = useState(false)
   const [activeSkillName, setActiveSkillName] = useState<string | null>(null)
-  const [isMaximised, setIsMaximised] = useState(false)
   const [platformOS, setPlatformOS] = useState('')
   const [updateResult, setUpdateResult] = useState<update.UpdateCheckResult | null>(null)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
   const loadedRef = useRef(false)
   const autoUpdateCheckedRef = useRef(false)
   const { theme, toggle: toggleTheme } = useTheme()
+  const { layout, setSidebarWidth, setChatPanelWidth, commitLayout } = useLayoutState()
+  const { isMaximised, toggleMaximise } = useWindowState()
   const novelImportController = useNovelImport({
     onStartNovelImport: handleStartNovelImport,
     onCancelNovelImport: handleCancelNovelImport,
@@ -93,7 +97,6 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
     app.GetPlatform().then((info) => {
       if (info.os) setPlatformOS(info.os as string)
     })
-    WindowIsMaximised().then(setIsMaximised)
   }, [app])
 
   useEffect(() => {
@@ -345,7 +348,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
     <div className="h-screen flex flex-col overflow-hidden">
       <header
         className="h-11 flex items-center border-b bg-sidebar shrink-0 select-none cursor-default"
-        onDoubleClick={() => { WindowToggleMaximise(); setIsMaximised(!isMaximised) }}
+        onDoubleClick={() => { void toggleMaximise() }}
       >
         <Logo className="h-7 w-7 ml-3" />
         <span className="text-sm font-medium pl-2 flex-1">
@@ -387,7 +390,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
               </button>
               <button
-                onClick={() => { WindowToggleMaximise(); setIsMaximised(!isMaximised) }}
+                onClick={() => { void toggleMaximise() }}
                 className={winBtn}
                 title={isMaximised ? '还原' : '最大化'}
               >
@@ -415,6 +418,9 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
 
         {(sidebarPanel ?? activePanel) !== 'git-history' && (
           <SidePanel
+            width={layout.sidebar_width}
+            onWidthChange={setSidebarWidth}
+            onWidthCommit={(width) => { void commitLayout({ sidebar_width: width }) }}
             activePanel={sidebarPanel ?? activePanel}
             novels={novels}
             novelId={activeNovelId}
@@ -502,7 +508,15 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
         ) : null}
 
         {activePanel !== 'profile' && (
-          <ChatPanel novelId={activeNovelId} onApprove={handleApprove} onReject={handleReject} onApprovalFileEdit={handleApprovalFileEdit} />
+          <ChatPanel
+            width={layout.chat_panel_width}
+            onWidthChange={setChatPanelWidth}
+            onWidthCommit={(width) => { void commitLayout({ chat_panel_width: width }) }}
+            novelId={activeNovelId}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onApprovalFileEdit={handleApprovalFileEdit}
+          />
         )}
       </div>
 
@@ -532,6 +546,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
       />
       <NovelDeleteDialog
         open={!!deletingNovel}
+        novelId={deletingNovel?.id ?? null}
         novelTitle={deletingNovel?.title ?? ''}
         onClose={() => setDeletingNovel(null)}
         onConfirm={handleDeleteNovel}
@@ -539,6 +554,7 @@ export default function WorkspaceView({ initialNovelId, initialShowHelp, startup
 
       <ExportDialog
         open={exportNovelId !== null}
+        novelId={exportNovelId}
         novelTitle={novels.find(n => n.id === exportNovelId)?.title ?? ''}
         onClose={() => setExportNovelId(null)}
         onExport={handleExportNovel}
@@ -647,31 +663,6 @@ function StartupImportRecoveryBanner({ recovery }: { recovery?: novelImport.Impo
       </div>
     </section>
   )
-}
-
-async function copyTextToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return
-    } catch {
-      // Fall through to the textarea path for desktop/webview contexts that expose
-      // Clipboard API but reject writes without an explicit permission grant.
-    }
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', 'true')
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (!copied) {
-    throw new Error('Clipboard copy failed.')
-  }
 }
 
 function isSuccessfulNovelImportRun(run: novelImport.ImportRun): boolean {

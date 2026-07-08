@@ -34,6 +34,7 @@ public sealed class PhotinoWindowFactory : IPhotinoWindowFactory
             .SetResizable(true)
             .RegisterWebMessageReceivedHandler((_, message) => bridge.Post(message))
             .Load(settings.StartUrl);
+        window.Maximized = settings.Maximized;
 
         return adapter;
     }

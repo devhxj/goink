@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button'
 import { useApp } from '@/hooks/useApp'
 import type { chapter } from '@/hooks/useApp'
 import { EventsOn } from '@/lib/novelist/events'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props {
   novelId: number
@@ -20,6 +23,11 @@ interface FileChangedEvent {
   path?: string
 }
 
+type VisibleError = {
+  message: string
+  diagnostic?: diagnostics.CopyableDiagnostic | null
+}
+
 export default function ChapterList({ novelId, target, onSelectChapter, onSelectNovelist, onExportNovel }: Props) {
   const app = useApp()
 
@@ -29,11 +37,17 @@ export default function ChapterList({ novelId, target, onSelectChapter, onSelect
   const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set())
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editTitle, setEditTitle] = useState('')
+  const [error, setError] = useState<VisibleError | null>(null)
 
   const loadChapters = useCallback(async () => {
     if (!novelId) { setChapters([]); return }
-    const list = await app.GetChapters(novelId)
-    setChapters(list ?? [])
+    try {
+      const list = await app.GetChapters(novelId)
+      setChapters(list ?? [])
+      setError(null)
+    } catch (err) {
+      setError(buildVisibleError(err, '加载章节失败', '加载章节', 'GetChapters', { novel_id: novelId }))
+    }
   }, [novelId, app])
 
   useEffect(() => {
@@ -44,8 +58,15 @@ export default function ChapterList({ novelId, target, onSelectChapter, onSelect
         if (!cancelled) setChapters([])
         return
       }
-      const list = await app.GetChapters(novelId)
-      if (!cancelled) setChapters(list ?? [])
+      try {
+        const list = await app.GetChapters(novelId)
+        if (!cancelled) {
+          setChapters(list ?? [])
+          setError(null)
+        }
+      } catch (err) {
+        if (!cancelled) setError(buildVisibleError(err, '加载章节失败', '加载章节', 'GetChapters', { novel_id: novelId }))
+      }
     })()
     return () => { cancelled = true }
   }, [app, novelId])
@@ -90,10 +111,14 @@ export default function ChapterList({ novelId, target, onSelectChapter, onSelect
 
   async function handleCreateChapter() {
     if (!chapterTitle.trim()) return
-    await app.CreateChapter({ novel_id: novelId, title: chapterTitle.trim() })
-    setChapterTitle('')
-    setShowCreateChapter(false)
-    loadChapters()
+    try {
+      await app.CreateChapter({ novel_id: novelId, title: chapterTitle.trim() })
+      setChapterTitle('')
+      setShowCreateChapter(false)
+      await loadChapters()
+    } catch (err) {
+      setError(buildVisibleError(err, '创建章节失败', '创建章节', 'CreateChapter', { novel_id: novelId, title: chapterTitle.trim() }))
+    }
   }
 
   function startEdit(ch: chapter.Chapter) {
@@ -106,11 +131,19 @@ export default function ChapterList({ novelId, target, onSelectChapter, onSelect
     const ch = chapters.find(c => c.id === editingId)
     if (!ch) return
     const newTitle = editTitle.trim()
-    if (newTitle && newTitle !== ch.title) {
-      await app.UpdateChapterTitle(novelId, ch.chapter_number, newTitle)
-      loadChapters()
+    try {
+      if (newTitle && newTitle !== ch.title) {
+        await app.UpdateChapterTitle(novelId, ch.chapter_number, newTitle)
+        await loadChapters()
+      }
+      setEditingId(null)
+    } catch (err) {
+      setError(buildVisibleError(err, '重命名章节失败', '重命名章节', 'UpdateChapterTitle', {
+        novel_id: novelId,
+        chapter_number: ch.chapter_number,
+        title: newTitle,
+      }))
     }
-    setEditingId(null)
   }
 
   function cancelEdit() {
@@ -155,6 +188,18 @@ export default function ChapterList({ novelId, target, onSelectChapter, onSelect
             <Button size="sm" onClick={handleCreateChapter}>添加</Button>
             <Button size="sm" variant="ghost" onClick={() => { setShowCreateChapter(false); setChapterTitle('') }}>取消</Button>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="border-b p-2">
+          <ErrorCallout
+            compact
+            message={error.message}
+            diagnostic={error.diagnostic}
+            onRetry={() => { void loadChapters() }}
+            onClose={() => setError(null)}
+          />
         </div>
       )}
 
@@ -257,4 +302,23 @@ export default function ChapterList({ novelId, target, onSelectChapter, onSelect
       </div>
     </>
   )
+}
+
+function buildVisibleError(
+  error: unknown,
+  fallbackMessage: string,
+  operation: string,
+  bridgeMethod: string,
+  detail: unknown,
+): VisibleError {
+  return {
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }

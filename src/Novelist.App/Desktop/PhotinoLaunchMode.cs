@@ -1,9 +1,14 @@
+using Novelist.Core.App;
+using Novelist.Infrastructure.App;
+
 namespace Novelist.App.Desktop;
 
 public static class PhotinoLaunchMode
 {
     public const string DesktopFlag = "--desktop";
     public const string StartUrlPrefix = "--start-url=";
+    private const int DefaultWidth = 1280;
+    private const int DefaultHeight = 840;
 
     public static bool HasStartUrlOverride(IEnumerable<string> args)
     {
@@ -13,19 +18,47 @@ public static class PhotinoLaunchMode
     public static PhotinoWindowSettings CreateSettings(
         IEnumerable<string> args,
         string? defaultStartUrl = null,
-        string? webViewDataPathKey = null)
+        string? webViewDataPathKey = null,
+        AppInitializationOptions? appOptions = null)
     {
         var argList = args as IReadOnlyCollection<string> ?? args.ToArray();
         var startUrl = argList
             .FirstOrDefault(arg => arg.StartsWith(StartUrlPrefix, StringComparison.OrdinalIgnoreCase))?
             .Substring(StartUrlPrefix.Length);
+        var options = appOptions ?? DesktopAppConfiguration.CreateAppInitializationOptions(argList);
+        var windowSettings = TryLoadPersistedWindowSettings(options);
 
         return new PhotinoWindowSettings(
             Title: "novelist",
-            Width: 1280,
-            Height: 840,
+            Width: windowSettings.Width,
+            Height: windowSettings.Height,
             StartUrl: string.IsNullOrWhiteSpace(startUrl) ? defaultStartUrl ?? "about:blank" : startUrl,
+            Maximized: windowSettings.Maximized,
             WebViewDataPathKey: string.IsNullOrWhiteSpace(startUrl) ? webViewDataPathKey : null,
-            AppOptions: DesktopAppConfiguration.CreateAppInitializationOptions(argList));
+            AppOptions: options);
     }
+
+    private static RestoredWindowSettings TryLoadPersistedWindowSettings(AppInitializationOptions options)
+    {
+        try
+        {
+            var settings = new FileSystemAppSettingsService(options)
+                .GetWindowSettingsAsync(CancellationToken.None)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
+            return new RestoredWindowSettings(settings.Width, settings.Height, settings.Maximized);
+        }
+        catch (AppNotInitializedException)
+        {
+            return new RestoredWindowSettings(DefaultWidth, DefaultHeight, Maximized: false);
+        }
+        catch (Exception exception)
+        {
+            DesktopLaunchLog.Write("Window settings not restored; using safe defaults.", exception);
+            return new RestoredWindowSettings(DefaultWidth, DefaultHeight, Maximized: false);
+        }
+    }
+
+    private sealed record RestoredWindowSettings(int Width, int Height, bool Maximized);
 }

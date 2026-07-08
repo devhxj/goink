@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { BookOpen, FileText, AlignLeft } from 'lucide-react'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props {
   open: boolean
+  novelId: number | null
   novelTitle: string
   onClose: () => void
   onExport: (format: 'epub' | 'markdown' | 'txt') => Promise<void>
@@ -29,26 +33,41 @@ const FORMATS = [
   },
 ] as const
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+type ExportError = {
+  message: string
+  diagnostic: diagnostics.CopyableDiagnostic
 }
 
-function ExportDialogContent({ novelTitle, onClose, onExport }: Omit<Props, 'open'>) {
+function ExportDialogContent({ novelId, novelTitle, onClose, onExport }: Omit<Props, 'open'>) {
   const [format, setFormat] = useState<'epub' | 'markdown' | 'txt'>('epub')
   const [exporting, setExporting] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<ExportError | null>(null)
   const [success, setSuccess] = useState(false)
 
   async function handleExport() {
     if (exporting) return
     setExporting(true)
-    setError('')
+    setError(null)
     setSuccess(false)
     try {
       await onExport(format)
       setSuccess(true)
     } catch (e: unknown) {
-      setError(errorMessage(e, '导出失败，请重试'))
+      const fallbackMessage = '导出失败，请重试'
+      setError({
+        message: diagnosticMessage(e, fallbackMessage),
+        diagnostic: buildCopyableDiagnostic({
+          error: e,
+          fallbackMessage,
+          operation: '导出作品',
+          bridgeMethod: 'ExportNovel',
+          detail: {
+            novel_id: novelId,
+            novel_title: novelTitle,
+            format,
+          },
+        }),
+      })
     } finally {
       setExporting(false)
     }
@@ -76,7 +95,14 @@ function ExportDialogContent({ novelTitle, onClose, onExport }: Omit<Props, 'ope
         <p className="text-sm text-muted-foreground mb-5">{novelTitle}</p>
 
         {error && (
-          <p className="text-sm text-red-600 bg-danger-bg border border-danger-border rounded-md px-3 py-2 mb-4">{error}</p>
+          <ErrorCallout
+            title="导出失败"
+            message={error.message}
+            diagnostic={error.diagnostic}
+            className="mb-4 rounded-md"
+            compact
+            onClose={() => setError(null)}
+          />
         )}
 
         {success && (
@@ -137,12 +163,13 @@ function ExportDialogContent({ novelTitle, onClose, onExport }: Omit<Props, 'ope
   )
 }
 
-export default function ExportDialog({ open, novelTitle, onClose, onExport }: Props) {
+export default function ExportDialog({ open, novelId, novelTitle, onClose, onExport }: Props) {
   if (!open) return null
 
   return (
     <ExportDialogContent
       key={novelTitle}
+      novelId={novelId}
       novelTitle={novelTitle}
       onClose={onClose}
       onExport={onExport}

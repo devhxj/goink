@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { novelImport } from '@/lib/novelist/types'
+import type { diagnostics, novelImport } from '@/lib/novelist/types'
 import { EventsOn } from '@/lib/novelist/events'
 import { buildStartNovelImportInput } from '@/lib/novelist/importBoundary'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
 
 export const NOVEL_IMPORT_PROGRESS_EVENT = 'novel_import:progress'
 
@@ -22,6 +23,7 @@ export interface NovelImportUiState {
   progress: novelImport.ImportProgress | null
   run: novelImport.ImportRun | null
   errorMessage: string
+  errorDiagnostic: diagnostics.CopyableDiagnostic | null
 }
 
 interface UseNovelImportOptions {
@@ -37,6 +39,7 @@ const IDLE_STATE: NovelImportUiState = {
   progress: null,
   run: null,
   errorMessage: '',
+  errorDiagnostic: null,
 }
 
 export function useNovelImport({
@@ -113,11 +116,19 @@ export function useNovelImport({
     try {
       input = buildStartNovelImportInput(sourcePath)
     } catch (error) {
+      const fallbackMessage = '无法开始导入'
       activeTaskIdRef.current = null
       setState({
         ...IDLE_STATE,
         status: 'error',
-        errorMessage: errorMessage(error, '无法开始导入'),
+        errorMessage: diagnosticMessage(error, fallbackMessage),
+        errorDiagnostic: buildCopyableDiagnostic({
+          error,
+          fallbackMessage,
+          operation: 'BuildNovelImportInput',
+          bridgeMethod: 'StartNovelImport',
+          detail: { phase: 'validate_source_path' },
+        }),
       })
       return null
     }
@@ -138,6 +149,7 @@ export function useNovelImport({
         message: '已选择文件，正在创建导入任务',
         updated_at: new Date().toISOString(),
       },
+      errorDiagnostic: null,
     })
 
     try {
@@ -150,18 +162,28 @@ export function useNovelImport({
         run,
         progress: current.progress ?? progressFromRun(run),
         status: statusFromRun(run),
-        errorMessage: run.error?.message ?? '',
+        errorMessage: run.error?.message ? diagnosticMessage(run.error.message, '') : '',
+        errorDiagnostic: run.error ?? null,
       }))
       await finishedRef.current?.(run)
       return run
     } catch (error) {
       if (activeTaskIdRef.current !== input.task_id) return null
 
+      const fallbackMessage = '导入失败，请重试'
       activeTaskIdRef.current = null
       setState(current => ({
         ...current,
         status: 'error',
-        errorMessage: errorMessage(error, '导入失败，请重试'),
+        errorMessage: diagnosticMessage(error, fallbackMessage),
+        errorDiagnostic: buildCopyableDiagnostic({
+          error,
+          fallbackMessage,
+          operation: 'StartNovelImport',
+          taskId: input.task_id,
+          bridgeMethod: 'StartNovelImport',
+          detail: safeImportInputDetail(input, 'start_import'),
+        }),
       }))
       return null
     }
@@ -189,17 +211,27 @@ export function useNovelImport({
         run,
         progress: current.progress ?? progressFromRun(run),
         status: statusFromRun(run),
-        errorMessage: run.error?.message ?? '',
+        errorMessage: run.error?.message ? diagnosticMessage(run.error.message, '') : '',
+        errorDiagnostic: run.error ?? null,
       }))
       await finishedRef.current?.(run)
       return run
     } catch (error) {
       if (activeTaskIdRef.current !== taskId) return null
 
+      const fallbackMessage = '取消导入失败'
       setState(current => ({
         ...current,
         status: 'running',
-        errorMessage: errorMessage(error, '取消导入失败'),
+        errorMessage: diagnosticMessage(error, fallbackMessage),
+        errorDiagnostic: buildCopyableDiagnostic({
+          error,
+          fallbackMessage,
+          operation: 'CancelNovelImport',
+          taskId,
+          bridgeMethod: 'CancelNovelImport',
+          detail: { phase: 'cancel_import' },
+        }),
       }))
       return null
     }
@@ -278,8 +310,12 @@ function isTerminalRun(state: string): boolean {
     state === 'cleanup_blocked'
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
+function safeImportInputDetail(input: novelImport.StartNovelImportInput, phase: string): Record<string, unknown> {
+  return {
+    phase,
+    source_display_name: input.source_display_name,
+    import_kind: input.import_kind,
+    requested_title: input.requested_title ?? null,
+    has_commit_message: Boolean(input.commit_message),
+  }
 }

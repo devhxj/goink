@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, BookOpenCheck, CheckCircle2, Loader2, Sparkles, XCircle } from 'lucide-react'
+import { BookOpenCheck, CheckCircle2, Loader2, Sparkles, XCircle } from 'lucide-react'
+import ErrorCallout from '@/components/shared/ErrorCallout'
 import { useApp } from '@/hooks/useApp'
-import type { llm, styleSample } from '@/lib/novelist/types'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics, llm, styleSample } from '@/lib/novelist/types'
 
 interface Props {
   novelId: number
@@ -22,7 +24,9 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [run, setRun] = useState<styleSample.StyleSkillExtractionRun | null>(null)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [errorTitle, setErrorTitle] = useState('风格技能抽取失败')
   const [error, setError] = useState('')
+  const [errorDiagnostic, setErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
   const [notice, setNotice] = useState('')
   const cancelledTasks = useRef(new Set<string>())
 
@@ -37,6 +41,31 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
   const canStart = selectedIds.length > 0 && selectedKey.length > 0 && skillName.trim().length > 0 && phase !== 'extracting'
   const canSave = run?.status === 'completed' && run.skill_preview.length > 0 && phase !== 'saved'
   const canBuildProfile = selectedIds.length > 0 && profileTitle.trim().length > 0 && !profileBuilding && phase !== 'extracting'
+
+  const setLocalError = useCallback((message: string) => {
+    setErrorTitle('操作失败')
+    setError(diagnosticMessage(message, '操作失败'))
+    setErrorDiagnostic(null)
+  }, [])
+
+  const setErrorState = useCallback((
+    errorValue: unknown,
+    fallbackMessage: string,
+    bridgeMethod: string,
+    detail: Record<string, unknown>,
+    taskId?: string | null,
+  ) => {
+    setErrorTitle(fallbackMessage)
+    setError(diagnosticMessage(errorValue, fallbackMessage))
+    setErrorDiagnostic(buildCopyableDiagnostic({
+      error: errorValue,
+      fallbackMessage,
+      operation: bridgeMethod,
+      taskId,
+      bridgeMethod,
+      detail,
+    }))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -57,28 +86,37 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
         const model = modelList.find(item => item.Key === key) ?? modelList[0]
         setReasoningEffort(model.ReasoningLevels?.[0] ?? '')
       } catch (err) {
-        if (!cancelled) setError(errorText(err, '加载模型列表失败'))
+        if (!cancelled) {
+          setErrorState(
+            err,
+            '加载模型列表失败',
+            'LoadStyleExtractionModels',
+            { phase: 'load_models' },
+          )
+        }
       }
     })()
     return () => { cancelled = true }
-  }, [app])
+  }, [app, setErrorState])
 
   const startExtraction = useCallback(async () => {
     if (!canStart) {
-      setError(selectedIds.length === 0 ? '请先选择至少一个风格样本' : '请补全模型和技能名称')
+      setLocalError(selectedIds.length === 0 ? '请先选择至少一个风格样本' : '请补全模型和技能名称')
       return
     }
 
     const [providerName, modelId] = selectedKey.split('/')
     if (!providerName || !modelId) {
-      setError('模型配置不可用')
+      setLocalError('模型配置不可用')
       return
     }
 
     const taskId = `style-skill-${Date.now()}-${Math.random().toString(16).slice(2)}`
     setActiveTaskId(taskId)
     setRun(null)
+    setErrorTitle('风格技能抽取失败')
     setError('')
+    setErrorDiagnostic(null)
     setNotice('')
     setPhase('extracting')
 
@@ -107,7 +145,9 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
       }
 
       setPhase('idle')
+      setErrorTitle('风格技能抽取失败')
       setError(diagnosticsText(result.diagnostics, '风格技能抽取失败'))
+      setErrorDiagnostic(result.diagnostics?.[0] ?? null)
     } catch (err) {
       if (cancelledTasks.current.has(taskId)) {
         setPhase('idle')
@@ -115,11 +155,25 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
         return
       }
       setPhase('idle')
-      setError(errorText(err, '风格技能抽取失败'))
+      setErrorState(
+        err,
+        '风格技能抽取失败',
+        'ExtractStyleSkillFromSamples',
+        styleExtractionDetail({
+          taskId,
+          novelId,
+          selectedIds,
+          providerName,
+          modelId,
+          reasoningEffort,
+          skillName: skillName.trim(),
+        }),
+        taskId,
+      )
     } finally {
       setActiveTaskId(current => current === taskId ? null : current)
     }
-  }, [app, canStart, novelId, reasoningEffort, selectedIds, selectedKey, skillName])
+  }, [app, canStart, novelId, reasoningEffort, selectedIds, selectedKey, setErrorState, setLocalError, skillName])
 
   const cancelExtraction = useCallback(async () => {
     if (!activeTaskId) return
@@ -131,16 +185,26 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
       })
       setRun(result)
     } catch (err) {
-      setError(errorText(err, '取消抽取失败'))
+      setErrorState(
+        err,
+        '取消抽取失败',
+        'CancelStyleSkillExtraction',
+        { phase: 'cancel_style_extraction' },
+        activeTaskId,
+      )
       return
     }
+    setError('')
+    setErrorDiagnostic(null)
     setNotice('抽取已取消')
     setPhase('idle')
-  }, [activeTaskId, app])
+  }, [activeTaskId, app, setErrorState])
 
   const saveSkill = useCallback(async () => {
     if (!run || run.status !== 'completed') return
+    setErrorTitle('保存技能失败')
     setError('')
+    setErrorDiagnostic(null)
     setNotice('')
     try {
       await app.SaveContent({
@@ -151,19 +215,32 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
       setPhase('saved')
       setNotice('技能已保存')
     } catch (err) {
-      setError(errorText(err, '保存技能失败'))
+      setErrorState(
+        err,
+        '保存技能失败',
+        'SaveContent',
+        {
+          phase: 'save_style_skill',
+          novel_id: novelId,
+          path: run.skill_file_path,
+          task_id: run.task_id,
+        },
+        run.task_id,
+      )
     }
-  }, [app, novelId, run])
+  }, [app, novelId, run, setErrorState])
 
   const buildStyleProfile = useCallback(async () => {
     if (!canBuildProfile) {
-      setError(selectedIds.length === 0 ? '请先选择至少一个风格样本' : '请填写画像标题')
+      setLocalError(selectedIds.length === 0 ? '请先选择至少一个风格样本' : '请填写画像标题')
       return
     }
 
     const buildId = `style-sample-profile-${Date.now()}-${Math.random().toString(16).slice(2)}`
     setProfileBuilding(true)
+    setErrorTitle('构建风格画像失败')
     setError('')
+    setErrorDiagnostic(null)
     setNotice('')
     try {
       await app.BuildReferenceStyleProfile({
@@ -178,11 +255,22 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
       })
       setNotice('风格画像已构建')
     } catch (err) {
-      setError(errorText(err, '构建风格画像失败'))
+      setErrorState(
+        err,
+        '构建风格画像失败',
+        'BuildReferenceStyleProfile',
+        {
+          phase: 'build_style_profile',
+          build_id: buildId,
+          novel_id: novelId,
+          style_sample_ids: selectedIds,
+        },
+        buildId,
+      )
     } finally {
       setProfileBuilding(false)
     }
-  }, [app, canBuildProfile, novelId, profileDescription, profileTitle, selectedIds])
+  }, [app, canBuildProfile, novelId, profileDescription, profileTitle, selectedIds, setErrorState, setLocalError])
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -274,10 +362,12 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
       )}
 
       {error && (
-        <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-danger-border bg-danger-bg px-3 py-2 text-sm text-foreground">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-          <span className="min-w-0 break-words">{error}</span>
-        </div>
+        <ErrorCallout
+          title={errorTitle}
+          message={error}
+          diagnostic={errorDiagnostic}
+          className="mt-3 rounded-md"
+        />
       )}
 
       {run?.status === 'completed' && (
@@ -347,11 +437,34 @@ export default function StyleExtractionPanel({ novelId, selectedIds }: Props) {
 function diagnosticsText(diagnostics: styleSample.StyleSkillExtractionRun['diagnostics'], fallback: string): string {
   const first = diagnostics?.[0]
   if (!first) return fallback
-  return first.detail ? `${first.message} ${first.detail}` : first.message
+  return diagnosticMessage(first.detail ? `${first.message} ${first.detail}` : first.message, fallback)
 }
 
-function errorText(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
+function styleExtractionDetail({
+  taskId,
+  novelId,
+  selectedIds,
+  providerName,
+  modelId,
+  reasoningEffort,
+  skillName,
+}: {
+  taskId: string
+  novelId: number
+  selectedIds: number[]
+  providerName: string
+  modelId: string
+  reasoningEffort: string
+  skillName: string
+}): Record<string, unknown> {
+  return {
+    phase: 'extract_style_skill',
+    task_id: taskId,
+    novel_id: novelId,
+    sample_ids: selectedIds,
+    provider_name: providerName,
+    model_id: modelId,
+    reasoning_effort: reasoningEffort,
+    skill_name: skillName,
+  }
 }

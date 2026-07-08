@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Search, Plus, Sparkle, Pencil, Trash2 } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import type { skill } from '@/hooks/useApp'
+import ErrorCallout from '@/components/shared/ErrorCallout'
 import ExtractStyleDialog from './ExtractStyleDialog'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props {
   novelId: number
@@ -21,6 +24,11 @@ function skillPath(name: string, source: string): string {
   }
 }
 
+type VisibleError = {
+  message: string
+  diagnostic?: diagnostics.CopyableDiagnostic | null
+}
+
 export default function SkillList({ novelId, activeSkillName, onSelectSkill, onEditSkill, onNewSkill }: Props) {
   const app = useApp()
   const [skills, setSkills] = useState<skill.SkillMeta[]>([])
@@ -29,15 +37,17 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onE
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [error, setError] = useState<VisibleError | null>(null)
 
   const load = useCallback(async () => {
     if (!novelId) { setSkills([]); return }
     setLoading(true)
+    setError(null)
     try {
       const list = await app.ListSkills({ novel_id: novelId })
       setSkills(list ?? [])
     } catch (err) {
-      console.error('Failed to load skills:', err)
+      setError(buildVisibleError(err, '加载技能失败', '加载技能', 'ListSkills', { novel_id: novelId }))
     } finally {
       setLoading(false)
     }
@@ -54,9 +64,12 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onE
       if (!cancelled) setLoading(true)
       try {
         const list = await app.ListSkills({ novel_id: novelId })
-        if (!cancelled) setSkills(list ?? [])
+        if (!cancelled) {
+          setSkills(list ?? [])
+          setError(null)
+        }
       } catch (err) {
-        console.error('Failed to load skills:', err)
+        if (!cancelled) setError(buildVisibleError(err, '加载技能失败', '加载技能', 'ListSkills', { novel_id: novelId }))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -80,7 +93,7 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onE
       await app.DeleteSkill({ novel_id: novelId, name: s.name, source: s.source })
       await load()
     } catch (err) {
-      console.error('Failed to delete skill:', err)
+      setError(buildVisibleError(err, '删除技能失败', '删除技能', 'DeleteSkill', { novel_id: novelId, name: s.name, source: s.source }))
     }
   }
 
@@ -160,6 +173,18 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onE
           />
         </div>
       </div>
+      {error && (
+        <div className="border-b px-2 pb-2">
+          <ErrorCallout
+            compact
+            message={error.message}
+            diagnostic={error.diagnostic}
+            onRetry={() => { void load() }}
+            retrying={loading}
+            onClose={() => setError(null)}
+          />
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">加载中...</div>
@@ -208,6 +233,25 @@ export default function SkillList({ novelId, activeSkillName, onSelectSkill, onE
       />
     </>
   )
+}
+
+function buildVisibleError(
+  error: unknown,
+  fallbackMessage: string,
+  operation: string,
+  bridgeMethod: string,
+  detail: unknown,
+): VisibleError {
+  return {
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }
 
 function SkillGroup({ title, skills, activeSkillName, onSelect, onEdit, onDelete }: {

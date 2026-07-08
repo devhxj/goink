@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react'
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
-}
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props {
   open: boolean
+  novelId?: number | null
   novelTitle: string
   onClose: () => void
   onConfirm: () => Promise<void>
 }
 
-export default function NovelDeleteDialog({ open, novelTitle, onClose, onConfirm }: Props) {
+export default function NovelDeleteDialog({ open, novelId = null, novelTitle, onClose, onConfirm }: Props) {
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [errorDiagnostic, setErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -22,6 +23,7 @@ export default function NovelDeleteDialog({ open, novelTitle, onClose, onConfirm
       setConfirmText('')
       setDeleting(false)
       setError('')
+      setErrorDiagnostic(null)
     }, 0)
     return () => window.clearTimeout(timer)
   }, [open])
@@ -34,10 +36,23 @@ export default function NovelDeleteDialog({ open, novelTitle, onClose, onConfirm
     if (!canDelete || deleting) return
     setDeleting(true)
     setError('')
+    setErrorDiagnostic(null)
     try {
       await onConfirm()
     } catch (e: unknown) {
-      setError(errorMessage(e, '删除失败，请重试'))
+      const fallbackMessage = '删除作品失败'
+      setError(diagnosticMessage(e, fallbackMessage))
+      setErrorDiagnostic(buildCopyableDiagnostic({
+        error: e,
+        fallbackMessage,
+        operation: 'DeleteNovel',
+        bridgeMethod: 'DeleteNovel',
+        detail: {
+          phase: 'delete_novel_dialog',
+          novel_id: novelId ?? null,
+          title: novelTitle,
+        },
+      }))
     } finally {
       setDeleting(false)
     }
@@ -62,7 +77,17 @@ export default function NovelDeleteDialog({ open, novelTitle, onClose, onConfirm
         <h2 className="text-base font-semibold text-destructive mb-3">删除作品</h2>
 
         {error && (
-          <p className="text-sm text-red-600 bg-danger-bg border border-danger-border rounded-md px-3 py-2 mb-3">{error}</p>
+          <ErrorCallout
+            compact
+            title="删除作品失败"
+            message={error}
+            diagnostic={errorDiagnostic}
+            className="mb-3 rounded-md"
+            onClose={() => {
+              setError('')
+              setErrorDiagnostic(null)
+            }}
+          />
         )}
 
         <p className="text-sm text-muted-foreground mb-1">

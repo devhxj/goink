@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
 import { splitFrontmatter } from '@/components/content/types'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 const MODE_OPTIONS = [
   { value: 'auto', label: '智能 — AI 可自主调用，用户也可 / 触发' },
@@ -9,20 +12,22 @@ const MODE_OPTIONS = [
 
 const KNOWN_FIELDS = ['name', 'description', 'category', 'mode', 'author', 'version']
 
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
-}
-
 interface Props {
   content: string
+  novelId?: number
+  filePath?: string
   readOnly?: boolean
   onSave: (newContent: string) => Promise<void>
   onCancel: () => void
 }
 
-export default function SkillEditForm({ content, readOnly, onSave, onCancel }: Props) {
+type SkillEditError = {
+  message: string
+  diagnostic: diagnostics.CopyableDiagnostic
+  title: string
+}
+
+export default function SkillEditForm({ content, novelId, filePath, readOnly, onSave, onCancel }: Props) {
   const { meta, body } = splitFrontmatter(content)
 
   const [name, setName] = useState(meta.name || '')
@@ -33,7 +38,7 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
   const [version, setVersion] = useState(meta.version || '1')
   const [bodyText, setBodyText] = useState(body || '')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<SkillEditError | null>(null)
   const [extraFields, setExtraFields] = useState<[string, string][]>([])
 
   useEffect(() => {
@@ -46,7 +51,7 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
       setAuthor(m.author || '')
       setVersion(m.version || '1')
       setBodyText(b || '')
-      setError('')
+      setError(null)
       const extras: [string, string][] = []
       for (const [k, v] of Object.entries(m)) {
         if (!KNOWN_FIELDS.includes(k)) {
@@ -68,29 +73,42 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
 
   const handleSave = async () => {
     if (saving) return
-    if (!name.trim()) { setError('名称不能为空'); return }
-    if (!description.trim()) { setError('简介不能为空'); return }
+    if (!name.trim()) {
+      setError(skillEditError('名称不能为空', '名称不能为空', '技能表单无效', '校验技能表单', null, { field: 'name', path: filePath }))
+      return
+    }
+    if (!description.trim()) {
+      setError(skillEditError('简介不能为空', '简介不能为空', '技能表单无效', '校验技能表单', null, { field: 'description', path: filePath }))
+      return
+    }
+
+    const lines = [
+      '---',
+      `name: ${name.trim()}`,
+      `description: ${description.trim()}`,
+      `category: ${category.trim() || '未分类'}`,
+      `mode: ${mode}`,
+    ]
+    if (author.trim()) {
+      lines.push(`author: ${author.trim()}`)
+    }
+    lines.push(`version: ${parseInt(version) || 1}`)
+    for (const [k, v] of extraFields) {
+      lines.push(`${k}: ${v}`)
+    }
+    lines.push('---', '', bodyText.trim())
+    const newContent = lines.join('\n')
+
     setSaving(true)
-    setError('')
+    setError(null)
     try {
-      const lines = [
-        '---',
-        `name: ${name.trim()}`,
-        `description: ${description.trim()}`,
-        `category: ${category.trim() || '未分类'}`,
-        `mode: ${mode}`,
-      ]
-      if (author.trim()) {
-        lines.push(`author: ${author.trim()}`)
-      }
-      lines.push(`version: ${parseInt(version) || 1}`)
-      for (const [k, v] of extraFields) {
-        lines.push(`${k}: ${v}`)
-      }
-      lines.push('---', '', bodyText.trim())
-      await onSave(lines.join('\n'))
+      await onSave(newContent)
     } catch (e: unknown) {
-      setError(errorMessage(e, '保存失败，请重试'))
+      setError(skillEditError(e, '保存技能失败，请重试', '保存技能失败', '保存技能', 'SaveContent', {
+        novel_id: novelId ?? null,
+        path: filePath ?? '',
+        source_text: newContent,
+      }))
     } finally {
       setSaving(false)
     }
@@ -104,9 +122,13 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
     <div className="overflow-y-auto h-full" onKeyDown={handleKeyDown}>
       <div className="max-w-2xl mx-auto px-6 py-6 space-y-4">
         {error && (
-          <div className="sticky top-0 z-10 px-3 py-2.5 text-sm font-medium text-destructive-foreground bg-destructive border border-destructive rounded-md shadow-sm">
-            {error}
-          </div>
+          <ErrorCallout
+            title={error.title}
+            message={error.message}
+            diagnostic={error.diagnostic}
+            className="sticky top-0 z-10 rounded-md shadow-sm"
+            onClose={() => setError(null)}
+          />
         )}
 
         <div>
@@ -203,4 +225,25 @@ export default function SkillEditForm({ content, readOnly, onSave, onCancel }: P
       </div>
     </div>
   )
+}
+
+function skillEditError(
+  error: unknown,
+  fallbackMessage: string,
+  title: string,
+  operation: string,
+  bridgeMethod: string | null,
+  detail?: unknown,
+): SkillEditError {
+  return {
+    title,
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }

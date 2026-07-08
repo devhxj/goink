@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { pattern } from '@/lib/novelist/types'
+import type { diagnostics, pattern } from '@/lib/novelist/types'
 import { EventsOn } from '@/lib/novelist/events'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
 
 export const NARRATIVE_PATTERN_PROGRESS_EVENT = 'narrative_pattern_extraction:progress'
 
@@ -21,6 +22,7 @@ export interface PatternExtractionUiState {
   run: pattern.NarrativePatternRun | null
   trace: pattern.NarrativePatternTrace | null
   errorMessage: string
+  errorDiagnostic: diagnostics.CopyableDiagnostic | null
 }
 
 interface UsePatternProgressOptions {
@@ -38,6 +40,7 @@ const IDLE_STATE: PatternExtractionUiState = {
   run: null,
   trace: null,
   errorMessage: '',
+  errorDiagnostic: null,
 }
 
 export function usePatternProgress({
@@ -85,6 +88,7 @@ export function usePatternProgress({
       run: null,
       trace: null,
       errorMessage: '',
+      errorDiagnostic: null,
     })
 
     try {
@@ -104,16 +108,26 @@ export function usePatternProgress({
         progress: current.progress ?? progressFromRun(run),
         status: statusFromRun(run),
         errorMessage: errorMessageFromRun(run),
+        errorDiagnostic: run.diagnostics?.[0] ?? null,
       }))
       return run
     } catch (error) {
       if (activeTaskIdRef.current !== input.task_id) return null
 
+      const fallbackMessage = '叙事模式抽取失败，请重试。'
       activeTaskIdRef.current = null
       setState(current => ({
         ...current,
         status: 'error',
-        errorMessage: errorMessageText(error, '叙事模式抽取失败，请重试。'),
+        errorMessage: diagnosticMessage(error, fallbackMessage),
+        errorDiagnostic: buildCopyableDiagnostic({
+          error,
+          fallbackMessage,
+          operation: 'StartNarrativePatternExtraction',
+          taskId: input.task_id,
+          bridgeMethod: 'StartNarrativePatternExtraction',
+          detail: safePatternInputDetail(input),
+        }),
       }))
       return null
     }
@@ -144,15 +158,25 @@ export function usePatternProgress({
         progress: current.progress ?? progressFromRun(run),
         status: statusFromRun(run),
         errorMessage: errorMessageFromRun(run),
+        errorDiagnostic: run.diagnostics?.[0] ?? null,
       }))
       return run
     } catch (error) {
       if (activeTaskIdRef.current !== taskId) return null
 
+      const fallbackMessage = '取消叙事模式抽取失败。'
       setState(current => ({
         ...current,
         status: 'running',
-        errorMessage: errorMessageText(error, '取消叙事模式抽取失败。'),
+        errorMessage: diagnosticMessage(error, fallbackMessage),
+        errorDiagnostic: buildCopyableDiagnostic({
+          error,
+          fallbackMessage,
+          operation: 'CancelNarrativePatternExtraction',
+          taskId,
+          bridgeMethod: 'CancelNarrativePatternExtraction',
+          detail: { phase: 'cancel_pattern_extraction' },
+        }),
       }))
       return null
     }
@@ -232,11 +256,17 @@ function errorMessageFromRun(run: pattern.NarrativePatternRun): string {
   if (run.status !== 'failed') return ''
   const first = run.diagnostics?.[0]
   if (!first) return '叙事模式抽取失败。'
-  return first.detail ? `${first.message} ${first.detail}` : first.message
+  return diagnosticMessage(first.detail ? `${first.message} ${first.detail}` : first.message, '叙事模式抽取失败。')
 }
 
-function errorMessageText(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
+function safePatternInputDetail(input: pattern.StartNarrativePatternExtractionInput): Record<string, unknown> {
+  return {
+    novel_id: input.novel_id,
+    chapter_ranges: input.chapter_ranges,
+    selected_chapter_ids: input.selected_chapter_ids,
+    provider_name: input.provider_name,
+    model_id: input.model_id,
+    reasoning_effort: input.reasoning_effort,
+    skill_name: input.skill_name,
+  }
 }

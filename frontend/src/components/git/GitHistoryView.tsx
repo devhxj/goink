@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle,
   Binary,
   ChevronDown,
   ChevronRight,
@@ -15,7 +14,12 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
-import type { git } from '@/lib/novelist/types'
+import { useRelativeTimeTicker } from '@/hooks/useRelativeTimeTicker'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { copyTextToClipboard } from '@/lib/clipboard'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import { formatAbsoluteDateTime, formatInteger, formatRelativeTime } from '@/lib/time'
+import type { diagnostics, git } from '@/lib/novelist/types'
 
 interface Props {
   novelId: number
@@ -24,10 +28,12 @@ interface Props {
 type CommitFilesState = {
   loading: boolean
   error: string
+  errorDiagnostic: diagnostics.CopyableDiagnostic | null
   files: git.GitCommitFile[]
 }
 
 const PAGE_SIZE = 3
+const LOCALE = 'zh-CN'
 
 export default function GitHistoryView({ novelId }: Props) {
   const app = useApp()
@@ -38,6 +44,7 @@ export default function GitHistoryView({ novelId }: Props) {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
+  const [errorDiagnostic, setErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [filesByCommit, setFilesByCommit] = useState<Record<string, CommitFilesState>>({})
   const [selectedCommitId, setSelectedCommitId] = useState('')
@@ -45,11 +52,13 @@ export default function GitHistoryView({ novelId }: Props) {
   const [diff, setDiff] = useState<git.GitFileDiff | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState('')
+  const [diffErrorDiagnostic, setDiffErrorDiagnostic] = useState<diagnostics.CopyableDiagnostic | null>(null)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const loadingRef = useRef(false)
 
   const hasMore = totalPages === 0 ? false : page < totalPages
+  const nowMs = useRelativeTimeTicker(commits.map(commit => commit.committed_at), commits.length > 0)
   const selectedCommit = useMemo(
     () => commits.find(commit => commit.commit_id === selectedCommitId) ?? null,
     [commits, selectedCommitId],
@@ -61,6 +70,7 @@ export default function GitHistoryView({ novelId }: Props) {
     loadingRef.current = true
     setLoading(true)
     setError('')
+    setErrorDiagnostic(null)
 
     try {
       const result = await app.GetGitCommits({
@@ -80,9 +90,16 @@ export default function GitHistoryView({ novelId }: Props) {
       setSelectedFile(null)
       setDiff(null)
       setDiffError('')
+      setDiffErrorDiagnostic(null)
       setError('')
+      setErrorDiagnostic(null)
     } catch (err) {
       setError(errorText(err, '加载 Git 历史失败'))
+      setErrorDiagnostic(gitDiagnostic(err, '加载 Git 历史失败', 'GetGitCommits', {
+        novel_id: novelId,
+        page: 1,
+        size: PAGE_SIZE,
+      }))
       setCommits([])
       setTotal(0)
       setTotalPages(0)
@@ -114,8 +131,15 @@ export default function GitHistoryView({ novelId }: Props) {
       setTotal(result.total ?? total)
       setTotalPages(result.total_pages ?? totalPages)
       setError('')
+      setErrorDiagnostic(null)
     } catch (err) {
       setError(errorText(err, '加载更早提交失败'))
+      setErrorDiagnostic(gitDiagnostic(err, '加载更早提交失败', 'GetGitCommits', {
+        novel_id: novelId,
+        page: page + 1,
+        size: PAGE_SIZE,
+        cursor_commit_id: cursor,
+      }))
     } finally {
       loadingRef.current = false
       setLoadingMore(false)
@@ -154,7 +178,7 @@ export default function GitHistoryView({ novelId }: Props) {
 
     setFilesByCommit(current => ({
       ...current,
-      [commit.commit_id]: { loading: true, error: '', files: [] },
+      [commit.commit_id]: { loading: true, error: '', errorDiagnostic: null, files: [] },
     }))
     try {
       const files = await app.GetGitCommitFiles({
@@ -163,12 +187,20 @@ export default function GitHistoryView({ novelId }: Props) {
       })
       setFilesByCommit(current => ({
         ...current,
-        [commit.commit_id]: { loading: false, error: '', files: files ?? [] },
+        [commit.commit_id]: { loading: false, error: '', errorDiagnostic: null, files: files ?? [] },
       }))
     } catch (err) {
       setFilesByCommit(current => ({
         ...current,
-        [commit.commit_id]: { loading: false, error: errorText(err, '加载提交文件失败'), files: [] },
+        [commit.commit_id]: {
+          loading: false,
+          error: errorText(err, '加载提交文件失败'),
+          errorDiagnostic: gitDiagnostic(err, '加载提交文件失败', 'GetGitCommitFiles', {
+            novel_id: novelId,
+            commit_id: commit.commit_id,
+          }),
+          files: [],
+        },
       }))
     }
   }, [app, expanded, filesByCommit, novelId])
@@ -176,7 +208,7 @@ export default function GitHistoryView({ novelId }: Props) {
   const retryCommitFiles = useCallback(async (commit: git.GitCommitSummary) => {
     setFilesByCommit(current => ({
       ...current,
-      [commit.commit_id]: { loading: true, error: '', files: current[commit.commit_id]?.files ?? [] },
+      [commit.commit_id]: { loading: true, error: '', errorDiagnostic: null, files: current[commit.commit_id]?.files ?? [] },
     }))
     try {
       const files = await app.GetGitCommitFiles({
@@ -185,12 +217,20 @@ export default function GitHistoryView({ novelId }: Props) {
       })
       setFilesByCommit(current => ({
         ...current,
-        [commit.commit_id]: { loading: false, error: '', files: files ?? [] },
+        [commit.commit_id]: { loading: false, error: '', errorDiagnostic: null, files: files ?? [] },
       }))
     } catch (err) {
       setFilesByCommit(current => ({
         ...current,
-        [commit.commit_id]: { loading: false, error: errorText(err, '加载提交文件失败'), files: [] },
+        [commit.commit_id]: {
+          loading: false,
+          error: errorText(err, '加载提交文件失败'),
+          errorDiagnostic: gitDiagnostic(err, '加载提交文件失败', 'GetGitCommitFiles', {
+            novel_id: novelId,
+            commit_id: commit.commit_id,
+          }),
+          files: [],
+        },
       }))
     }
   }, [app, novelId])
@@ -200,6 +240,7 @@ export default function GitHistoryView({ novelId }: Props) {
     setSelectedFile(file)
     setDiff(null)
     setDiffError('')
+    setDiffErrorDiagnostic(null)
     setDiffLoading(true)
     setCopyState('idle')
 
@@ -211,8 +252,14 @@ export default function GitHistoryView({ novelId }: Props) {
       })
       setDiff(result)
       setDiffError('')
+      setDiffErrorDiagnostic(null)
     } catch (err) {
       setDiffError(errorText(err, '加载文件 diff 失败'))
+      setDiffErrorDiagnostic(gitDiagnostic(err, '加载文件 diff 失败', 'GetGitFileDiff', {
+        novel_id: novelId,
+        commit_id: commit.commit_id,
+        path: file.path,
+      }))
     } finally {
       setDiffLoading(false)
     }
@@ -225,8 +272,15 @@ export default function GitHistoryView({ novelId }: Props) {
       diff,
       error: diffError || error,
     }
+    const diagnostic = buildCopyableDiagnostic({
+      error: diffError || error || 'Git diff 诊断',
+      fallbackMessage: 'Git diff 诊断',
+      operation: 'GitHistoryDiff',
+      bridgeMethod: 'GetGitFileDiff',
+      detail: payload,
+    })
     try {
-      await copyTextToClipboard(JSON.stringify(payload, null, 2))
+      await copyTextToClipboard(JSON.stringify(diagnostic, null, 2))
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1800)
     } catch {
@@ -244,7 +298,7 @@ export default function GitHistoryView({ novelId }: Props) {
             <h1 className="text-base font-semibold text-foreground">Git 历史</h1>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {loading ? '加载中' : `${total} 个提交`}
+            {loading ? '加载中' : `${formatInteger(total, { locale: LOCALE })} 个提交`}
           </p>
         </div>
         <button
@@ -259,10 +313,13 @@ export default function GitHistoryView({ novelId }: Props) {
       </header>
 
       {error && (
-        <GitErrorCallout
+        <ErrorCallout
+          title="Git 历史加载失败"
           message={error}
+          diagnostic={errorDiagnostic}
           onRetry={() => { void loadInitialCommits() }}
           retrying={loading}
+          className="border-x-0 border-t-0 px-4 py-3"
         />
       )}
 
@@ -283,6 +340,7 @@ export default function GitHistoryView({ novelId }: Props) {
                     filesState={filesByCommit[commit.commit_id]}
                     selectedCommitId={selectedCommitId}
                     selectedPath={selectedFile?.path ?? ''}
+                    nowMs={nowMs}
                     onToggle={() => { void toggleCommit(commit) }}
                     onRetryFiles={() => { void retryCommitFiles(commit) }}
                     onSelectFile={(file) => { void selectFile(commit, file) }}
@@ -318,6 +376,7 @@ export default function GitHistoryView({ novelId }: Props) {
           diff={diff}
           loading={diffLoading}
           error={diffError}
+          errorDiagnostic={diffErrorDiagnostic}
           copyState={copyState}
           onRetry={() => {
             if (selectedCommit && selectedFile) {
@@ -337,6 +396,7 @@ function CommitItem({
   filesState,
   selectedCommitId,
   selectedPath,
+  nowMs,
   onToggle,
   onRetryFiles,
   onSelectFile,
@@ -346,11 +406,13 @@ function CommitItem({
   filesState?: CommitFilesState
   selectedCommitId: string
   selectedPath: string
+  nowMs: number
   onToggle: () => void
   onRetryFiles: () => void
   onSelectFile: (file: git.GitCommitFile) => void
 }) {
   const isSelectedCommit = selectedCommitId === commit.commit_id
+  const committedAtTitle = formatAbsoluteDateTime(commit.committed_at, { locale: LOCALE })
   return (
     <li className={`rounded-md border bg-card transition-colors ${isSelectedCommit ? 'border-primary' : 'border-border'}`}>
       <button
@@ -367,12 +429,14 @@ function CommitItem({
           <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
             <span className="font-mono">{commit.short_commit_id}</span>
             <span>{commit.author_name}</span>
-            <span>{formatRelativeDate(commit.committed_at)}</span>
+            <span title={committedAtTitle}>
+              {formatRelativeTime(commit.committed_at, { now: nowMs, locale: LOCALE })}
+            </span>
           </span>
           <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-            <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground">{commit.changed_file_count} 文件</span>
-            <span className="rounded bg-tag-green px-2 py-0.5 text-tag-green-foreground">+{commit.insertions}</span>
-            <span className="rounded bg-tag-rose px-2 py-0.5 text-tag-rose-foreground">-{commit.deletions}</span>
+            <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground">{formatInteger(commit.changed_file_count, { locale: LOCALE })} 文件</span>
+            <span className="rounded bg-tag-green px-2 py-0.5 text-tag-green-foreground">+{formatInteger(commit.insertions, { locale: LOCALE })}</span>
+            <span className="rounded bg-tag-rose px-2 py-0.5 text-tag-rose-foreground">-{formatInteger(commit.deletions, { locale: LOCALE })}</span>
           </span>
         </span>
       </button>
@@ -385,19 +449,14 @@ function CommitItem({
               加载变更文件
             </div>
           ) : filesState?.error ? (
-            <div className="rounded-md border border-danger-border bg-danger-bg px-2.5 py-2">
-              <div className="flex items-start gap-2 text-xs text-foreground">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-                <span className="min-w-0 break-words">{filesState.error}</span>
-              </div>
-              <button
-                type="button"
-                onClick={onRetryFiles}
-                className="mt-2 h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                重试
-              </button>
-            </div>
+            <ErrorCallout
+              title="加载提交文件失败"
+              message={filesState.error}
+              diagnostic={filesState.errorDiagnostic}
+              onRetry={onRetryFiles}
+              compact
+              className="rounded-md"
+            />
           ) : filesState?.files.length ? (
             <ul className="space-y-1">
               {filesState.files.map(file => (
@@ -444,7 +503,7 @@ function FileButton({
         )}
         <span className="mt-1 flex flex-wrap gap-1 text-[11px] opacity-90">
           <ChangeBadge changeType={file.change_type} selected={selected} />
-          {file.binary ? <span>binary</span> : <span>+{file.additions} -{file.deletions}</span>}
+          {file.binary ? <span>binary</span> : <span>+{formatInteger(file.additions, { locale: LOCALE })} -{formatInteger(file.deletions, { locale: LOCALE })}</span>}
         </span>
       </span>
     </button>
@@ -474,6 +533,7 @@ function DiffPanel({
   diff,
   loading,
   error,
+  errorDiagnostic,
   copyState,
   onRetry,
   onCopy,
@@ -483,6 +543,7 @@ function DiffPanel({
   diff: git.GitFileDiff | null
   loading: boolean
   error: string
+  errorDiagnostic: diagnostics.CopyableDiagnostic | null
   copyState: 'idle' | 'copied' | 'failed'
   onRetry: () => void
   onCopy: () => void
@@ -519,7 +580,14 @@ function DiffPanel({
         </div>
       ) : error ? (
         <div className="m-4">
-          <GitErrorCallout message={error} onRetry={onRetry} retrying={loading} />
+          <ErrorCallout
+            title="加载文件 diff 失败"
+            message={error}
+            diagnostic={errorDiagnostic}
+            onRetry={onRetry}
+            retrying={loading}
+            className="rounded-md"
+          />
         </div>
       ) : diff ? (
         <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -563,36 +631,6 @@ function ContentBlock({ title, value, emptyText }: { title: string; value?: stri
       ) : (
         <div className="px-3 py-8 text-center text-sm text-muted-foreground">{emptyText}</div>
       )}
-    </section>
-  )
-}
-
-function GitErrorCallout({
-  message,
-  retrying,
-  onRetry,
-}: {
-  message: string
-  retrying: boolean
-  onRetry: () => void
-}) {
-  return (
-    <section role="alert" className="border-b border-danger-border bg-danger-bg px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2 text-sm text-foreground">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-          <span className="min-w-0 break-words">{message}</span>
-        </div>
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={retrying}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          重试
-        </button>
-      </div>
     </section>
   )
 }
@@ -658,44 +696,21 @@ function mergeCommits(
   return merged
 }
 
-function formatRelativeDate(value: unknown): string {
-  const date = new Date(String(value ?? ''))
-  if (Number.isNaN(date.getTime())) return String(value ?? '')
-  const formatter = new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  return formatter.format(date)
-}
-
 function errorText(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
+  return diagnosticMessage(error, fallback)
 }
 
-async function copyTextToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return
-    } catch {
-      // Fall through for desktop/webview clipboard permission quirks.
-    }
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', 'true')
-  textarea.style.position = 'fixed'
-  textarea.style.left = '-9999px'
-  document.body.appendChild(textarea)
-  textarea.select()
-  try {
-    document.execCommand('copy')
-  } finally {
-    textarea.remove()
-  }
+function gitDiagnostic(
+  error: unknown,
+  fallbackMessage: string,
+  bridgeMethod: string,
+  detail: Record<string, unknown>,
+): diagnostics.CopyableDiagnostic {
+  return buildCopyableDiagnostic({
+    error,
+    fallbackMessage,
+    operation: bridgeMethod,
+    bridgeMethod,
+    detail,
+  })
 }

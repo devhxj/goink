@@ -3,7 +3,10 @@ import { Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import type { character } from '@/hooks/useApp'
 import CharacterGraph from '@/components/character/CharacterGraph'
+import ErrorCallout from '@/components/shared/ErrorCallout'
 import TagInput from '@/components/shared/TagInput'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props { novelId: number; focusId?: number }
 
@@ -22,6 +25,11 @@ type CharForm = {
 
 const EMPTY_FORM: CharForm = { name: '', description: '', abilities: [] }
 
+type VisibleError = {
+  message: string
+  diagnostic?: diagnostics.CopyableDiagnostic | null
+}
+
 function safeJson<T>(json: string, fallback: T): T {
   try { return JSON.parse(json) }
   catch { return fallback }
@@ -32,7 +40,7 @@ export default function CharacterListView({ novelId, focusId }: Props) {
 
   const [characters, setCharacters] = useState<character.Character[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<VisibleError | null>(null)
   const [viewTab, setViewTab] = useState<ViewTab>('list')
   const [editMode, setEditMode] = useState<EditMode>(null)
   const [form, setForm] = useState<CharForm>(EMPTY_FORM)
@@ -46,7 +54,7 @@ export default function CharacterListView({ novelId, focusId }: Props) {
       const list = await app.GetCharacters(novelId)
       setCharacters(list ?? [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败')
+      setError(buildVisibleError(err, '加载角色失败', '加载角色', 'GetCharacters', { novel_id: novelId }))
     } finally {
       setLoading(false)
     }
@@ -68,7 +76,7 @@ export default function CharacterListView({ novelId, focusId }: Props) {
         const list = await app.GetCharacters(novelId)
         if (!cancelled) setCharacters(list ?? [])
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : '加载失败')
+        if (!cancelled) setError(buildVisibleError(err, '加载角色失败', '加载角色', 'GetCharacters', { novel_id: novelId }))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -103,14 +111,14 @@ export default function CharacterListView({ novelId, focusId }: Props) {
   }
 
   async function handleCreate() {
-    if (!form.name.trim()) { setError('请输入角色名称'); return }
+    if (!form.name.trim()) { setError({ message: '请输入角色名称' }); return }
     setSaving(true)
     try {
       await app.CreateCharacter(novelId, buildPayload())
       setEditMode(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      setError(buildVisibleError(err, '创建角色失败', '创建角色', 'CreateCharacter', { novel_id: novelId, name: form.name }))
     } finally {
       setSaving(false)
     }
@@ -118,14 +126,14 @@ export default function CharacterListView({ novelId, focusId }: Props) {
 
   async function handleUpdate() {
     if (!editMode || editMode.type !== 'edit') return
-    if (!form.name.trim()) { setError('请输入角色名称'); return }
+    if (!form.name.trim()) { setError({ message: '请输入角色名称' }); return }
     setSaving(true)
     try {
       await app.UpdateCharacter(novelId, editMode.item.id, buildPayload())
       setEditMode(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '更新失败')
+      setError(buildVisibleError(err, '更新角色失败', '更新角色', 'UpdateCharacter', { novel_id: novelId, character_id: editMode.item.id, name: form.name }))
     } finally {
       setSaving(false)
     }
@@ -138,7 +146,7 @@ export default function CharacterListView({ novelId, focusId }: Props) {
       await app.DeleteCharacter(novelId, charId)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败')
+      setError(buildVisibleError(err, '删除角色失败', '删除角色', 'DeleteCharacter', { novel_id: novelId, character_id: charId }))
     } finally {
       setSaving(false)
     }
@@ -227,11 +235,19 @@ export default function CharacterListView({ novelId, focusId }: Props) {
         <CharacterGraph novelId={novelId} focusId={focusId} />
       ) : loading ? (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">加载中...</div>
-      ) : error ? (
-        <div className="flex h-full items-center justify-center text-sm text-destructive">{error}</div>
       ) : (
         <div className="flex-1 overflow-y-auto overscroll-contain">
           <div className="max-w-3xl mx-auto px-5 py-6 space-y-6">
+            {error && (
+              <ErrorCallout
+                message={error.message}
+                diagnostic={error.diagnostic}
+                onRetry={() => { void load() }}
+                retrying={loading}
+                onClose={() => setError(null)}
+              />
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -328,4 +344,23 @@ export default function CharacterListView({ novelId, focusId }: Props) {
       )}
     </main>
   )
+}
+
+function buildVisibleError(
+  error: unknown,
+  fallbackMessage: string,
+  operation: string,
+  bridgeMethod: string,
+  detail: unknown,
+): VisibleError {
+  return {
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }

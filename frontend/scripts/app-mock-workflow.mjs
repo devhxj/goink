@@ -91,6 +91,164 @@ async function runSmokeSuite(browser, url) {
   await page.close()
 }
 
+function fullSuiteBridgeOptions() {
+  if (runConfig.grep === '@update') {
+    return {
+      initialized: true,
+      settings: {
+        ...settingsFixture(42),
+        update_check_enabled: true,
+        update_check_endpoint_url: 'https://updates.example.test/latest',
+      },
+      faults: {
+        'runtime.shell.openExternal': {
+          mode: 'error',
+          code: 'UPDATE_RELEASE_OPEN_FAILED',
+          message: '打开发布页失败：Bearer open-error-token-abcdefghijklmnopqrstuvwxyz',
+          details: sensitiveDiagnosticDetails(),
+          retryable: true,
+        },
+      },
+    }
+  }
+
+  if (runConfig.grep === '@error') {
+    return {
+      initialized: true,
+      confirmResult: true,
+      faults: errorFeedbackFaults(),
+    }
+  }
+
+  return { initialized: true }
+}
+
+function errorFeedbackFaults() {
+  const details = sensitiveDiagnosticDetails()
+  return {
+    DeleteCharacter: {
+      mode: 'storage',
+      code: 'CHARACTER_DELETE_FAILED',
+      message: '角色删除失败：Bearer live-error-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    DeleteLocation: {
+      mode: 'storage',
+      code: 'LOCATION_DELETE_FAILED',
+      message: '地点删除失败：sk-proj-errorabcdefghijklmnopqrstuvwxyz1234567890',
+      details,
+      retryable: true,
+    },
+    DeleteSkill: {
+      mode: 'storage',
+      code: 'SKILL_DELETE_FAILED',
+      message: '技能删除失败：sk-proj-errorabcdefghijklmnopqrstuvwxyz1234567890',
+      details,
+      retryable: true,
+    },
+    CreateNovel: {
+      mode: 'storage',
+      code: 'NOVEL_CREATE_FAILED',
+      message: '创建作品失败：Bearer novel-create-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    UpdateNovel: {
+      mode: 'storage',
+      code: 'NOVEL_UPDATE_FAILED',
+      message: '更新作品失败：Bearer novel-update-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    DeleteNovel: {
+      mode: 'storage',
+      code: 'NOVEL_DELETE_FAILED',
+      message: '删除作品失败：Bearer novel-delete-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    CreateStyleSample: {
+      mode: 'storage',
+      code: 'STYLE_SAMPLE_CREATE_FAILED',
+      message: '保存风格样本失败：Bearer style-sample-create-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    UpdateStyleSample: {
+      mode: 'storage',
+      code: 'STYLE_SAMPLE_UPDATE_FAILED',
+      message: '保存风格样本失败：Bearer style-sample-update-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    DeleteStyleSample: {
+      mode: 'storage',
+      code: 'STYLE_SAMPLE_DELETE_FAILED',
+      message: '删除风格样本失败：Bearer style-sample-delete-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+    },
+    UpdateChapterTitle: {
+      mode: 'validation',
+      code: 'CHAPTER_RENAME_FAILED',
+      message: '章节重命名失败：Bearer rename-error-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: false,
+      once: false,
+    },
+    StartNovelImport: {
+      mode: 'storage',
+      code: 'IMPORT_PARSE_FAILED',
+      message: '导入失败：Bearer import-error-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: false,
+      once: false,
+    },
+    StartNarrativePatternExtraction: {
+      mode: 'error',
+      code: 'PATTERN_EXTRACTION_FAILED',
+      message: '叙事模式抽取失败：sk-proj-errorabcdefghijklmnopqrstuvwxyz1234567890',
+      details,
+      retryable: true,
+      once: false,
+    },
+    ExtractStyleSkillFromSamples: {
+      mode: 'error',
+      code: 'STYLE_SKILL_EXTRACTION_FAILED',
+      message: '风格技能抽取失败：Bearer style-error-token-abcdefghijklmnopqrstuvwxyz',
+      details,
+      retryable: true,
+      once: false,
+    },
+  }
+}
+
+function sensitiveDiagnosticDetails() {
+  return {
+    api_key: 'sk-proj-errorabcdefghijklmnopqrstuvwxyz1234567890',
+    authorization: 'Bearer detail-error-token-abcdefghijklmnopqrstuvwxyz',
+    source_text: '敏感源文本'.repeat(300),
+    nested: {
+      password: 'open-sesame-secret',
+      token: 'detail-token-abcdefghijklmnopqrstuvwxyz',
+    },
+  }
+}
+
+async function installClipboardSpy(page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        async writeText(text) {
+          window.__appMockClipboardText = String(text)
+        },
+      },
+    })
+  })
+}
+
 async function runFullSuite(browser, url) {
   const { consoleErrors, pageErrors } = diagnostics
   const shouldRun = makeTagFilter(runConfig.grep)
@@ -106,16 +264,10 @@ async function runFullSuite(browser, url) {
   }
 
   logStep('loading workspace')
-  const page = await newAppPage(browser, consoleErrors, pageErrors, runConfig.grep === '@update'
-    ? {
-        initialized: true,
-        settings: {
-          ...settingsFixture(42),
-          update_check_enabled: true,
-          update_check_endpoint_url: 'https://updates.example.test/latest',
-        },
-      }
-    : { initialized: true }, undefined, 'full-shell')
+  const page = await newAppPage(browser, consoleErrors, pageErrors, fullSuiteBridgeOptions(), undefined, 'full-shell')
+  if (runConfig.grep === '@error' || runConfig.grep === '@update') {
+    await installClipboardSpy(page)
+  }
   await page.goto(url, { waitUntil: 'domcontentloaded' })
   await expectVisible(page.getByText('全局回归小说'), 'workspace title')
   await expectVisible(page.getByText('AI 对话'), 'chat panel')
@@ -216,6 +368,22 @@ async function runFullSuite(browser, url) {
     await page.screenshot({ path: path.join(outputDir, 'app-11-update.png'), fullPage: true })
   }
 
+  if (runConfig.grep === '@time') {
+    logStep('checking relative-time refresh workflow')
+    await verifyRelativeTimeRefreshWorkflow(browser, url, consoleErrors, pageErrors)
+  }
+
+  if (runConfig.grep === '@layout') {
+    logStep('checking layout persistence workflow')
+    await verifyLayoutPersistenceWorkflow(page, browser, url, consoleErrors, pageErrors)
+  }
+
+  if (runConfig.grep === '@error') {
+    logStep('checking unified error feedback workflow')
+    await verifyErrorFeedbackWorkflow(page, browser, url, consoleErrors, pageErrors)
+    await page.screenshot({ path: path.join(outputDir, 'app-12-error-feedback.png'), fullPage: true })
+  }
+
   if (shouldRun('@surface')) {
     logStep('checking compact viewport layout')
     await verifyCompactViewportSmoke(browser, url, consoleErrors, pageErrors)
@@ -236,6 +404,12 @@ async function runFullSuite(browser, url) {
     await verifyGitBridgeCalls(page)
   } else if (runConfig.grep === '@update') {
     await verifyUpdateBridgeCalls(page)
+  } else if (runConfig.grep === '@time') {
+    await verifyRelativeTimeBridgeCalls(page)
+  } else if (runConfig.grep === '@layout') {
+    await verifyLayoutBridgeCalls(page)
+  } else if (runConfig.grep === '@error') {
+    await verifyErrorBridgeCalls(page)
   } else {
     await verifyBridgeCalls(page)
   }
@@ -1818,7 +1992,11 @@ async function verifyUpdateWorkflow(page, browser, url, consoleErrors, pageError
   const manualFailureCount = await bridgeCallCount(page, 'CheckForUpdates')
   await dialog.getByRole('button', { name: '立即检查' }).click()
   await waitForBridgeCallCountAfter(page, 'CheckForUpdates', manualFailureCount)
-  await expectVisible(dialog.getByText('模拟更新检查失败'), 'manual update failure result')
+  const manualFailureAlert = errorAlert(dialog, '更新检查失败')
+  await expectVisible(manualFailureAlert, 'manual update failure callout')
+  await expectVisible(manualFailureAlert.getByText('模拟更新检查失败'), 'manual update failure result')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, manualFailureAlert, 'CheckForUpdates')
 
   await page.evaluate(() => { window.__appMockState.nextUpdateCheckMode = 'available' })
   const manualAvailableCount = await bridgeCallCount(page, 'CheckForUpdates')
@@ -1834,6 +2012,10 @@ async function verifyUpdateWorkflow(page, browser, url, consoleErrors, pageError
     return calls.at(-1)?.payload?.url ?? null
   })
   assert.equal(openedRelease, 'https://updates.example.test/releases/v2.0.0')
+  const updateAlert = errorAlert(page, '更新操作失败')
+  await expectVisible(updateAlert, 'update release open error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, updateAlert, 'runtime.shell.openExternal')
   await page.getByRole('button', { name: '关闭更新提示' }).click()
   await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
 
@@ -1851,6 +2033,38 @@ async function verifyUpdateWorkflow(page, browser, url, consoleErrors, pageError
   await expectHidden(noUpdatePage.getByText('发现新版本'), 'no automatic dialog when current version is latest')
   await assertBridgeCallCount(noUpdatePage, 'runtime.shell.openExternal', 0)
   await noUpdatePage.close()
+
+  const settingsFailurePage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    settings: {
+      ...settingsFixture(42),
+      update_check_enabled: false,
+      update_check_endpoint_url: '',
+    },
+    faults: {
+      SaveUpdateCheckSettings: {
+        mode: 'storage',
+        code: 'UPDATE_SETTINGS_SAVE_FAILED',
+        message: '更新设置保存失败：Bearer update-settings-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+      },
+    },
+  }, undefined, 'update-settings-failure')
+  await installClipboardSpy(settingsFailurePage)
+  await settingsFailurePage.goto(url, { waitUntil: 'domcontentloaded' })
+  await settingsFailurePage.locator('header').getByTitle('设置').click()
+  const failureDialog = settingsDialog(settingsFailurePage)
+  await failureDialog.locator('#update-check-endpoint').fill('https://updates.example.test/latest')
+  await failureDialog.getByRole('button', { name: '保存更新设置' }).click()
+  await waitForBridgeCall(settingsFailurePage, 'SaveUpdateCheckSettings')
+  const saveFailureAlert = errorAlert(failureDialog, '更新检查设置保存失败')
+  await expectVisible(saveFailureAlert, 'update settings save failure callout')
+  await assertNoSensitiveDiagnosticsVisible(settingsFailurePage)
+  await assertCopyableDiagnostic(settingsFailurePage, saveFailureAlert, 'SaveUpdateCheckSettings')
+  await assertBridgeCallCount(settingsFailurePage, 'runtime.shell.openExternal', 0)
+  await assertBridgeCallCount(settingsFailurePage, 'SaveContent', 0)
+  await settingsFailurePage.close()
 }
 
 async function verifyMetadataPanels(page) {
@@ -1923,6 +2137,179 @@ async function verifyCompactViewportSmoke(browser, url, consoleErrors, pageError
   await assertBridgeCallCount(page, 'SaveContent', 0)
   await page.screenshot({ path: path.join(outputDir, 'app-09-compact.png'), fullPage: true })
   await page.close()
+}
+
+async function verifyLayoutPersistenceWorkflow(page, browser, url, consoleErrors, pageErrors) {
+  await expectVisible(page.getByText('全局回归小说'), 'layout workspace title')
+  await expectVisible(page.getByRole('separator', { name: '调整侧边栏宽度' }), 'sidebar resize separator')
+  await expectVisible(page.getByRole('separator', { name: '调整对话面板宽度' }), 'chat resize separator')
+
+  await assertPanelWidth(page, '调整侧边栏宽度', 280, 2, 'initial sidebar width')
+  await assertPanelWidth(page, '调整对话面板宽度', 360, 2, 'initial chat width')
+
+  await dragSeparator(page, '调整侧边栏宽度', 80)
+  await waitForLayoutSave(page, { sidebar_width: 360, chat_panel_width: 360 })
+  await assertPanelWidth(page, '调整侧边栏宽度', 360, 2, 'dragged sidebar width')
+
+  await dragSeparator(page, '调整对话面板宽度', -80)
+  await waitForLayoutSave(page, { sidebar_width: 360, chat_panel_width: 440 })
+  await assertPanelWidth(page, '调整对话面板宽度', 440, 2, 'dragged chat width')
+  await assertWorkspacePanelsDoNotOverlap(page, 'desktop layout after drag')
+
+  await page.getByTitle('最大化').click()
+  await page.waitForFunction(
+    () => window.__appMockState.calls.some((call) =>
+      call.method === 'SaveWindowSettings' &&
+      call.args[0]?.maximized === true &&
+      call.args[0]?.width >= 800 &&
+      call.args[0]?.height >= 600),
+    null,
+    { timeout: 12_000 },
+  )
+  await expectVisible(page.getByTitle('还原'), 'maximized title button')
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expectVisible(page.getByText('全局回归小说'), 'layout workspace after reload')
+  await assertPanelWidth(page, '调整侧边栏宽度', 360, 2, 'persisted sidebar width after reload')
+  await assertPanelWidth(page, '调整对话面板宽度', 440, 2, 'persisted chat width after reload')
+
+  const saveLayoutCallsBeforeCompact = await bridgeCallCount(page, 'SaveLayoutSettings')
+  await page.setViewportSize({ width: 900, height: 720 })
+  await page.waitForFunction(() => {
+    const widthFor = (label) => {
+      const separator = document.querySelector(`[role="separator"][aria-label="${label}"]`)
+      const panel = separator?.closest('aside')
+      return panel ? Math.round(panel.getBoundingClientRect().width) : 0
+    }
+    const widths = {
+      sidebar: widthFor('调整侧边栏宽度'),
+      chat: widthFor('调整对话面板宽度'),
+    }
+    return widths.sidebar + widths.chat <= 593 &&
+      widths.sidebar >= 220 &&
+      widths.chat >= 280
+  }, null, { timeout: 12_000 })
+  const compactWidths = await layoutPanelWidths(page)
+  assert(compactWidths.sidebar + compactWidths.chat <= 593, `compact layout should preserve content budget, got ${JSON.stringify(compactWidths)}`)
+  await assertWorkspacePanelsDoNotOverlap(page, 'compact layout after viewport shrink')
+  assert.equal(
+    await bridgeCallCount(page, 'SaveLayoutSettings'),
+    saveLayoutCallsBeforeCompact,
+    'automatic compact clamping must not overwrite the persisted user layout',
+  )
+
+  const corruptPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    settings: {
+      ...settingsFixture(42),
+      sidebar_width: 'not-a-width',
+      chat_panel_width: 'not-a-width',
+      metadata_panel_width: 'bad-metadata-width',
+      window_x: 9999999,
+      window_y: -9999999,
+      window_width: 100,
+      window_height: 200,
+      window_maximized: true,
+    },
+  }, { width: 1280, height: 820 }, 'layout-corrupt-settings')
+  await corruptPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(corruptPage.getByText('全局回归小说'), 'workspace after corrupt layout settings')
+  await assertPanelWidth(corruptPage, '调整侧边栏宽度', 280, 2, 'corrupt sidebar width fallback')
+  await assertPanelWidth(corruptPage, '调整对话面板宽度', 360, 2, 'corrupt chat width fallback')
+  await assertWorkspacePanelsDoNotOverlap(corruptPage, 'layout after corrupt settings fallback')
+  await assertBridgeCallCount(corruptPage, 'SaveContent', 0)
+  await corruptPage.close()
+
+  await page.getByRole('separator', { name: '调整侧边栏宽度' }).press('ArrowLeft')
+  await waitForBridgeCall(page, 'SaveLayoutSettings')
+  await page.getByTitle('还原').click()
+  await page.waitForFunction(
+    () => window.__appMockState.calls.some((call) =>
+      call.method === 'SaveWindowSettings' &&
+      call.args[0]?.maximized === false),
+    null,
+    { timeout: 12_000 },
+  )
+
+  await assertBridgeCallCount(page, 'SetChatPanelWidth', 0)
+  await assertBridgeCallCount(page, 'SaveContent', 0)
+}
+
+async function dragSeparator(page, label, deltaX) {
+  const handle = page.getByRole('separator', { name: label })
+  const box = await handle.boundingBox()
+  assert(box, `Expected separator ${label} to have a bounding box.`)
+  const startX = label.includes('侧边栏')
+    ? box.x + Math.min(1, box.width / 2)
+    : box.x + Math.max(1, box.width - 1)
+  const startY = box.y + box.height / 2
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.waitForTimeout(50)
+  await page.mouse.move(startX + deltaX, startY, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function waitForLayoutSave(page, expected) {
+  await page.waitForFunction(
+    (expected) => window.__appMockState.calls.some((call) => {
+      if (call.method !== 'SaveLayoutSettings') return false
+      return Object.entries(expected).every(([key, value]) => call.args[0]?.[key] === value)
+    }),
+    expected,
+    { timeout: 12_000 },
+  )
+}
+
+async function assertPanelWidth(page, label, expected, tolerance, description) {
+  const actual = await panelWidthBySeparator(page, label)
+  assert(
+    Math.abs(actual - expected) <= tolerance,
+    `Expected ${description} to be ${expected}px +/- ${tolerance}px, got ${actual}px.`,
+  )
+}
+
+async function panelWidthBySeparator(page, label) {
+  return await page.getByRole('separator', { name: label }).evaluate((separator) => {
+    const panel = separator.closest('aside')
+    return panel ? Math.round(panel.getBoundingClientRect().width) : 0
+  })
+}
+
+async function layoutPanelWidths(page) {
+  return await page.evaluate(() => {
+    const widthFor = (label) => {
+      const separator = document.querySelector(`[role="separator"][aria-label="${label}"]`)
+      const panel = separator?.closest('aside')
+      return panel ? Math.round(panel.getBoundingClientRect().width) : 0
+    }
+    return {
+      sidebar: widthFor('调整侧边栏宽度'),
+      chat: widthFor('调整对话面板宽度'),
+    }
+  })
+}
+
+async function assertWorkspacePanelsDoNotOverlap(page, description) {
+  const result = await page.evaluate(() => {
+    const sideHandle = document.querySelector('[role="separator"][aria-label="调整侧边栏宽度"]')
+    const chatHandle = document.querySelector('[role="separator"][aria-label="调整对话面板宽度"]')
+    const sidebar = sideHandle?.closest('aside')?.getBoundingClientRect()
+    const chat = chatHandle?.closest('aside')?.getBoundingClientRect()
+    if (!sidebar || !chat) return { ok: false, reason: 'missing panel box' }
+    if (sidebar.right > chat.left) {
+      return { ok: false, reason: `panels overlap: sidebar right ${sidebar.right}, chat left ${chat.left}` }
+    }
+    const chatButtons = Array.from(chatHandle.closest('aside')?.querySelectorAll('button') ?? [])
+      .filter((button) => (button.textContent ?? '').includes('历史') || (button.textContent ?? '').includes('新对话'))
+    const clippedButton = chatButtons.find((button) => {
+      const box = button.getBoundingClientRect()
+      return box.left < chat.left || box.right > chat.right
+    })
+    if (clippedButton) return { ok: false, reason: `chat action clipped: ${clippedButton.textContent}` }
+    return { ok: true, reason: '' }
+  })
+  assert.equal(result.ok, true, `${description} should not overlap or clip panel controls: ${result.reason}`)
 }
 
 async function verifyMetadataActionWorkflow(browser, url, consoleErrors, pageErrors) {
@@ -2221,6 +2608,407 @@ async function verifySkillActions(page) {
   await waitForBridgeCall(page, 'DeleteSkill')
   await expectVisible(page.getByText('技能 (1)'), 'skill count after delete')
   await expectHidden(page.locator('aside').getByText('节奏控制'), 'deleted skill hidden in side panel')
+}
+
+async function verifyErrorFeedbackWorkflow(page, browser, url, consoleErrors, pageErrors) {
+  await verifyStyleSampleLibraryErrorFeedback(browser, url, consoleErrors, pageErrors)
+  await verifyLegacySaveExportErrorFeedback(browser, url, consoleErrors, pageErrors)
+
+  await clickActivity(page, '角色')
+  await clickCardAction(page.locator('main'), '林岚', '删除')
+  await waitForBridgeCall(page, 'DeleteCharacter')
+  const characterAlert = errorAlert(page, '角色删除失败')
+  await expectVisible(characterAlert, 'character delete error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, characterAlert, 'DeleteCharacter')
+
+  await clickActivity(page, '地点')
+  await clickCardAction(page.locator('main'), '旧城门', '删除')
+  await waitForBridgeCall(page, 'DeleteLocation')
+  const locationAlert = errorAlert(page, '地点删除失败')
+  await expectVisible(locationAlert, 'location delete error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, locationAlert, 'DeleteLocation')
+
+  await clickActivity(page, '技能')
+  await clickCardAction(page.locator('aside'), '节奏控制', '删除技能')
+  await waitForBridgeCall(page, 'DeleteSkill')
+  const skillAlert = errorAlert(page, '技能删除失败')
+  await expectVisible(skillAlert, 'skill delete error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, skillAlert, 'DeleteSkill')
+
+  await clickActivity(page, '章节')
+  await ensureChapterBlockExpanded(page)
+  const chapterRow = chapterButton(page, '雨夜线索').locator('xpath=..')
+  await chapterRow.getByRole('button', { name: /编辑章节/ }).click({ force: true })
+  await chapterRow.getByRole('textbox').fill('雨夜线索-失败')
+  await page.keyboard.press('Enter')
+  await waitForBridgeCall(page, 'UpdateChapterTitle')
+  const chapterAlert = errorAlert(page, '章节重命名失败')
+  await expectVisible(chapterAlert, 'chapter rename error callout')
+  await expectVisible(chapterAlert.getByRole('button', { name: '复制错误诊断' }), 'chapter rename copy diagnostics button')
+  await assertNoSensitiveDiagnosticsVisible(page)
+
+  const importFixtureDir = path.join(outputDir, 'fixtures', 'error-feedback')
+  await fs.mkdir(importFixtureDir, { recursive: true })
+  const importFailureFile = path.join(importFixtureDir, 'error-parser-failure.txt')
+  await fs.writeFile(importFailureFile, 'error feedback import fixture', 'utf8')
+  const importBefore = await bridgeCallCount(page, 'StartNovelImport')
+  await clickActivity(page, '书架')
+  await dispatchNovelImportDrop(page, {
+    kind: 'files',
+    files: [{ name: 'error-parser-failure.txt', path: importFailureFile, type: 'text/plain' }],
+  })
+  await waitForBridgeCallCountAfter(page, 'StartNovelImport', importBefore)
+  const importAlert = errorAlert(page, '导入失败')
+  await expectVisible(importAlert, 'novel import error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, importAlert, 'StartNovelImport')
+  await page.getByRole('button', { name: '完成' }).click()
+
+  const createNovelBefore = await bridgeCallCount(page, 'CreateNovel')
+  await page.getByRole('button', { name: '新建作品' }).last().click()
+  await page.getByPlaceholder('输入书名').fill('错误反馈新书')
+  await page.locator('.fixed').getByRole('button', { name: '保存' }).click()
+  await waitForBridgeCallCountAfter(page, 'CreateNovel', createNovelBefore)
+  const createNovelAlert = errorAlert(page, '创建作品失败')
+  await expectVisible(createNovelAlert, 'create novel dialog error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, createNovelAlert, 'CreateNovel')
+  await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
+
+  const updateNovelBefore = await bridgeCallCount(page, 'UpdateNovel')
+  await page.getByRole('button', { name: '编辑作品 全局回归小说', exact: true }).click({ force: true })
+  await page.getByPlaceholder('输入书名').fill('全局回归小说-错误')
+  await page.locator('.fixed').getByRole('button', { name: '保存' }).click()
+  await waitForBridgeCallCountAfter(page, 'UpdateNovel', updateNovelBefore)
+  const updateNovelAlert = errorAlert(page, '更新作品失败')
+  await expectVisible(updateNovelAlert, 'update novel dialog error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, updateNovelAlert, 'UpdateNovel')
+  await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
+
+  const deleteNovelBefore = await bridgeCallCount(page, 'DeleteNovel')
+  await page.getByRole('button', { name: '删除作品 全局回归小说', exact: true }).click({ force: true })
+  await page.getByPlaceholder('输入书名确认').fill('全局回归小说')
+  await page.locator('.fixed').getByRole('button', { name: '确认删除' }).click()
+  await waitForBridgeCallCountAfter(page, 'DeleteNovel', deleteNovelBefore)
+  const deleteNovelAlert = errorAlert(page, '删除作品失败')
+  await expectVisible(deleteNovelAlert, 'delete novel dialog error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, deleteNovelAlert, 'DeleteNovel')
+  await page.locator('.fixed').getByRole('button', { name: '✕' }).click()
+
+  const patternBefore = await bridgeCallCount(page, 'StartNarrativePatternExtraction')
+  await clickActivity(page, '叙事模式')
+  await expectVisible(page.getByRole('heading', { name: '叙事模式' }), 'narrative pattern heading')
+  await page.getByRole('button', { name: '开始抽取' }).click()
+  await waitForBridgeCallCountAfter(page, 'StartNarrativePatternExtraction', patternBefore)
+  const patternAlert = errorAlert(page, '叙事模式抽取失败')
+  await expectVisible(patternAlert, 'narrative pattern error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, patternAlert, 'StartNarrativePatternExtraction')
+
+  await clickActivity(page, '风格素材')
+  await expectVisible(page.getByRole('heading', { name: /风格素材/ }), 'style sample heading')
+
+  const createStyleSampleBefore = await bridgeCallCount(page, 'CreateStyleSample')
+  await page.getByRole('button', { name: '新建样本' }).click()
+  await page.locator('form').getByLabel('样本名称').fill('错误反馈样本')
+  await page.locator('form').getByLabel('样本内容').fill('她停了一下，没有把话说完。')
+  await page.locator('form').getByLabel('标签').fill('错误反馈;样本')
+  await page.getByRole('button', { name: '保存样本' }).click()
+  await waitForBridgeCallCountAfter(page, 'CreateStyleSample', createStyleSampleBefore)
+  const createStyleSampleAlert = errorAlert(page, '保存风格样本失败')
+  await expectVisible(createStyleSampleAlert, 'create style sample error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, createStyleSampleAlert, 'CreateStyleSample')
+
+  const updateStyleSampleBefore = await bridgeCallCount(page, 'UpdateStyleSample')
+  await page.getByRole('button', { name: '编辑 全局雨夜节奏' }).click()
+  await waitForBridgeCall(page, 'GetStyleSample')
+  await page.locator('form').getByLabel('样本名称').fill('全局雨夜节奏错误修订')
+  await page.getByRole('button', { name: '保存样本' }).click()
+  await waitForBridgeCallCountAfter(page, 'UpdateStyleSample', updateStyleSampleBefore)
+  const updateStyleSampleAlert = errorAlert(page, '保存风格样本失败')
+  await expectVisible(updateStyleSampleAlert, 'update style sample error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, updateStyleSampleAlert, 'UpdateStyleSample')
+
+  const deleteStyleSampleBefore = await bridgeCallCount(page, 'DeleteStyleSample')
+  await page.getByRole('button', { name: '删除 全局雨夜节奏' }).click()
+  await waitForBridgeCallCountAfter(page, 'DeleteStyleSample', deleteStyleSampleBefore)
+  const deleteStyleSampleAlert = errorAlert(page, '删除风格样本失败')
+  await expectVisible(deleteStyleSampleAlert, 'delete style sample error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, deleteStyleSampleAlert, 'DeleteStyleSample')
+
+  const styleBefore = await bridgeCallCount(page, 'ExtractStyleSkillFromSamples')
+  await page.getByRole('checkbox', { name: '选择样本 全局雨夜节奏' }).check()
+  await page.getByLabel('技能名称').fill('错误风格技能')
+  await page.getByRole('button', { name: '开始抽取' }).click()
+  await waitForBridgeCallCountAfter(page, 'ExtractStyleSkillFromSamples', styleBefore)
+  const styleAlert = errorAlert(page, '风格技能抽取失败')
+  await expectVisible(styleAlert, 'style extraction error callout')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, styleAlert, 'ExtractStyleSkillFromSamples')
+}
+
+async function verifyStyleSampleLibraryErrorFeedback(browser, url, consoleErrors, pageErrors) {
+  const searchPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      SearchStyleSamples: {
+        mode: 'storage',
+        code: 'STYLE_SAMPLE_SEARCH_FAILED',
+        message: '加载风格素材失败：Bearer style-sample-search-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+        once: false,
+      },
+    },
+  }, undefined, 'style-sample-search-error')
+  await installClipboardSpy(searchPage)
+  await searchPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(searchPage.getByText('全局回归小说'), 'workspace title before style sample search failure')
+  await clickActivity(searchPage, '风格素材')
+  await waitForBridgeCall(searchPage, 'SearchStyleSamples')
+  const searchAlert = errorAlert(searchPage, '加载风格素材失败')
+  await expectVisible(searchAlert, 'style sample search error callout')
+  await assertNoSensitiveDiagnosticsVisible(searchPage)
+  await assertCopyableDiagnostic(searchPage, searchAlert, 'SearchStyleSamples')
+  await searchPage.close()
+
+  const detailPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      GetStyleSample: {
+        mode: 'storage',
+        code: 'STYLE_SAMPLE_DETAIL_FAILED',
+        message: '加载样本详情失败：Bearer style-sample-detail-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+        once: false,
+      },
+    },
+  }, undefined, 'style-sample-detail-error')
+  await installClipboardSpy(detailPage)
+  await detailPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(detailPage.getByText('全局回归小说'), 'workspace title before style sample detail failure')
+  await clickActivity(detailPage, '风格素材')
+  await expectVisible(detailPage.getByText('全局雨夜节奏').first(), 'style sample card before detail failure')
+  const detailBefore = await bridgeCallCount(detailPage, 'GetStyleSample')
+  await detailPage.getByRole('button', { name: '查看样本 全局雨夜节奏' }).click()
+  await waitForBridgeCallCountAfter(detailPage, 'GetStyleSample', detailBefore)
+  const detailAlert = errorAlert(detailPage, '加载样本详情失败')
+  await expectVisible(detailAlert, 'style sample detail error callout')
+  await assertNoSensitiveDiagnosticsVisible(detailPage)
+  await assertCopyableDiagnostic(detailPage, detailAlert, 'GetStyleSample')
+  await detailPage.close()
+}
+
+async function verifyLegacySaveExportErrorFeedback(browser, url, consoleErrors, pageErrors) {
+  const exportPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      ExportNovel: {
+        mode: 'storage',
+        code: 'EXPORT_NOVEL_FAILED',
+        message: '导出失败：Bearer export-error-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+      },
+    },
+  }, undefined, 'export-error')
+  await installClipboardSpy(exportPage)
+  await exportPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(exportPage.getByText('全局回归小说'), 'workspace title before export failure')
+  await clickActivity(exportPage, '章节')
+  await exportPage.getByRole('button', { name: '导出作品' }).click()
+  await expectVisible(exportPage.getByRole('heading', { name: '导出作品' }), 'export dialog before failure')
+  const exportBefore = await bridgeCallCount(exportPage, 'ExportNovel')
+  await exportPage.getByRole('button', { name: /Markdown/ }).click()
+  await exportPage.locator('.fixed').getByRole('button', { name: '导出' }).click()
+  await waitForBridgeCallCountAfter(exportPage, 'ExportNovel', exportBefore)
+  const exportAlert = errorAlert(exportPage, '导出失败')
+  await expectVisible(exportAlert, 'export error callout')
+  await assertNoSensitiveDiagnosticsVisible(exportPage)
+  await assertCopyableDiagnostic(exportPage, exportAlert, 'ExportNovel')
+  await exportPage.close()
+
+  const chapterSavePage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    allowSaveContent: true,
+    faults: {
+      SaveContent: {
+        mode: 'storage',
+        code: 'CONTENT_SAVE_FAILED',
+        message: '保存失败：Bearer content-save-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+        once: false,
+      },
+    },
+  }, undefined, 'content-save-error')
+  await installClipboardSpy(chapterSavePage)
+  await chapterSavePage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(chapterSavePage.getByText('全局回归小说'), 'workspace title before content save failure')
+  await clickActivity(chapterSavePage, '章节')
+  await ensureChapterBlockExpanded(chapterSavePage)
+  await chapterButton(chapterSavePage, '雨夜线索').click()
+  await expectVisible(chapterSavePage.locator('.monaco-editor').first(), 'editor before content save failure')
+  const contentSaveBefore = await bridgeCallCount(chapterSavePage, 'SaveContent')
+  await replaceEditorText(chapterSavePage, '错误反馈保存正文。\n\nBearer should redact from copied details.')
+  await chapterSavePage.keyboard.press(shortcutKey('S'))
+  await waitForBridgeCallCountAfter(chapterSavePage, 'SaveContent', contentSaveBefore)
+  const contentSaveAlert = errorAlert(chapterSavePage, '保存失败')
+  await expectVisible(contentSaveAlert, 'content save error callout')
+  await assertNoSensitiveDiagnosticsVisible(chapterSavePage)
+  await assertCopyableDiagnostic(chapterSavePage, contentSaveAlert, 'SaveContent')
+  await chapterSavePage.close()
+
+  const skillEditPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    allowSaveContent: true,
+    faults: {
+      SaveContent: {
+        mode: 'storage',
+        code: 'SKILL_EDIT_SAVE_FAILED',
+        message: '保存技能失败：Bearer skill-edit-save-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+      },
+    },
+  }, undefined, 'skill-edit-save-error')
+  await installClipboardSpy(skillEditPage)
+  await skillEditPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(skillEditPage.getByText('全局回归小说'), 'workspace title before skill edit save failure')
+  await clickActivity(skillEditPage, '技能')
+  await clickCardAction(skillEditPage.locator('aside'), '节奏控制', '编辑技能')
+  await waitForBridgeCallArg(skillEditPage, 'GetContent', 1, 'skills/节奏控制.md')
+  await skillEditPage.getByPlaceholder('简要描述此技能的功能和触发时机').fill('错误反馈技能保存路径。')
+  const skillSaveBefore = await bridgeCallCount(skillEditPage, 'SaveContent')
+  await skillEditPage.locator('main').getByRole('button', { name: '保存' }).click()
+  await waitForBridgeCallCountAfter(skillEditPage, 'SaveContent', skillSaveBefore)
+  const skillEditAlert = errorAlert(skillEditPage, '保存技能失败')
+  await expectVisible(skillEditAlert, 'skill edit save error callout')
+  await assertNoSensitiveDiagnosticsVisible(skillEditPage)
+  await assertCopyableDiagnostic(skillEditPage, skillEditAlert, 'SaveContent')
+  await skillEditPage.close()
+
+  const extractPage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    faults: {
+      ExtractStyle: {
+        mode: 'error',
+        code: 'LEGACY_STYLE_EXTRACT_FAILED',
+        message: '提取失败：Bearer legacy-style-extract-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+      },
+    },
+  }, undefined, 'legacy-style-extract-error')
+  await installClipboardSpy(extractPage)
+  await extractPage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(extractPage.getByText('全局回归小说'), 'workspace title before legacy style extract failure')
+  await clickActivity(extractPage, '技能')
+  await extractPage.locator('aside').getByTitle('提取写作风格').click()
+  await expectVisible(extractPage.getByRole('heading', { name: '提取写作风格' }), 'legacy style extract dialog')
+  await extractPage.getByPlaceholder('粘贴要模仿的文字样本...').fill('她停在门边，没有解释雨声。')
+  const extractBefore = await bridgeCallCount(extractPage, 'ExtractStyle')
+  await extractPage.getByRole('button', { name: '开始分析' }).click()
+  await waitForBridgeCallCountAfter(extractPage, 'ExtractStyle', extractBefore)
+  const extractAlert = errorAlert(extractPage, '提取失败')
+  await expectVisible(extractAlert, 'legacy style extract error callout')
+  await assertNoSensitiveDiagnosticsVisible(extractPage)
+  await assertCopyableDiagnostic(extractPage, extractAlert, 'ExtractStyle')
+  await extractPage.close()
+
+  const extractSavePage = await newAppPage(browser, consoleErrors, pageErrors, {
+    initialized: true,
+    allowSaveContent: true,
+    faults: {
+      SaveContent: {
+        mode: 'storage',
+        code: 'LEGACY_STYLE_SAVE_FAILED',
+        message: '保存技能失败：Bearer legacy-style-save-token-abcdefghijklmnopqrstuvwxyz',
+        details: sensitiveDiagnosticDetails(),
+        retryable: true,
+      },
+    },
+  }, undefined, 'legacy-style-save-error')
+  await installClipboardSpy(extractSavePage)
+  await extractSavePage.goto(url, { waitUntil: 'domcontentloaded' })
+  await expectVisible(extractSavePage.getByText('全局回归小说'), 'workspace title before legacy style save failure')
+  await clickActivity(extractSavePage, '技能')
+  await extractSavePage.locator('aside').getByTitle('提取写作风格').click()
+  await extractSavePage.getByPlaceholder('粘贴要模仿的文字样本...').fill('她停在门边，没有解释雨声。')
+  await extractSavePage.getByRole('button', { name: '开始分析' }).click()
+  await expectVisible(extractSavePage.getByRole('button', { name: '保存技能' }), 'legacy style save button before failure')
+  const extractSaveBefore = await bridgeCallCount(extractSavePage, 'SaveContent')
+  await extractSavePage.getByRole('button', { name: '保存技能' }).click()
+  await waitForBridgeCallCountAfter(extractSavePage, 'SaveContent', extractSaveBefore)
+  const extractSaveAlert = errorAlert(extractSavePage, '保存技能失败')
+  await expectVisible(extractSaveAlert, 'legacy style save error callout')
+  await assertNoSensitiveDiagnosticsVisible(extractSavePage)
+  await assertCopyableDiagnostic(extractSavePage, extractSaveAlert, 'SaveContent')
+  await extractSavePage.close()
+}
+
+function errorAlert(page, text) {
+  return page.getByRole('alert').filter({ hasText: text }).first()
+}
+
+async function assertCopyableDiagnostic(page, alert, expectedBridgeMethod) {
+  await page.evaluate(() => { window.__appMockClipboardText = '' })
+  await alert.getByRole('button', { name: '复制错误诊断' }).click()
+  await page.waitForFunction(() => typeof window.__appMockClipboardText === 'string' && window.__appMockClipboardText.length > 0)
+  const copied = await page.evaluate(() => window.__appMockClipboardText)
+  const diagnostic = JSON.parse(copied)
+
+  assert.equal(diagnostic.bridge_method, expectedBridgeMethod)
+  assert.equal(typeof diagnostic.timestamp, 'string')
+  assert(copied.includes('[REDACTED]'), 'copied diagnostics should include redaction markers')
+  assert(copied.includes('[REDACTED_SOURCE_TEXT]'), 'copied diagnostics should redact source text')
+  assertNoSensitiveDiagnosticText(copied, `copied ${expectedBridgeMethod} diagnostics`)
+}
+
+async function assertNoSensitiveDiagnosticsVisible(page) {
+  const bodyText = await page.locator('body').textContent()
+  assertNoSensitiveDiagnosticText(bodyText ?? '', 'visible error feedback')
+}
+
+function assertNoSensitiveDiagnosticText(text, label) {
+  const forbidden = [
+    'sk-proj-errorabcdefghijklmnopqrstuvwxyz1234567890',
+    'live-error-token-abcdefghijklmnopqrstuvwxyz',
+    'open-error-token-abcdefghijklmnopqrstuvwxyz',
+    'update-check-token-abcdefghijklmnopqrstuvwxyz',
+    'update-settings-token-abcdefghijklmnopqrstuvwxyz',
+    'novel-create-token-abcdefghijklmnopqrstuvwxyz',
+    'novel-update-token-abcdefghijklmnopqrstuvwxyz',
+    'novel-delete-token-abcdefghijklmnopqrstuvwxyz',
+    'style-sample-search-token-abcdefghijklmnopqrstuvwxyz',
+    'style-sample-detail-token-abcdefghijklmnopqrstuvwxyz',
+    'style-sample-create-token-abcdefghijklmnopqrstuvwxyz',
+    'style-sample-update-token-abcdefghijklmnopqrstuvwxyz',
+    'style-sample-delete-token-abcdefghijklmnopqrstuvwxyz',
+    'export-error-token-abcdefghijklmnopqrstuvwxyz',
+    'content-save-token-abcdefghijklmnopqrstuvwxyz',
+    'skill-edit-save-token-abcdefghijklmnopqrstuvwxyz',
+    'legacy-style-extract-token-abcdefghijklmnopqrstuvwxyz',
+    'legacy-style-save-token-abcdefghijklmnopqrstuvwxyz',
+    'rename-error-token-abcdefghijklmnopqrstuvwxyz',
+    'import-error-token-abcdefghijklmnopqrstuvwxyz',
+    'style-error-token-abcdefghijklmnopqrstuvwxyz',
+    'detail-error-token-abcdefghijklmnopqrstuvwxyz',
+    'open-sesame-secret',
+    '敏感源文本敏感源文本敏感源文本',
+  ]
+  for (const value of forbidden) {
+    assert(!text.includes(value), `${label} leaked sensitive diagnostic text: ${value}`)
+  }
 }
 
 async function verifyReferenceSmoke(page) {
@@ -2573,6 +3361,7 @@ async function verifyGitHistoryFailureRecovery(browser, url, consoleErrors, page
           mode: 'error',
           code: 'VERSION_CONTROL_ERROR',
           message: 'Git executable not found',
+          details: sensitiveDiagnosticDetails(),
           retryable: true,
         },
       },
@@ -2580,9 +3369,13 @@ async function verifyGitHistoryFailureRecovery(browser, url, consoleErrors, page
     { width: 1100, height: 780 },
     'git-failure-retry',
   )
+  await installClipboardSpy(page)
   await page.goto(url, { waitUntil: 'domcontentloaded' })
   await clickActivity(page, 'Git 历史')
   await expectVisible(page.getByText('Git executable not found'), 'Git history failure message')
+  const gitAlert = errorAlert(page, 'Git executable not found')
+  await assertNoSensitiveDiagnosticsVisible(page)
+  await assertCopyableDiagnostic(page, gitAlert, 'GetGitCommits')
   await page.getByRole('button', { name: '重试' }).first().click()
   await expectVisible(page.getByText('rename rain clue chapter').first(), 'Git history retry recovery')
   await assertGitHistoryReadOnlyCalls(page)
@@ -2604,6 +3397,90 @@ async function verifyGitHistoryCompactViewport(browser, url, consoleErrors, page
   await expectVisible(page.getByText('rename rain clue chapter').first(), 'compact Git history first commit')
   await page.getByRole('button', { name: /rename rain clue chapter/ }).click()
   await expectVisible(page.getByText('chapters/renamed-rain.md').first(), 'compact Git changed file list')
+  await assertGitHistoryReadOnlyCalls(page)
+  await page.close()
+}
+
+async function verifyRelativeTimeRefreshWorkflow(browser, url, consoleErrors, pageErrors) {
+  const sessionId = 'relative-session-1'
+  const commitId = '1111111111111111111111111111111111111111'
+  const page = await newAppPage(
+    browser,
+    consoleErrors,
+    pageErrors,
+    {
+      initialized: true,
+      sessions: [
+        {
+          session_id: sessionId,
+          novel_id: 42,
+          title: '短时刷新会话',
+          updated_at: '2026-07-05T12:09:00.000Z',
+        },
+      ],
+      gitCommits: [
+        {
+          commit_id: commitId,
+          short_commit_id: '1111111',
+          author_name: 'Mock Author',
+          author_email: 'mock@example.com',
+          message: 'relative time commit',
+          committed_at: '2026-07-05T12:09:00.000Z',
+          changed_file_count: 1,
+          insertions: 1,
+          deletions: 0,
+        },
+      ],
+      gitCommitFilesByCommitId: {
+        [commitId]: [
+          {
+            path: 'chapters/time.md',
+            old_path: null,
+            change_type: 'modified',
+            additions: 1,
+            deletions: 0,
+            binary: false,
+          },
+        ],
+      },
+      gitDiffsByCommitAndPath: {
+        [`${commitId}:chapters/time.md`]: {
+          path: 'chapters/time.md',
+          old_path: null,
+          change_type: 'modified',
+          binary: false,
+          truncated: false,
+          original_content: '旧时间标签',
+          modified_content: '新时间标签',
+          diff_text: '-旧时间标签\n+新时间标签',
+        },
+      },
+    },
+    { width: 1280, height: 900 },
+    'relative-time',
+  )
+  await page.clock.install({ time: new Date('2026-07-05T12:10:00.000Z') })
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+
+  const recentSession = page.getByRole('button', { name: /短时刷新会话/ }).first()
+  await expectVisible(recentSession, 'recent session fixture')
+  await expectVisible(recentSession.getByText('1分钟前'), 'recent session initial relative time')
+
+  await page.locator('aside').getByRole('button', { name: /历史/ }).click()
+  await expectVisible(page.getByText('历史会话'), 'session history panel')
+  await expectVisible(page.getByText('短时刷新会话').last(), 'session history fixture')
+  await expectVisible(page.getByText('1分钟前').last(), 'session history initial relative time')
+
+  await clickActivity(page, 'Git 历史')
+  const gitCommit = page.getByRole('button', { name: /relative time commit/ })
+  await expectVisible(gitCommit, 'relative-time Git commit')
+  await expectVisible(gitCommit.getByText('1分钟前'), 'Git initial relative time')
+
+  await page.clock.fastForward(125_000)
+
+  await expectVisible(recentSession.getByText('3分钟前'), 'recent session refreshed relative time')
+  await expectVisible(gitCommit.getByText('3分钟前'), 'Git refreshed relative time')
+
   await assertGitHistoryReadOnlyCalls(page)
   await page.close()
 }
@@ -2765,6 +3642,82 @@ async function verifyPatternBridgeCalls(page) {
   assert(!methods.includes('BindReferenceBlueprintMaterials'), 'pattern workflow must not bind reference materials')
 }
 
+async function verifyRelativeTimeBridgeCalls(page) {
+  const calls = await page.evaluate(() => window.__appMockState.calls)
+  const methods = calls.map((call) => call.method)
+  const requiredMethods = ['IsInitialized', 'GetSettings', 'GetNovels', 'GetChapters', 'GetSessions']
+
+  for (const method of requiredMethods) {
+    assert(methods.includes(method), `Expected relative-time workflow bridge method ${method} to be called.`)
+  }
+
+  assert(!methods.includes('SaveContent'), 'relative-time workflow must not save chapter content')
+  assert(!methods.includes('runtime.shell.openExternal'), 'relative-time workflow must not open external URLs')
+  assert(!methods.includes('PickNovelImportFile'), 'relative-time workflow must not open file pickers')
+}
+
+async function verifyLayoutBridgeCalls(page) {
+  const calls = await page.evaluate(() => window.__appMockState.calls)
+  const methods = calls.map((call) => call.method)
+  const requiredMethods = [
+    'IsInitialized',
+    'GetSettings',
+    'GetNovels',
+    'GetLayoutSettings',
+    'SaveLayoutSettings',
+    'GetWindowSettings',
+    'SaveWindowSettings',
+    'runtime.window.toggleMaximize',
+  ]
+
+  for (const method of requiredMethods) {
+    assert(methods.includes(method), `Expected layout workflow bridge method ${method} to be called.`)
+  }
+
+  assert(!methods.includes('SetChatPanelWidth'), 'layout workflow must use SaveLayoutSettings instead of the retired chat-width setter')
+  assert(!methods.includes('SaveContent'), 'layout workflow must not save chapter content')
+  assert(!methods.includes('runtime.shell.openExternal'), 'layout workflow must not open external URLs')
+  assert(!methods.includes('PickNovelImportFile'), 'layout workflow must not open file pickers')
+}
+
+async function verifyErrorBridgeCalls(page) {
+  const calls = await page.evaluate(() => window.__appMockState.calls)
+  const methods = calls.map((call) => call.method)
+  const requiredMethods = [
+    'IsInitialized',
+    'GetSettings',
+    'GetNovels',
+    'GetChapters',
+    'CreateNovel',
+    'UpdateNovel',
+    'DeleteNovel',
+    'GetCharacters',
+    'DeleteCharacter',
+    'GetLocations',
+    'DeleteLocation',
+    'ListSkills',
+    'DeleteSkill',
+    'UpdateChapterTitle',
+    'StartNovelImport',
+    'GetModels',
+    'StartNarrativePatternExtraction',
+    'SearchStyleSamples',
+    'GetStyleSample',
+    'CreateStyleSample',
+    'UpdateStyleSample',
+    'DeleteStyleSample',
+    'ExtractStyleSkillFromSamples',
+  ]
+
+  for (const method of requiredMethods) {
+    assert(methods.includes(method), `Expected error workflow bridge method ${method} to be called.`)
+  }
+
+  assert(!methods.includes('SaveContent'), 'error workflow must not save chapter content')
+  assert(!methods.includes('runtime.shell.openExternal'), 'error workflow must not open external URLs')
+  assert(!methods.includes('PickNovelImportFile'), 'error workflow must not open file pickers')
+}
+
 async function verifyGitBridgeCalls(page) {
   const calls = await page.evaluate(() => window.__appMockState.calls)
   const methods = calls.map((call) => call.method)
@@ -2814,7 +3767,7 @@ async function assertGitHistoryReadOnlyCalls(page) {
     .map((call) => call.method)
     .filter((method) => /^Git|^GetGit|^SaveGit|^SetGit|^DeleteGit|^CreateGit|^UpdateGit|^RevertGit|^ResetGit|^CheckoutGit|^RestoreGit|^CommitGit/.test(method))
   const unexpected = gitMethods.filter((method) =>
-    !['GetGitCommits', 'GetGitCommitFiles', 'GetGitFileDiff'].includes(method))
+    !['GetGitCommits', 'GetGitCommitFiles', 'GetGitFileDiff', 'GetGitAuthorSettings', 'SaveGitAuthorSettings'].includes(method))
   assert.deepEqual(unexpected, [], `Git history UI must call only read-only Git methods, got ${unexpected.join(', ')}`)
 
   const chapterSaves = calls.filter((call) =>
@@ -3748,7 +4701,7 @@ function parseRunConfig(args) {
     throw new Error(`Unsupported app mock target: ${config.target}`)
   }
   config.grep = normalizeGrepTag(config.grep)
-  if (config.grep && !['@startup', '@diagnostics', '@surface', '@writing', '@reference-anchor', '@pattern', '@git', '@update'].includes(config.grep)) {
+  if (config.grep && !['@startup', '@diagnostics', '@surface', '@writing', '@reference-anchor', '@pattern', '@git', '@update', '@time', '@layout', '@error'].includes(config.grep)) {
     throw new Error(`Unsupported app mock grep: ${config.grep}`)
   }
   if (!Number.isFinite(config.stressSizeBytes) || config.stressSizeBytes <= 0) {
@@ -4520,6 +5473,7 @@ function installConfigurableAppMockBridge(options = {}) {
     readerPerspectives: options.readerPerspectives ?? defaultReaderPerspectives,
     preferences: options.preferences ?? defaultPreferences,
     styleSamples: options.styleSamples ?? defaultStyleSamples,
+    sessions: options.sessions ?? [],
     gitCommits: options.gitCommits ?? defaultGitCommits,
     gitCommitFilesByCommitId: options.gitCommitFilesByCommitId ?? defaultGitCommitFilesByCommitId,
     gitDiffsByCommitAndPath: options.gitDiffsByCommitAndPath ?? defaultGitDiffsByCommitAndPath,
@@ -4528,6 +5482,7 @@ function installConfigurableAppMockBridge(options = {}) {
     skills: options.skills ?? defaultSkills,
     importRecovery: options.importRecovery ?? null,
   }
+  state.runtimeWindowMaximized = options.runtimeWindowMaximized ?? (state.settings.window_maximized === true)
   const faultQueues = normalizeFaultQueues(options.faults ?? {})
   Object.defineProperty(state, 'clearFaultQueue', {
     configurable: true,
@@ -4744,6 +5699,7 @@ function installConfigurableAppMockBridge(options = {}) {
         state.settings.sidebar_width = Number(args[0]?.sidebar_width ?? state.settings.sidebar_width ?? 280)
         state.settings.chat_panel_width = Number(args[0]?.chat_panel_width ?? state.settings.chat_panel_width ?? 360)
         state.settings.metadata_panel_width = Number(args[0]?.metadata_panel_width ?? state.settings.metadata_panel_width ?? 320)
+        persistMockSettings()
         return {
           sidebar_width: state.settings.sidebar_width,
           chat_panel_width: state.settings.chat_panel_width,
@@ -4762,6 +5718,8 @@ function installConfigurableAppMockBridge(options = {}) {
         state.settings.window_width = Number(args[0]?.width ?? state.settings.window_width ?? 1280)
         state.settings.window_height = Number(args[0]?.height ?? state.settings.window_height ?? 840)
         state.settings.window_maximized = args[0]?.maximized === true
+        state.runtimeWindowMaximized = state.settings.window_maximized
+        persistMockSettings()
         return {
           x: state.settings.window_x,
           y: state.settings.window_y,
@@ -4770,15 +5728,18 @@ function installConfigurableAppMockBridge(options = {}) {
           maximized: state.settings.window_maximized,
         }
       case 'GetPlatform': return { os: 'win32', defaultPath: options.platformDefaultPath ?? 'D:\\NovelistData' }
-      case 'runtime.window.isMaximized': return false
+      case 'runtime.window.isMaximized': return state.runtimeWindowMaximized === true
       case 'runtime.window.minimize':
-      case 'runtime.window.toggleMaximize':
       case 'runtime.app.quit':
       case 'CancelChat':
       case 'ApproveTool':
       case 'RebuildNovelIndex':
       case 'TestConnection':
       case 'TestEmbeddingConnection':
+        return null
+      case 'runtime.window.toggleMaximize':
+        state.runtimeWindowMaximized = !(state.runtimeWindowMaximized === true)
+        state.settings.window_maximized = state.runtimeWindowMaximized
         return null
       case 'SetLastSession':
         state.settings.last_session_id = String(args[0] ?? '')
@@ -4852,7 +5813,7 @@ function installConfigurableAppMockBridge(options = {}) {
       case 'GetContent': return content(args[1])
       case 'SaveContent': return saveContent(args[0])
       case 'GetModels': return [availableModel()]
-      case 'GetSessions': return pageResult([])
+      case 'GetSessions': return getSessions(args[0])
       case 'GetSession': return sessionDetail(args[0])
       case 'GetSessionMessages': return []
       case 'ListSlashCommands': return [{ name: 'review', description: '审稿当前章节', type: 'manual' }]
@@ -5046,11 +6007,12 @@ function installConfigurableAppMockBridge(options = {}) {
         release_url: null,
         checked_at: now,
         error_code: 'update.mock_failure',
-        error_message: '模拟更新检查失败',
+        error_message: '模拟更新检查失败：Bearer update-check-token-abcdefghijklmnopqrstuvwxyz',
         release_name: null,
         release_notes: null,
         download_url: null,
         dismissed: false,
+        diagnostic_details: mockSensitiveDiagnosticDetails(),
       }
     }
 
@@ -5092,6 +6054,18 @@ function installConfigurableAppMockBridge(options = {}) {
     window.localStorage.setItem('novelist_app_mock_settings', JSON.stringify(state.settings))
   }
 
+  function mockSensitiveDiagnosticDetails() {
+    return {
+      api_key: 'sk-proj-errorabcdefghijklmnopqrstuvwxyz1234567890',
+      authorization: 'Bearer detail-error-token-abcdefghijklmnopqrstuvwxyz',
+      source_text: '敏感源文本'.repeat(300),
+      nested: {
+        password: 'open-sesame-secret',
+        token: 'detail-token-abcdefghijklmnopqrstuvwxyz',
+      },
+    }
+  }
+
   function readPersistedMockSettings() {
     try {
       const raw = window.localStorage.getItem('novelist_app_mock_settings')
@@ -5123,6 +6097,17 @@ function installConfigurableAppMockBridge(options = {}) {
       : (page - 1) * size
     const items = commits.slice(startIndex, startIndex + size)
     return pagedResult(items, page, size, commits.length)
+  }
+
+  function getSessions(input = {}) {
+    const page = Math.max(1, Number(input?.page ?? 1))
+    const size = Math.max(1, Math.min(100, Number(input?.size ?? 20)))
+    const search = String(input?.search ?? '').trim().toLowerCase()
+    const sessions = state.sessions
+      .filter((session) => !search || String(session.title ?? '').toLowerCase().includes(search))
+      .map(cloneJson)
+    const startIndex = (page - 1) * size
+    return pagedResult(sessions.slice(startIndex, startIndex + size), page, size, sessions.length)
   }
 
   function getGitCommitFiles(input = {}) {

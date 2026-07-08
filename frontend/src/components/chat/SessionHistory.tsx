@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { MessageSquare, Loader2, History } from 'lucide-react'
 import type { app } from '@/hooks/useApp'
 import { useApp } from '@/hooks/useApp'
+import { useRelativeTimeTicker } from '@/hooks/useRelativeTimeTicker'
+import { formatAbsoluteDateTime, formatInteger, formatRelativeTime } from '@/lib/time'
 
 interface Props {
   open: boolean
@@ -10,17 +12,7 @@ interface Props {
   onSelectSession: (sessionId: string) => void
 }
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
-  const hour = Math.floor(min / 60)
-  if (hour < 24) return `${hour} 小时前`
-  const day = Math.floor(hour / 24)
-  if (day < 30) return `${day} 天前`
-  return `${Math.floor(day / 30)} 个月前`
-}
+const LOCALE = 'zh-CN'
 
 export default function SessionHistory({ open, novelId, onClose, onSelectSession }: Props) {
   const app = useApp()
@@ -35,6 +27,10 @@ export default function SessionHistory({ open, novelId, onClose, onSelectSession
   const listRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
   const searchRef = useRef('')
+  const nowMs = useRelativeTimeTicker(
+    sessions.map(session => session.updated_at),
+    open && sessions.length > 0,
+  )
 
   const loadPage = useCallback(async (p: number) => {
     if (loadingRef.current) return
@@ -129,7 +125,7 @@ export default function SessionHistory({ open, novelId, onClose, onSelectSession
             <span className="text-xs font-medium">历史会话</span>
           </div>
           {total > 0 && (
-            <span className="text-[10px] text-muted-foreground">共 {total} 个</span>
+            <span className="text-[10px] text-muted-foreground">共 {formatInteger(total, { locale: LOCALE })} 个</span>
           )}
         </div>
       </div>
@@ -168,7 +164,12 @@ export default function SessionHistory({ open, novelId, onClose, onSelectSession
                 <MessageSquare className="w-4 h-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs truncate">{s.title || '新对话'}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{timeAgo(s.updated_at)}</div>
+                  <div
+                    className="text-[10px] text-muted-foreground mt-0.5"
+                    title={formatAbsoluteDateTime(s.updated_at, { locale: LOCALE })}
+                  >
+                    {formatRelativeTime(s.updated_at, { now: nowMs, locale: LOCALE })}
+                  </div>
                 </div>
               </button>
             ))}

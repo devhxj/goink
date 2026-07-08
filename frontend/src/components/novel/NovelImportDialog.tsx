@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, Loader2, Upload, X, XCircle } from 'lucide
 import type { novelImport } from '@/lib/novelist/types'
 import type { NovelImportUiState } from '@/hooks/useNovelImport'
 import { canCloseImportState } from '@/hooks/useNovelImport'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
 
 interface Props {
   state: NovelImportUiState
@@ -25,7 +27,24 @@ export default function NovelImportDialog({ state, onCancel, onClose }: Props) {
   const skippedChapters = run?.skipped_chapters ?? []
   const warnings = run?.warnings ?? []
   const diagnostics = run?.diagnostics ?? []
-  const errorMessage = state.errorMessage || run?.error?.message || ''
+  const errorMessage = state.errorMessage || (run?.error?.message ? diagnosticMessage(run.error.message, '') : '')
+  const errorDiagnostic = state.errorDiagnostic ?? run?.error ?? (diagnostics.length > 0
+    ? buildCopyableDiagnostic({
+      error: errorMessage || diagnostics[0]?.message,
+      fallbackMessage: '导入未完成',
+      operation: 'StartNovelImport',
+      taskId: state.taskId ?? run?.task_id ?? null,
+      bridgeMethod: 'StartNovelImport',
+      detail: {
+        source_display_name: sourceName,
+        state: state.status,
+        run_state: run?.state ?? null,
+        run_stage: run?.stage ?? null,
+        diagnostics,
+      },
+    })
+    : null)
+  const visibleErrorMessage = errorMessage || diagnostics[0]?.message || '导入未完成。'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm">
@@ -139,11 +158,15 @@ export default function NovelImportDialog({ state, onCancel, onClose }: Props) {
             )}
 
             {(errorMessage || diagnostics.length > 0) && (
-              <section className="rounded-md border border-danger-border bg-danger-bg px-3 py-2">
-                <h3 className="text-sm font-medium text-destructive">导入未完成</h3>
-                {errorMessage && <p className="mt-1 break-words text-sm text-foreground">{errorMessage}</p>}
+              <section className="space-y-2">
+                <ErrorCallout
+                  title="导入未完成"
+                  message={visibleErrorMessage}
+                  diagnostic={errorDiagnostic}
+                  className="rounded-md"
+                />
                 {diagnostics.length > 0 && (
-                  <div className="mt-2 max-h-28 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+                  <div className="max-h-28 space-y-1 overflow-y-auto rounded-md border border-danger-border bg-danger-bg px-3 py-2 text-xs text-muted-foreground">
                     {diagnostics.slice(0, 12).map(diagnostic => (
                       <div key={`${diagnostic.code}-${diagnostic.message}`} className="break-words">
                         {diagnostic.code} · {diagnostic.message}

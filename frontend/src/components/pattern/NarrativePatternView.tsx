@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle,
   Boxes,
   CheckCircle2,
   Clipboard,
@@ -19,6 +18,9 @@ import type { chapter, llm, pattern } from '@/lib/novelist/types'
 import { usePatternProgress } from '@/hooks/usePatternProgress'
 import MultiRangeChapterSelector from '@/components/chapter/MultiRangeChapterSelector'
 import { chapterRangesToIds } from '@/components/chapter/chapterRange'
+import { copyTextToClipboard } from '@/lib/clipboard'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
 
 interface Props {
   novelId: number
@@ -213,17 +215,38 @@ export default function NarrativePatternView({ novelId }: Props) {
       timeline: patternState.timeline,
       ui_error: error || patternState.errorMessage,
     }
+    const diagnostic = buildCopyableDiagnostic({
+      error: error || patternState.errorMessage || '叙事模式诊断',
+      fallbackMessage: '叙事模式诊断',
+      operation: 'NarrativePatternDiagnostics',
+      taskId: patternState.taskId,
+      bridgeMethod: 'GetNarrativePatternTrace',
+      detail: payload,
+    })
     try {
-      await copyTextToClipboard(JSON.stringify(payload, null, 2))
+      await copyTextToClipboard(JSON.stringify(diagnostic, null, 2))
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1800)
     } catch {
       setCopyState('failed')
       window.setTimeout(() => setCopyState('idle'), 1800)
     }
-  }, [error, patternState.errorMessage, patternState.run, patternState.timeline, patternState.trace])
+  }, [error, patternState.errorMessage, patternState.run, patternState.taskId, patternState.timeline, patternState.trace])
 
   const visibleError = error || patternState.errorMessage
+  const patternDiagnostic = patternState.errorDiagnostic ?? patternState.run?.diagnostics?.[0] ?? (visibleError
+    ? buildCopyableDiagnostic({
+      error: visibleError,
+      fallbackMessage: '叙事模式抽取失败。',
+      operation: 'NarrativePatternView',
+      taskId: patternState.taskId,
+      bridgeMethod: 'StartNarrativePatternExtraction',
+      detail: {
+        input: patternState.input,
+        progress: patternState.progress,
+      },
+    })
+    : null)
   const copyLabel = copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制诊断'
   const selectedSummary = ranges.length === 0
     ? '未选择章节'
@@ -251,33 +274,21 @@ export default function NarrativePatternView({ novelId }: Props) {
         </button>
       </header>
 
-      {(visibleError || notice) && (
-        <div
-          role={visibleError ? 'alert' : 'status'}
-          className={`border-b px-5 py-2 text-sm ${visibleError ? 'border-danger-border bg-danger-bg' : 'border-success-border bg-success-bg'}`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-start gap-2 text-foreground">
-              {visibleError ? (
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-              ) : (
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-              )}
-              <span className="min-w-0 break-words">{visibleError || notice}</span>
-            </div>
-            {visibleError && (
-              <button
-                type="button"
-                onClick={() => { void copyDiagnostics() }}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Clipboard className="h-3.5 w-3.5" />
-                {copyLabel}
-              </button>
-            )}
+      {visibleError ? (
+        <ErrorCallout
+          title="叙事模式抽取失败"
+          message={visibleError}
+          diagnostic={patternDiagnostic}
+          className="border-x-0 border-t-0 px-5 py-2"
+        />
+      ) : notice ? (
+        <div role="status" className="border-b border-success-border bg-success-bg px-5 py-2 text-sm">
+          <div className="flex min-w-0 items-start gap-2 text-foreground">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+            <span className="min-w-0 break-words">{notice}</span>
           </div>
         </div>
-      )}
+      ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(420px,1.08fr)_minmax(360px,0.92fr)]">
         <section className="flex h-full min-h-[520px] flex-col overflow-hidden xl:min-h-0">
@@ -674,7 +685,7 @@ function progressPercent(progress: pattern.NarrativePatternProgress | null): num
 function diagnosticsText(diagnostics: pattern.NarrativePatternRun['diagnostics'], fallback: string): string {
   const first = diagnostics?.[0]
   if (!first) return fallback
-  return first.detail ? `${first.message} ${first.detail}` : first.message
+  return diagnosticMessage(first.detail ? `${first.message} ${first.detail}` : first.message, fallback)
 }
 
 function skillPathFromRun(run: pattern.NarrativePatternRun): string {
@@ -708,31 +719,5 @@ function normalizeSkillFileName(name: string): string {
 }
 
 function errorText(error: unknown, fallback: string): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return fallback
-}
-
-async function copyTextToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return
-    } catch {
-      // Fall through for desktop/webview clipboard permission quirks.
-    }
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', 'true')
-  textarea.style.position = 'fixed'
-  textarea.style.left = '-9999px'
-  document.body.appendChild(textarea)
-  textarea.select()
-  try {
-    document.execCommand('copy')
-  } finally {
-    textarea.remove()
-  }
+  return diagnosticMessage(error, fallback)
 }

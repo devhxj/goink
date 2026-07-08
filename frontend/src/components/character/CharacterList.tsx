@@ -2,9 +2,17 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Search, Trash2 } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import type { character } from '@/hooks/useApp'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface Props {
   novelId: number
+}
+
+type VisibleError = {
+  message: string
+  diagnostic?: diagnostics.CopyableDiagnostic | null
 }
 
 export default function CharacterList({ novelId }: Props) {
@@ -12,11 +20,17 @@ export default function CharacterList({ novelId }: Props) {
 
   const [characters, setCharacters] = useState<character.Character[]>([])
   const [search, setSearch] = useState('')
+  const [error, setError] = useState<VisibleError | null>(null)
 
   const load = useCallback(async () => {
     if (!novelId) { setCharacters([]); return }
-    const list = await app.GetCharacters(novelId)
-    setCharacters(list ?? [])
+    try {
+      const list = await app.GetCharacters(novelId)
+      setCharacters(list ?? [])
+      setError(null)
+    } catch (err) {
+      setError(buildVisibleError(err, '加载角色失败', '加载角色', 'GetCharacters', { novel_id: novelId }))
+    }
   }, [novelId, app])
 
   useEffect(() => {
@@ -27,8 +41,15 @@ export default function CharacterList({ novelId }: Props) {
         if (!cancelled) setCharacters([])
         return
       }
-      const list = await app.GetCharacters(novelId)
-      if (!cancelled) setCharacters(list ?? [])
+      try {
+        const list = await app.GetCharacters(novelId)
+        if (!cancelled) {
+          setCharacters(list ?? [])
+          setError(null)
+        }
+      } catch (err) {
+        if (!cancelled) setError(buildVisibleError(err, '加载角色失败', '加载角色', 'GetCharacters', { novel_id: novelId }))
+      }
     })()
     return () => { cancelled = true }
   }, [app, novelId])
@@ -44,7 +65,9 @@ export default function CharacterList({ novelId }: Props) {
     try {
       await app.DeleteCharacter(novelId, charId)
       await load()
-    } catch { /* 静默失败，主视图会处理 */ }
+    } catch (err) {
+      setError(buildVisibleError(err, '删除角色失败', '删除角色', 'DeleteCharacter', { novel_id: novelId, character_id: charId }))
+    }
   }
 
   return (
@@ -67,6 +90,18 @@ export default function CharacterList({ novelId }: Props) {
           />
         </div>
       </div>
+
+      {error && (
+        <div className="border-b px-2 py-2">
+          <ErrorCallout
+            compact
+            message={error.message}
+            diagnostic={error.diagnostic}
+            onRetry={() => { void load() }}
+            onClose={() => setError(null)}
+          />
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {filtered.length === 0 ? (
@@ -98,4 +133,23 @@ export default function CharacterList({ novelId }: Props) {
       </div>
     </>
   )
+}
+
+function buildVisibleError(
+  error: unknown,
+  fallbackMessage: string,
+  operation: string,
+  bridgeMethod: string,
+  detail: unknown,
+): VisibleError {
+  return {
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }

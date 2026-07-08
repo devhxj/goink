@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ChevronRight, MapPin, Trash2 } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import type { location } from '@/hooks/useApp'
+import ErrorCallout from '@/components/shared/ErrorCallout'
+import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
+import type { diagnostics } from '@/lib/novelist/types'
 
 interface TreeNode {
   location: location.Location
@@ -10,6 +13,11 @@ interface TreeNode {
 
 interface Props {
   novelId: number
+}
+
+type VisibleError = {
+  message: string
+  diagnostic?: diagnostics.CopyableDiagnostic | null
 }
 
 function buildTree(locations: location.Location[]): TreeNode[] {
@@ -40,6 +48,7 @@ export default function LocationList({ novelId }: Props) {
 
   const [locations, setLocations] = useState<location.Location[]>([])
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const [error, setError] = useState<VisibleError | null>(null)
 
   const load = useCallback(async () => {
     if (!novelId) {
@@ -47,10 +56,15 @@ export default function LocationList({ novelId }: Props) {
       setExpandedIds(new Set())
       return
     }
-    const list = await app.GetLocations(novelId)
-    const nextLocations = list ?? []
-    setLocations(nextLocations)
-    setExpandedIds(rootIds(nextLocations))
+    try {
+      const list = await app.GetLocations(novelId)
+      const nextLocations = list ?? []
+      setLocations(nextLocations)
+      setExpandedIds(rootIds(nextLocations))
+      setError(null)
+    } catch (err) {
+      setError(buildVisibleError(err, '加载地点失败', '加载地点', 'GetLocations', { novel_id: novelId }))
+    }
   }, [novelId, app])
 
   useEffect(() => {
@@ -64,11 +78,16 @@ export default function LocationList({ novelId }: Props) {
         }
         return
       }
-      const list = await app.GetLocations(novelId)
-      if (!cancelled) {
-        const nextLocations = list ?? []
-        setLocations(nextLocations)
-        setExpandedIds(rootIds(nextLocations))
+      try {
+        const list = await app.GetLocations(novelId)
+        if (!cancelled) {
+          const nextLocations = list ?? []
+          setLocations(nextLocations)
+          setExpandedIds(rootIds(nextLocations))
+          setError(null)
+        }
+      } catch (err) {
+        if (!cancelled) setError(buildVisibleError(err, '加载地点失败', '加载地点', 'GetLocations', { novel_id: novelId }))
       }
     })()
     return () => { cancelled = true }
@@ -79,7 +98,9 @@ export default function LocationList({ novelId }: Props) {
     try {
       await app.DeleteLocation(novelId, locId)
       await load()
-    } catch { /* 静默失败 */ }
+    } catch (err) {
+      setError(buildVisibleError(err, '删除地点失败', '删除地点', 'DeleteLocation', { novel_id: novelId, location_id: locId }))
+    }
   }
 
   const tree = useMemo(() => buildTree(locations), [locations])
@@ -147,6 +168,18 @@ export default function LocationList({ novelId }: Props) {
         </span>
       </div>
 
+      {error && (
+        <div className="border-b px-2 py-2">
+          <ErrorCallout
+            compact
+            message={error.message}
+            diagnostic={error.diagnostic}
+            onRetry={() => { void load() }}
+            onClose={() => setError(null)}
+          />
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {tree.length === 0 ? (
           <div className="flex items-center justify-center h-full">
@@ -158,4 +191,23 @@ export default function LocationList({ novelId }: Props) {
       </div>
     </>
   )
+}
+
+function buildVisibleError(
+  error: unknown,
+  fallbackMessage: string,
+  operation: string,
+  bridgeMethod: string,
+  detail: unknown,
+): VisibleError {
+  return {
+    message: diagnosticMessage(error, fallbackMessage),
+    diagnostic: buildCopyableDiagnostic({
+      error,
+      fallbackMessage,
+      operation,
+      bridgeMethod,
+      detail,
+    }),
+  }
 }
