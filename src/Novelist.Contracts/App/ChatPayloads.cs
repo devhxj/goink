@@ -79,7 +79,19 @@ public sealed record PageResultPayload<T>(
     [property: JsonPropertyName("total")] long Total,
     [property: JsonPropertyName("page")] int Page,
     [property: JsonPropertyName("size")] int Size,
-    [property: JsonPropertyName("total_pages")] int TotalPages);
+    [property: JsonPropertyName("total_pages")] int TotalPages,
+    [property: JsonPropertyName("next_cursor")] string? NextCursor = null,
+    [property: JsonPropertyName("has_more")] bool HasMore = false,
+    [property: JsonPropertyName("total_estimate")] int? TotalEstimate = null);
+
+public sealed record PageRequestPayload(
+    [property: JsonPropertyName("cursor")] string? Cursor,
+    [property: JsonPropertyName("page_size")] int PageSize,
+    [property: JsonPropertyName("sort_by")] string SortBy,
+    [property: JsonPropertyName("sort_dir")] string SortDir,
+    [property: JsonPropertyName("filters")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, string>? Filters = null);
 
 public sealed class AgentEventPayload
 {

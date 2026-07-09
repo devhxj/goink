@@ -5014,6 +5014,109 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService, IRef
               created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS reference_obs_sensory (
+              observation_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              anchor_id INTEGER NOT NULL,
+              sense TEXT NOT NULL,
+              intensity REAL NOT NULL,
+              PRIMARY KEY(observation_id, sense),
+              FOREIGN KEY(observation_id) REFERENCES reference_feature_observations(observation_id) ON DELETE CASCADE,
+              FOREIGN KEY(node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_technique_specimens (
+              specimen_id TEXT PRIMARY KEY,
+              source_node_id TEXT NOT NULL,
+              source_anchor_id INTEGER NOT NULL,
+              analysis_run_id TEXT NOT NULL,
+              technique_family TEXT NOT NULL,
+              technique_abstract TEXT NOT NULL,
+              trigger_context TEXT NOT NULL,
+              transfer_template TEXT NOT NULL,
+              transfer_slots_json TEXT NOT NULL,
+              effect_on_reader TEXT NOT NULL,
+              applicability_conditions TEXT NOT NULL,
+              failure_modes TEXT NOT NULL,
+              anti_patterns TEXT NOT NULL,
+              world_context_dependencies TEXT,
+              why_it_works_json TEXT NOT NULL,
+              confidence REAL NOT NULL,
+              review_state TEXT NOT NULL DEFAULT 'unverified',
+              validity_state TEXT NOT NULL DEFAULT 'active',
+              superseded_by_run_id TEXT,
+              mastery_notes TEXT,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY(source_node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE,
+              FOREIGN KEY(analysis_run_id) REFERENCES reference_analysis_runs(run_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_specimen_evidence (
+              specimen_id TEXT NOT NULL,
+              observation_id TEXT NOT NULL,
+              PRIMARY KEY(specimen_id, observation_id),
+              FOREIGN KEY(specimen_id) REFERENCES reference_technique_specimens(specimen_id) ON DELETE CASCADE,
+              FOREIGN KEY(observation_id) REFERENCES reference_feature_observations(observation_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_template_examples (
+              template_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              PRIMARY KEY(template_id, node_id),
+              FOREIGN KEY(node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_aggregate_provenance (
+              aggregate_id TEXT NOT NULL,
+              aggregate_kind TEXT NOT NULL,
+              library_id TEXT,
+              anchor_id INTEGER NOT NULL,
+              run_id TEXT NOT NULL,
+              PRIMARY KEY(aggregate_id, anchor_id, run_id),
+              FOREIGN KEY(anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE,
+              FOREIGN KEY(run_id) REFERENCES reference_analysis_runs(run_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_corpus_libraries (
+              library_id TEXT PRIMARY KEY,
+              scope TEXT NOT NULL,
+              novel_id INTEGER,
+              name TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_library_members (
+              library_id TEXT NOT NULL,
+              anchor_id INTEGER NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              source_quality TEXT,
+              disabled_reason TEXT,
+              dedup_group_id TEXT,
+              PRIMARY KEY(library_id, anchor_id),
+              FOREIGN KEY(library_id) REFERENCES reference_corpus_libraries(library_id) ON DELETE CASCADE,
+              FOREIGN KEY(anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_session_library_binding (
+              session_id TEXT NOT NULL,
+              library_id TEXT NOT NULL,
+              PRIMARY KEY(session_id, library_id),
+              FOREIGN KEY(library_id) REFERENCES reference_corpus_libraries(library_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_source_license (
+              anchor_id INTEGER PRIMARY KEY,
+              license_state TEXT NOT NULL,
+              authorization_evidence TEXT,
+              reuse_policy TEXT NOT NULL,
+              max_verbatim_ratio REAL,
+              cleared_for_insertion INTEGER NOT NULL DEFAULT 0,
+              reviewed_at TEXT,
+              FOREIGN KEY(anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_reference_anchors_novel
               ON reference_anchors(novel_id);
 
@@ -5046,8 +5149,21 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService, IRef
 
             CREATE INDEX IF NOT EXISTS idx_reference_processing_attempts_anchor_updated
               ON reference_anchor_processing_attempts(anchor_id, updated_at);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_obs_sensory_query
+              ON reference_obs_sensory(anchor_id, sense, intensity);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_specimens_source
+              ON reference_technique_specimens(source_anchor_id, source_node_id, validity_state);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_aggregate_provenance_anchor_run
+              ON reference_aggregate_provenance(anchor_id, run_id, aggregate_kind);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_library_members_anchor
+              ON reference_library_members(anchor_id, enabled);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await ReferenceCorpusSchemaProvisioner.EnsureCoreTablesAsync(connection, cancellationToken);
         var addedCorpusVisibilityColumn = await EnsureColumnAsync(
             connection,
             "reference_anchors",
@@ -5076,6 +5192,18 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService, IRef
             "reference_materials",
             "archived_at",
             "ALTER TABLE reference_materials ADD COLUMN archived_at TEXT;",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "reference_source_segments",
+            "node_id",
+            "ALTER TABLE reference_source_segments ADD COLUMN node_id TEXT REFERENCES reference_text_nodes(node_id);",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "reference_materials",
+            "node_id",
+            "ALTER TABLE reference_materials ADD COLUMN node_id TEXT REFERENCES reference_text_nodes(node_id);",
             cancellationToken);
         await EnsureColumnAsync(
             connection,

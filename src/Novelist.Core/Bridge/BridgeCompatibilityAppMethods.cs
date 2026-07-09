@@ -142,6 +142,7 @@ public static class BridgeCompatibilityAppMethods
         "SaveUserName",
         "SaveWindowSettings",
         "SearchAll",
+        "SearchReferenceCorpusCandidates",
         "SearchReferenceMaterials",
         "SearchStyleSamples",
         "SearchStoryMemory",

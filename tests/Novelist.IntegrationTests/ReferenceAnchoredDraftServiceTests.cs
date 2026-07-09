@@ -13,6 +13,28 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "novelist-tests", Guid.NewGuid().ToString("N"));
 
     [Fact]
+    public async Task CorpusDrivenWritingDraftSchemaProvisionsBlueprintBeatPieces()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("语料驱动蓝图地基", "", ""), CancellationToken.None);
+        var planning = new FileSystemPlanningService(options, novels);
+        var service = new SqliteReferenceAnchoredDraftService(options, novels, planning);
+
+        var blueprints = await service.GetChapterBlueprintsAsync(novel.Id, chapterNumber: null, CancellationToken.None);
+
+        Assert.Empty(blueprints);
+        var columns = await ReadTableColumnsAsync(options, "reference_blueprint_beat_pieces");
+        Assert.Equal(
+            ["beat_id", "node_id", "observation_id", "role_in_beat", "sequence_index"],
+            columns);
+        Assert.Contains(
+            "idx_reference_blueprint_beat_pieces_beat",
+            await ReadIndexNamesAsync(options, "reference_blueprint_beat_pieces"));
+    }
+
+    [Fact]
     public async Task GenerateReviewAndApproveBlueprintPersistsAnalysisAndExecutionContract()
     {
         var options = CreateOptions();
@@ -5991,6 +6013,30 @@ public sealed class ReferenceAnchoredDraftServiceTests : IDisposable
         }
 
         return columns;
+    }
+
+    private static async ValueTask<IReadOnlyList<string>> ReadIndexNamesAsync(
+        AppInitializationOptions options,
+        string tableName)
+    {
+        var databasePath = Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM pragma_index_list($table_name) ORDER BY name ASC;";
+        command.Parameters.AddWithValue("$table_name", tableName);
+        var indexes = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            indexes.Add(reader.GetString(0));
+        }
+
+        return indexes;
     }
 
     private static async ValueTask<IReadOnlyList<DraftAuditRow>> ReadDraftAuditRowsAsync(

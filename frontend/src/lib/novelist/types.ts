@@ -931,6 +931,73 @@ export namespace reference {
     updated_at: Timestamp
   }
 
+  export type CorpusNodeType = 'chapter' | 'scene' | 'passage' | 'sentence' | 'clause'
+  export type CorpusLicenseState = 'unknown' | 'public_domain' | 'cc' | 'authorized' | 'restricted' | 'forbidden'
+  export type CorpusReusePolicy = 'verbatim_ok' | 'adapted_only' | 'reference_only' | 'forbidden'
+
+  export interface CharacterStateSnapshot {
+    character: string
+    state: string
+    allowed_knowledge: string[]
+    forbidden_knowledge: string[]
+  }
+
+  export interface CurrentChapterContext {
+    novel_id: number
+    chapter_number: number
+    current_draft_text?: string | null
+    insertion_offset: number
+    previous_chapter_summary?: string | null
+    character_snapshots: CharacterStateSnapshot[]
+  }
+
+  export interface CorpusScope {
+    library_ids: string[]
+    reuse_policies: CorpusReusePolicy[]
+    include_anchor_ids: number[]
+    exclude_anchor_ids: number[]
+  }
+
+  export interface CorpusQueryContext {
+    scene_type: string
+    emotion_target: string
+    pacing_target: string
+    narrative_position: string
+    commercial_mechanic: string
+    character_states: string[]
+    required_narrative_functions: string[]
+    chapter_context: CurrentChapterContext
+    scope: CorpusScope
+  }
+
+  export interface SearchCorpusCandidatesInput {
+    query_context: CorpusQueryContext
+    page_request: storage.PageRequest
+  }
+
+  export interface CorpusCandidateEvidence {
+    observation_id: string
+    feature_family: string
+    feature_key: string
+    confidence: number
+  }
+
+  export interface CorpusCandidate {
+    candidate_id: string
+    node_id: string
+    anchor_id: number
+    library_id: string
+    node_type: CorpusNodeType
+    text_preview: string
+    text_hash: string
+    license_state: CorpusLicenseState
+    reuse_policy: CorpusReusePolicy
+    score: number
+    score_components: Record<string, number>
+    fit_explanation: string
+    evidence: CorpusCandidateEvidence[]
+  }
+
   export interface Material {
     material_id: string
     anchor_id: number
@@ -1979,12 +2046,23 @@ export namespace skill {
 }
 
 export namespace storage {
+  export interface PageRequest {
+    cursor?: string | null
+    page_size: number
+    sort_by: string
+    sort_dir: 'asc' | 'desc' | string
+    filters?: Record<string, string> | null
+  }
+
   export interface PageResult_git_GitCommitSummary_ {
     items: git.GitCommitSummary[]
     total: number
     page: number
     size: number
     total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
   }
 
   export interface PageResult_novel_app_SessionMeta_ {
@@ -1993,6 +2071,9 @@ export namespace storage {
     page: number
     size: number
     total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
   }
 
   export interface PageResult_reference_Material_ {
@@ -2001,6 +2082,9 @@ export namespace storage {
     page: number
     size: number
     total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
   }
 
   export interface PageResult_reference_MaterialSummary_ {
@@ -2009,6 +2093,20 @@ export namespace storage {
     page: number
     size: number
     total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
+  }
+
+  export interface PageResult_reference_CorpusCandidate_ {
+    items: reference.CorpusCandidate[]
+    total: number
+    page: number
+    size: number
+    total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
   }
 
   export interface PageResult_reference_MaterialTagReviewItem_ {
@@ -2017,6 +2115,9 @@ export namespace storage {
     page: number
     size: number
     total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
   }
 
   export interface PageResult_styleSample_StyleSample_ {
@@ -2025,6 +2126,9 @@ export namespace storage {
     page: number
     size: number
     total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
   }
 }
 

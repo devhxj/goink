@@ -123,6 +123,66 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CorpusDrivenWritingM0SchemaIsProvisionedWithIdempotentObservationKey()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("语料驱动地基测试", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "corpus-m0-schema.md",
+            """
+            # 第一章
+
+            雨声压低了整条街的呼吸。
+            """);
+        var service = new SqliteReferenceAnchorService(options, novels);
+
+        var anchor = await service.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "语料驱动参考", null, sourcePath, "markdown", "user_provided"),
+            CancellationToken.None);
+
+        var tables = await ReadReferenceTableNamesAsync(options);
+        Assert.Contains("reference_text_nodes", tables);
+        Assert.Contains("reference_analysis_runs", tables);
+        Assert.Contains("reference_feature_observations", tables);
+        Assert.Contains("reference_obs_sensory", tables);
+        Assert.Contains("reference_technique_specimens", tables);
+        Assert.Contains("reference_specimen_evidence", tables);
+        Assert.Contains("reference_template_examples", tables);
+        Assert.Contains("reference_aggregate_provenance", tables);
+        Assert.Contains("reference_corpus_libraries", tables);
+        Assert.Contains("reference_library_members", tables);
+        Assert.Contains("reference_session_library_binding", tables);
+        Assert.Contains("reference_source_license", tables);
+
+        Assert.Contains("node_id", await ReadTableColumnsAsync(options, "reference_source_segments"));
+        Assert.Contains("node_id", await ReadTableColumnsAsync(options, "reference_materials"));
+
+        var runColumns = await ReadTableColumnsAsync(options, "reference_analysis_runs");
+        Assert.Contains("token_budget", runColumns);
+        Assert.Contains("tokens_spent", runColumns);
+        Assert.Contains("resume_cursor", runColumns);
+
+        var observationColumns = await ReadTableColumnsAsync(options, "reference_feature_observations");
+        Assert.Contains("value_kind", observationColumns);
+        Assert.Contains("value_num", observationColumns);
+        Assert.Contains("value_bool", observationColumns);
+        Assert.Contains("value_json", observationColumns);
+        Assert.Contains("review_state", observationColumns);
+        Assert.Contains("validity_state", observationColumns);
+        Assert.Contains("superseded_by_run_id", observationColumns);
+
+        Assert.Contains("ux_obs_generation_key", await ReadIndexNamesAsync(options, "reference_feature_observations"));
+
+        await InsertCorpusObservationFixtureAsync(options, anchor.AnchorId, "obs-1");
+        var exception = await Assert.ThrowsAsync<SqliteException>(
+            () => InsertCorpusObservationFixtureAsync(options, anchor.AnchorId, "obs-duplicate"));
+
+        Assert.Equal(19, exception.SqliteErrorCode);
+    }
+
+    [Fact]
     public async Task CreateAnchorValidatesNovelId()
     {
         var options = CreateOptions();
@@ -8766,16 +8826,121 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
         await initialization.InitializeAsync(options.DefaultDataDirectory, CancellationToken.None);
     }
 
+    private static string ReferenceDatabasePath(AppInitializationOptions options)
+    {
+        return Path.Combine(
+            options.DefaultDataDirectory,
+            "reference-anchor",
+            "index.sqlite");
+    }
+
+    private static async ValueTask<IReadOnlySet<string>> ReadReferenceTableNamesAsync(AppInitializationOptions options)
+    {
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = ReferenceDatabasePath(options), Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name LIKE 'reference_%';
+            """;
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        return names;
+    }
+
+    private static async ValueTask<IReadOnlySet<string>> ReadTableColumnsAsync(
+        AppInitializationOptions options,
+        string tableName)
+    {
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = ReferenceDatabasePath(options), Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info(" + tableName + ");";
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            names.Add(reader.GetString(1));
+        }
+
+        return names;
+    }
+
+    private static async ValueTask<IReadOnlySet<string>> ReadIndexNamesAsync(
+        AppInitializationOptions options,
+        string tableName)
+    {
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = ReferenceDatabasePath(options), Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA index_list(" + tableName + ");";
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            names.Add(reader.GetString(1));
+        }
+
+        return names;
+    }
+
+    private static async Task InsertCorpusObservationFixtureAsync(
+        AppInitializationOptions options,
+        long anchorId,
+        string observationId)
+    {
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = ReferenceDatabasePath(options), Pooling = false }.ToString());
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT OR IGNORE INTO reference_text_nodes
+              (node_id, anchor_id, parent_node_id, node_type, sequence_index, depth,
+               chapter_index, start_offset, end_offset, char_len, text_hash, text, created_at)
+            VALUES
+              ('corpus-node-1', $anchor_id, NULL, 'sentence', 1, 1,
+               1, 0, 2, 2, 'node-hash-1', '雨声', '2026-07-09T00:00:00Z');
+
+            INSERT OR IGNORE INTO reference_analysis_runs
+              (run_id, anchor_id, analyzer_version, schema_version, model_provider, model_id,
+               scope, status, token_budget, tokens_spent, resume_cursor, started_at, completed_at, observation_count)
+            VALUES
+              ('run-1', $anchor_id, 'test-analyzer', 'corpus-v1', 'fake', 'fake-llm',
+               'sentence', 'budget_exhausted', 100, 100, 'corpus-node-1:rhythm',
+               '2026-07-09T00:00:00Z', NULL, 0);
+
+            INSERT INTO reference_feature_observations
+              (observation_id, node_id, node_type, run_id, anchor_id, feature_family, feature_key,
+               value_kind, value_text, value_num, value_bool, value_json, intensity, confidence,
+               evidence_start, evidence_end, explanation, review_state, validity_state,
+               superseded_by_run_id, created_at)
+            VALUES
+              ($observation_id, 'corpus-node-1', 'sentence', 'run-1', $anchor_id, 'rhythm', 'tempo',
+               'enum', '急促', NULL, NULL, NULL, 0.8, 0.9,
+               0, 2, 'fixture observation', 'unverified', 'active',
+               NULL, '2026-07-09T00:00:00Z');
+            """;
+        command.Parameters.AddWithValue("$anchor_id", anchorId);
+        command.Parameters.AddWithValue("$observation_id", observationId);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static async ValueTask<IReadOnlyList<ReferenceSourceSegmentRow>> ReadSourceSegmentsAsync(
         AppInitializationOptions options,
         long anchorId)
     {
-        var databasePath = Path.Combine(
-            options.DefaultDataDirectory,
-            "reference-anchor",
-            "index.sqlite");
         await using var connection = new SqliteConnection(
-            new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString());
+            new SqliteConnectionStringBuilder { DataSource = ReferenceDatabasePath(options), Pooling = false }.ToString());
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """

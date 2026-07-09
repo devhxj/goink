@@ -216,6 +216,7 @@ export interface NovelistAppApi {
   SaveUserName: AppMethod<[string], void>
   SaveWindowSettings: AppMethod<[layout.SaveWindowSettingsInput], layout.WindowSettings>
   SearchAll: AppMethod<[number, string], search.Result[]>
+  SearchReferenceCorpusCandidates: AppMethod<[reference.SearchCorpusCandidatesInput], storage.PageResult_reference_CorpusCandidate_>
   SearchReferenceMaterials: AppMethod<[reference.SearchMaterialsInput], storage.PageResult_reference_MaterialSummary_>
   SearchStyleSamples: AppMethod<[styleSample.SearchStyleSamplesInput], storage.PageResult_styleSample_StyleSample_>
   SearchStoryMemory: AppMethod<[SearchStoryMemoryInput], SearchStoryMemoryResult>
@@ -412,6 +413,7 @@ export const appApi: NovelistAppApi = {
   SaveUserName: appMethod<NovelistAppApi['SaveUserName']>('SaveUserName'),
   SaveWindowSettings: appMethod<NovelistAppApi['SaveWindowSettings']>('SaveWindowSettings'),
   SearchAll: appMethod<NovelistAppApi['SearchAll']>('SearchAll'),
+  SearchReferenceCorpusCandidates: appMethod<NovelistAppApi['SearchReferenceCorpusCandidates']>('SearchReferenceCorpusCandidates'),
   SearchReferenceMaterials: appMethod<NovelistAppApi['SearchReferenceMaterials']>('SearchReferenceMaterials'),
   SearchStyleSamples: appMethod<NovelistAppApi['SearchStyleSamples']>('SearchStyleSamples'),
   SearchStoryMemory: appMethod<NovelistAppApi['SearchStoryMemory']>('SearchStoryMemory'),

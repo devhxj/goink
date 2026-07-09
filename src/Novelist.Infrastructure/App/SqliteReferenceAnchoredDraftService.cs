@@ -3629,6 +3629,7 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
     {
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
         await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+        await ReferenceCorpusSchemaProvisioner.EnsureCoreTablesAsync(connection, cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS reference_chapter_blueprints (
@@ -3792,6 +3793,18 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
               FOREIGN KEY(blueprint_id) REFERENCES reference_chapter_blueprints(blueprint_id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS reference_blueprint_beat_pieces (
+              beat_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              observation_id TEXT,
+              role_in_beat TEXT,
+              sequence_index INTEGER NOT NULL,
+              PRIMARY KEY(beat_id, node_id),
+              FOREIGN KEY(beat_id) REFERENCES reference_chapter_blueprint_beats(beat_id) ON DELETE CASCADE,
+              FOREIGN KEY(node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(observation_id) REFERENCES reference_feature_observations(observation_id) ON DELETE SET NULL
+            );
+
             CREATE TABLE IF NOT EXISTS reference_draft_paragraph_candidates (
               candidate_id TEXT PRIMARY KEY,
               blueprint_id INTEGER NOT NULL,
@@ -3877,6 +3890,9 @@ public sealed class SqliteReferenceAnchoredDraftService : IReferenceAnchoredDraf
 
             CREATE INDEX IF NOT EXISTS idx_reference_blueprint_links_beat
               ON reference_blueprint_material_links(beat_id);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_blueprint_beat_pieces_beat
+              ON reference_blueprint_beat_pieces(beat_id, sequence_index);
 
             CREATE INDEX IF NOT EXISTS idx_reference_draft_candidates_blueprint
               ON reference_draft_paragraph_candidates(blueprint_id, beat_id, created_at);

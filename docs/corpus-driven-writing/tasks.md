@@ -14,8 +14,8 @@
 
 ### M0.1 文本节点树（DB / 修复 #1）
 
-- [ ] `reference_text_nodes` 建表 + 三个索引（parent/atype/chapter）
-- [ ] `reference_materials` / `reference_source_segments` 加 `node_id` FK
+- [x] `reference_text_nodes` 建表 + 三个索引（parent/atype/chapter）
+- [x] `reference_materials` / `reference_source_segments` 加 `node_id` FK
 - [ ] Stage 0 结构化写入器：源文本 → 节点树（章/场/段/句/从句），填 offset/text_hash/sequence
 - [ ] 章节窗口查询辅助：给定 node，取前 N 章/同场景兄弟节点
 - [ ] migration 幂等 + 存量库升级测试
@@ -24,39 +24,44 @@
 
 ### M0.2 分层特征观察 + projection（DB / 修复 #2 #7）
 
-- [ ] `reference_feature_observations` 建表：`value_kind`/`value_num`/`value_bool`/`value_json` + `review_state`/`validity_state`/`superseded_by_run_id`
-- [ ] 三索引（family / num / node）
-- [ ] **幂等写入（护栏 G1）**：`ux_obs_generation_key` UNIQUE + 确定性 observation_id + upsert；并发/重试/续跑不重复写
+- [x] `reference_feature_observations` 建表：`value_kind`/`value_num`/`value_bool`/`value_json` + `review_state`/`validity_state`/`superseded_by_run_id`
+- [x] 三索引（family / num / node）
+- [x] **幂等写入 schema guard（护栏 G1）**：`ux_obs_generation_key` UNIQUE，重复 observation 生成键由数据库拒绝
+- [x] **确定性 observation identity（护栏 G1）**：`observation_id = hash(run_id,node_id,family,key,evidence_start,evidence_end)`，空 evidence 与 DB sentinel 对齐
+- [x] **幂等 upsert 写入器（护栏 G1）**：分析 observation 写入用 `INSERT ... ON CONFLICT`；并发/重试/续跑不重复写
 - [ ] 热路径 projection 表：`reference_obs_sensory`（示范）+ 写入同步 + 重建脚本
-- [ ] `reference_analysis_runs` 建表（含 token_budget/tokens_spent）
-- [ ] **预算续跑状态（护栏 G2）**：status 加 `paused`/`budget_exhausted`/`partial_completed` + `resume_cursor`；续跑从游标后开始，配合 G1 幂等
+- [x] `reference_analysis_runs` 建表（含 token_budget/tokens_spent）
+- [x] **预算续跑状态规则（护栏 G2）**：status 加 `paused`/`budget_exhausted`/`partial_completed` + `resume_cursor`，Core 状态机保证预算耗尽非 failed
+- [ ] **预算续跑管线接入（护栏 G2）**：分析任务从 `resume_cursor` 后开始，配合 G1 幂等覆盖已完成 node
 
 **验收：** 能按 value_num 范围、按 sensory 投影表数组查询；review_state 与 validity_state 独立可设；**同 (run,node,feature) 并发/重试只落一条 active observation**；预算耗尽置 `budget_exhausted` 而非 failed，补预算可从 resume_cursor 续跑。
 
 ### M0.3 技法标本 + junction（DB / 修复 #8）
 
-- [ ] `reference_technique_specimens` 建表（含 review/validity/superseded）
-- [ ] junction：`reference_specimen_evidence` / `reference_template_examples` / `reference_blueprint_beat_pieces`
+- [x] `reference_technique_specimens` 建表（含 review/validity/superseded）
+- [x] junction：`reference_specimen_evidence` / `reference_template_examples` / `reference_blueprint_beat_pieces`
 - [ ] 级联失效查询：给定 superseded 的 observation，定位受影响 specimen/beat
 
 **验收：** 证据边可 join；observation superseded 后能精确列出受影响 specimen。
 
 ### M0.4 语料库 + 授权（DB / 修复 #4 #6）
 
-- [ ] `reference_corpus_libraries` / `reference_library_members` / `reference_session_library_binding`
-- [ ] `reference_source_license`
+- [x] `reference_corpus_libraries` / `reference_library_members` / `reference_session_library_binding`
+- [x] `reference_source_license`
 - [ ] 检索默认作用域视图：会话绑定库 ∩ enabled ∩ license 允许复用 ∩ 去重折叠
 
 **验收：** 能按会话解析出有效检索作用域；forbidden/unknown 来源被排除；dedup_group 折叠生效。
 
 ### M0.5 分页契约 + 测试资产骨架（Contracts / 测试 / 修复 #9 #12）
 
-- [ ] `PageRequest` / `PageResult<T>`（pageSize 上限 200、稳定排序 tiebreaker、错误码）
-- [ ] TS 侧对应类型 + api.ts 泛型分页签名
-- [ ] **fake LLM harness**：可注入的确定性 LLM 替身，返回固定 golden 输出
-- [ ] **fake embedding harness（护栏 G3）**：按文本 hash 生成确定性向量，golden 检索逐次一致可断言
-- [ ] **相似度算法（护栏 G5）**：4-gram 容器度 + LCS 比，piece-level，归一化+中文专名规则；纯确定性、无模型调用；单测逐值断言
-- [ ] **golden fixture**：小 golden 书（约 500 句，含授权标注）纳入版本库
+- [x] `PageRequest` / `PageResult<T>`（pageSize 上限 200、稳定排序 tiebreaker、错误码）
+- [x] TS 侧对应类型 + api.ts 分页签名
+- [x] `SearchReferenceCorpusCandidates` bridge/service 接入：前端可调用，pageSize 超限返回 validation error，候选结果不暴露 embedding/source text
+- [x] **fake LLM harness**：可注入的确定性 LLM 替身，返回固定 golden 输出
+- [x] **fake embedding harness（护栏 G3）**：按文本 hash 生成确定性向量，golden 检索逐次一致可断言
+- [x] **相似度算法（护栏 G5）**：4-gram 容器度 + LCS 比，piece-level，归一化+中文专名规则；纯确定性、无模型调用；单测逐值断言
+- [x] **golden fixture 骨架**：小语料结构覆盖 corpus/current chapter/query/retrieval/blueprint/insertion/fake LLM response 指针
+- [ ] **golden fixture 完整版**：小 golden 书（约 500 句，含授权标注）纳入版本库
 - [ ] **规模 fixture 生成器**：合成 200 万字级语料（供性能/恢复测试）
 - [ ] 中断恢复测试脚本骨架
 
@@ -76,12 +81,13 @@
 
 ### M1.2 最小检索（后端 / 修复 #5 / 护栏 G3 G4）
 
-- [ ] **node/material embedding 构建任务（护栏 G3）**：复用 `IEmbeddingClient`，对 text_nodes 建向量；测试用 fake embedding 替身
-- [ ] `CorpusQueryContext` + `CurrentChapterContext` 契约（前端不传 embedding，护栏 G4）
-- [ ] 章节 embedding 后端计算 + 缓存（key = draft text hash）
+- [x] **node embedding 构建（护栏 G3，M1 最小版）**：复用 `IEmbeddingClient`，对 text_nodes 缺失向量懒构建并缓存；测试用 fake embedding 替身
+- [ ] material embedding 构建任务：Stage 0/legacy material 与 text_nodes 对齐后补齐 material 级索引
+- [x] `CorpusQueryContext` + `CurrentChapterContext` 契约（前端不传 embedding，护栏 G4）
+- [x] 章节 embedding 后端计算 + 缓存（key = draft text hash，前端不传 embedding）
 - [ ] 最小 `IQueryContextParser`（fake LLM：大纲 → 固定 QueryContext）
-- [ ] 单路检索：文本语义向量 + 授权作用域过滤 + 当前章节 embedding 连贯度加权
-- [ ] 返回 `PageResult<候选片段>`
+- [x] 单路检索（M1 最小版）：text_nodes 语义向量 + library/license/visibility/reuse 过滤 + 当前章节 embedding 连贯度加权
+- [x] 返回 `PageResult<候选片段>` 的 bridge/contract 形态
 
 ### M1.3 单蓝图 + 槽位替换 + 插入（后端）
 
