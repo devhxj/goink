@@ -74,7 +74,9 @@ public sealed record ReferenceCorpusScopePayload(
     [property: JsonPropertyName("library_ids")] IReadOnlyList<string> LibraryIds,
     [property: JsonPropertyName("reuse_policies")] IReadOnlyList<string> ReusePolicies,
     [property: JsonPropertyName("include_anchor_ids")] IReadOnlyList<long> IncludeAnchorIds,
-    [property: JsonPropertyName("exclude_anchor_ids")] IReadOnlyList<long> ExcludeAnchorIds);
+    [property: JsonPropertyName("exclude_anchor_ids")] IReadOnlyList<long> ExcludeAnchorIds,
+    [property: JsonPropertyName("session_id")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SessionId = null);
 
 public sealed record ReferenceCorpusQueryContextPayload(
     [property: JsonPropertyName("scene_type")] string SceneType,
@@ -90,6 +92,36 @@ public sealed record ReferenceCorpusQueryContextPayload(
 public sealed record SearchReferenceCorpusCandidatesPayload(
     [property: JsonPropertyName("query_context")] ReferenceCorpusQueryContextPayload QueryContext,
     [property: JsonPropertyName("page_request")] PageRequestPayload PageRequest);
+
+public static class ReferenceCorpusTechniqueVectorIndexBackfillStatuses
+{
+    public const string Ready = "ready";
+    public const string Empty = "empty";
+    public const string Skipped = "skipped";
+    public const string Failed = "failed";
+}
+
+public sealed record BackfillReferenceCorpusTechniqueVectorIndexPayload(
+    [property: JsonPropertyName("query_context")] ReferenceCorpusQueryContextPayload QueryContext,
+    [property: JsonPropertyName("node_type")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NodeType = null);
+
+public sealed record ReferenceCorpusTechniqueVectorIndexBackfillPayload(
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("index_scope_key")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? IndexScopeKey,
+    [property: JsonPropertyName("table_name")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TableName,
+    [property: JsonPropertyName("provider_key")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProviderKey,
+    [property: JsonPropertyName("model_id")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ModelId,
+    [property: JsonPropertyName("dimensions")] int Dimensions,
+    [property: JsonPropertyName("source_count")] int SourceCount,
+    [property: JsonPropertyName("vector_count")] int VectorCount,
+    [property: JsonPropertyName("skipped_vector_count")] int SkippedVectorCount,
+    [property: JsonPropertyName("rebuilt")] bool Rebuilt,
+    [property: JsonPropertyName("diagnostics")] IReadOnlyList<string> Diagnostics);
 
 public sealed record ReferenceCorpusCandidateEvidencePayload(
     [property: JsonPropertyName("observation_id")] string ObservationId,

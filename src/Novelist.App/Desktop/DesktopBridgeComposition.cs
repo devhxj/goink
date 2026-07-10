@@ -100,7 +100,9 @@ public static class DesktopBridgeComposition
         var referenceCorpusService = new SqliteReferenceCorpusService(
             options,
             embeddingService,
-            embeddingClient);
+            embeddingClient,
+            sqliteVecProvider,
+            sqliteVecProvider);
         var referenceCorpusWritingService = new SqliteReferenceCorpusWritingService(
             options,
             referenceCorpusService,

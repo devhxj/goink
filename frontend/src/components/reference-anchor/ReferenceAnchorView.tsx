@@ -25,6 +25,7 @@ import { copyTextToClipboard } from '@/lib/clipboard'
 import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
 import type { diagnostics, reference } from '@/lib/novelist/types'
 import { BlueprintDetail } from './BlueprintDetail'
+import { CorpusAnalysisLibraryTab } from './CorpusAnalysisLibraryTab'
 import { OrchestrationPanel } from './OrchestrationPanel'
 import { StyleProfileLibraryPanel } from './StyleProfileLibraryPanel'
 import {
@@ -82,7 +83,7 @@ type MaterialSearchFilters = {
 type AnchorScopeFilter = 'all' | 'novel' | 'workspace_corpus'
 type MaterialPreviewSort = 'default' | 'score_desc' | 'material_id_asc'
 type MaterialArchiveFilter = 'active' | 'archived'
-type CorpusLibraryTab = 'materials' | 'sources' | 'tag_review' | 'style_profiles' | 'processing_records' | 'advanced'
+type CorpusLibraryTab = 'materials' | 'analysis_results' | 'sources' | 'tag_review' | 'style_profiles' | 'processing_records' | 'advanced'
 
 type MaterialPreviewState = {
   items: reference.MaterialSummary[]
@@ -196,6 +197,7 @@ const ENABLE_REFERENCE_ACTIVITY_CHAPTER_DEBUG =
   import.meta.env.DEV && import.meta.env.VITE_REFERENCE_ACTIVITY_CHAPTER_DEBUG === 'true'
 const CORPUS_LIBRARY_TABS: Array<{ id: CorpusLibraryTab; label: string }> = [
   { id: 'materials', label: '处理后语料' },
+  { id: 'analysis_results', label: '分析结果' },
   { id: 'sources', label: '素材来源' },
   { id: 'tag_review', label: '标签校正' },
   { id: 'style_profiles', label: '风格画像' },
@@ -2974,7 +2976,12 @@ export default function ReferenceAnchorView({ novelId }: Props) {
             </>
             )}
 
+            {activeCorpusTab === 'analysis_results' && (
+              <CorpusAnalysisLibraryTab novelId={novelId} anchors={anchors} />
+            )}
+
             {(activeCorpusTab === 'materials' || activeCorpusTab === 'tag_review') && (
+            <>
             <div data-testid="reference-material-library" className="rounded-lg border border-border bg-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -3354,6 +3361,7 @@ export default function ReferenceAnchorView({ novelId }: Props) {
                 <p className="mt-3 text-[11px] text-muted-foreground">输入检索条件后查看可访问材料；默认不需要先选择库条目。</p>
               )}
             </div>
+            </>
             )}
 
             {activeCorpusTab === 'style_profiles' && (
@@ -3806,7 +3814,7 @@ function SourceProcessingDrawer({
       aria-modal="false"
       aria-label="处理记录"
       data-testid="reference-source-processing-drawer"
-      className="fixed inset-y-0 right-0 z-40 flex w-[420px] max-w-[calc(100vw-3rem)] flex-col border-l border-border bg-card shadow-xl"
+      className="fixed inset-y-0 right-0 z-40 flex w-[640px] max-w-[calc(100vw-2rem)] flex-col border-l border-border bg-card shadow-xl"
     >
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
@@ -3849,7 +3857,6 @@ function SourceProcessingDrawer({
             <section className="space-y-2">
               <h4 className="text-xs font-semibold text-foreground">来源</h4>
               <div className="space-y-1 text-xs text-muted-foreground">
-                <DetailKeyValue label="标题" value={detail.source.title} />
                 <DetailKeyValue label="归属" value={detail.source.owner_scope === 'workspace_corpus' ? '工作区语料' : `小说 ${detail.source.owner_novel_id ?? detail.source.novel_id}`} />
                 <DetailKeyValue label="可见性" value={`${detail.source.visibility} · ${detail.source.source_trust}`} />
                 <DetailKeyValue
@@ -4086,7 +4093,7 @@ function SourceSegmentDetailDrawer({
       aria-modal="false"
       aria-label="来源片段明细"
       data-testid="reference-source-segment-detail-drawer"
-      className="fixed inset-y-0 right-0 z-40 flex w-[420px] max-w-[calc(100vw-3rem)] flex-col border-l border-border bg-card shadow-xl"
+      className="fixed inset-y-0 right-0 z-40 flex w-[640px] max-w-[calc(100vw-2rem)] flex-col border-l border-border bg-card shadow-xl"
     >
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
@@ -4129,7 +4136,6 @@ function SourceSegmentDetailDrawer({
             <section className="space-y-2">
               <h4 className="text-xs font-semibold text-foreground">来源</h4>
               <div className="space-y-1 text-xs text-muted-foreground">
-                <DetailKeyValue label="标题" value={detail.source.title} />
                 <DetailKeyValue label="归属" value={detail.source.owner_scope === 'workspace_corpus' ? '工作区语料' : `小说 ${detail.source.owner_novel_id ?? detail.source.novel_id}`} />
                 <DetailKeyValue label="可见性" value={`${detail.source.visibility} · ${detail.source.source_trust}`} />
                 <DetailKeyValue label="授权" value={detail.source.license_status} />
@@ -4147,7 +4153,7 @@ function SourceSegmentDetailDrawer({
                 {segment.chapter_title && (
                   <p className="mt-1 text-[11px] text-muted-foreground">{segment.chapter_title}</p>
                 )}
-                <p className="mt-2 text-xs leading-relaxed text-foreground">
+                <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">
                   {segment.text_preview || '无预览'}
                 </p>
                 <PreviewBoundary truncated={segment.text_truncated} compact />
@@ -4221,7 +4227,7 @@ function MaterialDetailDrawer({
       aria-modal="false"
       aria-label="材料明细"
       data-testid="reference-material-detail-drawer"
-      className="fixed inset-y-0 right-0 z-40 flex w-[420px] max-w-[calc(100vw-3rem)] flex-col border-l border-border bg-card shadow-xl"
+      className="fixed inset-y-0 right-0 z-40 flex w-[640px] max-w-[calc(100vw-2rem)] flex-col border-l border-border bg-card shadow-xl"
     >
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
@@ -4279,7 +4285,7 @@ function MaterialDetailDrawer({
                     : '暂无评分明细'}
                 />
               </div>
-              <p className="rounded-md border border-border bg-background px-3 py-2 text-xs leading-relaxed text-foreground">
+              <p className="whitespace-pre-wrap break-words rounded-md border border-border bg-background px-3 py-2 text-xs leading-relaxed text-foreground">
                 {material.text_preview || '无预览'}
               </p>
               <PreviewBoundary truncated={material.text_truncated} />
@@ -4311,7 +4317,7 @@ function MaterialDetailDrawer({
                         <span className="min-w-0 truncate">{segment.segment_id} · {segment.segment_type}</span>
                         <span>第 {segment.chapter_index} 章 · #{segment.segment_index}</span>
                       </div>
-                      <p className="mt-1 text-xs leading-relaxed text-foreground">
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">
                         {segment.text_preview || '无预览'}
                       </p>
                       <PreviewBoundary truncated={segment.text_truncated} compact />
@@ -4351,7 +4357,7 @@ function MaterialDetailDrawer({
                         <span>{note.stage} · {note.status}</span>
                         <span>{String(note.updated_at ?? '')}</span>
                       </div>
-                      <p className="mt-1 text-xs leading-relaxed text-foreground">{note.message}</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">{note.message}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         segments={note.source_segment_count} · materials={note.material_count} · slots={note.slot_count} · vectors={note.vector_count}
                       </p>

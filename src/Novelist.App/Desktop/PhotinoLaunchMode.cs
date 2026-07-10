@@ -49,7 +49,7 @@ public static class PhotinoLaunchMode
                 .AsTask()
                 .GetAwaiter()
                 .GetResult();
-            return new RestoredWindowSettings(settings.X, settings.Y, settings.Width, settings.Height, settings.Maximized);
+            return new RestoredWindowSettings(settings.X, settings.Y, settings.Width, settings.Height, Maximized: false);
         }
         catch (AppNotInitializedException)
         {

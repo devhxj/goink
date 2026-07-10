@@ -81,7 +81,7 @@ public sealed class PhotinoDesktopHostTests
     }
 
     [Fact]
-    public async Task LaunchSettingsUsePersistedWindowSizeWhenAppIsInitialized()
+    public async Task LaunchSettingsUsePersistedWindowBoundsButNeverRestoreMaximized()
     {
         var root = Path.Combine(Path.GetTempPath(), "novelist-desktop-window-" + Guid.NewGuid().ToString("N"));
         var options = new AppInitializationOptions
@@ -113,7 +113,7 @@ public sealed class PhotinoDesktopHostTests
             Assert.Equal(120, settings.Y);
             Assert.Equal(1440, settings.Width);
             Assert.Equal(900, settings.Height);
-            Assert.True(settings.Maximized);
+            Assert.False(settings.Maximized);
             Assert.Same(options, settings.AppOptions);
         }
         finally

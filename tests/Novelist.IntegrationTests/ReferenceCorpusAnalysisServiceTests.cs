@@ -100,6 +100,278 @@ public sealed class ReferenceCorpusAnalysisServiceTests : IDisposable
         Assert.DoesNotContain("D:\\private", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task StartTechniqueSpecimenAnalysisPersistsSpecimensAndSafeStatus()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        await SeedAnalysisFixtureAsync(options);
+        var analyzer = new RecordingTechniqueSpecimenAnalyzer(tokensPerCall: 19);
+        var service = new SqliteReferenceCorpusAnalysisService(
+            options,
+            new FixedAppSettingsService("fake/fake-model", "medium"),
+            new EmptyObservationFeatureFamilyAnalyzer(tokensPerCall: 1),
+            techniqueSpecimenAnalyzer: analyzer);
+
+        var started = await service.StartTechniqueSpecimenAnalysisAsync(
+            new StartReferenceCorpusTechniqueSpecimenAnalysisPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                SourceNodeType: ReferenceCorpusNodeTypes.Sentence,
+                MinObservationConfidence: 0.70,
+                RunId: "technique-service-run-1"),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceCorpusAnalysisRunStatuses.Completed, started.Status);
+        Assert.Equal("technique-service-run-1", started.RunId);
+        Assert.Equal(42, started.NovelId);
+        Assert.Equal(101, started.AnchorId);
+        Assert.Equal("technique_specimen", started.Scope);
+        Assert.Equal(19, started.TokensSpent);
+        Assert.Equal(1, started.SpecimenCount);
+        Assert.Equal(1, started.ProcessedNodes);
+        Assert.Equal("fake", started.ModelProvider);
+        Assert.Equal("fake-model", started.ModelId);
+        Assert.Equal(ReferenceCorpusTechniqueSpecimenSchemaVersions.V1, started.SchemaVersion);
+        Assert.NotNull(started.CompletedAt);
+        Assert.Single(analyzer.Calls);
+        Assert.Equal("node-b", analyzer.Calls[0].NodeId);
+        Assert.Equal(3, analyzer.Calls[0].Observations.Count);
+        AssertRunDiagnosticsDoNotLeakSensitiveFields(started.Diagnostics);
+
+        var status = await service.GetTechniqueSpecimenAnalysisRunAsync(
+            new GetReferenceCorpusTechniqueSpecimenAnalysisRunPayload(
+                NovelId: 42,
+                RunId: "technique-service-run-1"),
+            CancellationToken.None);
+
+        Assert.NotNull(status);
+        Assert.Equal(ReferenceCorpusAnalysisRunStatuses.Completed, status.Status);
+        Assert.Equal(19, status.TokensSpent);
+        Assert.Equal(1, status.SpecimenCount);
+        Assert.Equal(0, status.ProcessedNodes);
+        AssertRunDiagnosticsDoNotLeakSensitiveFields(status.Diagnostics);
+    }
+
+    [Fact]
+    public async Task StartTechniqueSpecimenAnalysisMarksRunFailedWhenAnalyzerThrows()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        await SeedAnalysisFixtureAsync(options);
+        var service = new SqliteReferenceCorpusAnalysisService(
+            options,
+            new FixedAppSettingsService("fake/fake-model", "medium"),
+            new EmptyObservationFeatureFamilyAnalyzer(tokensPerCall: 1),
+            techniqueSpecimenAnalyzer: new ThrowingTechniqueSpecimenAnalyzer());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await service.StartTechniqueSpecimenAnalysisAsync(
+                new StartReferenceCorpusTechniqueSpecimenAnalysisPayload(
+                    NovelId: 42,
+                    AnchorId: 101,
+                    SourceNodeType: ReferenceCorpusNodeTypes.Sentence,
+                    MinObservationConfidence: 0.70,
+                    RunId: "technique-service-failed-run-1"),
+                CancellationToken.None));
+
+        var status = await service.GetTechniqueSpecimenAnalysisRunAsync(
+            new GetReferenceCorpusTechniqueSpecimenAnalysisRunPayload(
+                NovelId: 42,
+                RunId: "technique-service-failed-run-1"),
+            CancellationToken.None);
+
+        Assert.NotNull(status);
+        Assert.Equal(ReferenceCorpusAnalysisRunStatuses.Failed, status.Status);
+        Assert.NotNull(status.CompletedAt);
+        Assert.Equal(0, status.SpecimenCount);
+        Assert.Contains(status.Diagnostics, item => string.Equals(item, "analysis_failed:InvalidOperationException", StringComparison.Ordinal));
+        AssertRunDiagnosticsDoNotLeakSensitiveFields(status.Diagnostics);
+    }
+
+    [Fact]
+    public async Task ListFeatureObservationsReturnsSafePaginatedNodeAnalysis()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        await SeedAnalysisFixtureAsync(options);
+        var service = new SqliteReferenceCorpusAnalysisService(
+            options,
+            new FixedAppSettingsService("fake/fake-model", "medium"),
+            new EmptyObservationFeatureFamilyAnalyzer(tokensPerCall: 1));
+
+        var firstPage = await service.ListFeatureObservationsAsync(
+            new ListReferenceCorpusFeatureObservationsPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                NodeId: "node-b",
+                PageRequest: new PageRequestPayload(
+                    Cursor: null,
+                    PageSize: 1,
+                    SortBy: "created_at",
+                    SortDir: "asc",
+                    Filters: new Dictionary<string, string> { ["feature_family"] = ReferenceCorpusFeatureFamilies.Emotion })),
+            CancellationToken.None);
+
+        Assert.Single(firstPage.Items);
+        Assert.Equal(2, firstPage.Total);
+        Assert.True(firstPage.HasMore);
+        Assert.NotNull(firstPage.NextCursor);
+        var observation = firstPage.Items[0];
+        Assert.Equal("node-b", observation.NodeId);
+        Assert.Equal(ReferenceCorpusFeatureFamilies.Emotion, observation.FeatureFamily);
+        Assert.Equal("emotion_state", observation.FeatureKey);
+        Assert.Equal("active", observation.ValidityState);
+        Assert.Equal("feature-run-technique-service", observation.RunId);
+        Assert.Equal("restrained", observation.ValuePreview);
+        Assert.Equal("hash-node-b", observation.TextHash);
+        Assert.NotNull(observation.EvidencePreview);
+        AssertFeatureObservationPayloadDoesNotLeakSourceFields(observation);
+
+        var secondPage = await service.ListFeatureObservationsAsync(
+            new ListReferenceCorpusFeatureObservationsPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                NodeId: "node-b",
+                PageRequest: new PageRequestPayload(
+                    Cursor: firstPage.NextCursor,
+                    PageSize: 1,
+                    SortBy: "created_at",
+                    SortDir: "asc",
+                    Filters: new Dictionary<string, string> { ["feature_family"] = ReferenceCorpusFeatureFamilies.Emotion })),
+            CancellationToken.None);
+
+        Assert.Single(secondPage.Items);
+        Assert.False(secondPage.HasMore);
+        Assert.Null(secondPage.NextCursor);
+        Assert.NotEqual(firstPage.Items[0].ObservationId, secondPage.Items[0].ObservationId);
+    }
+
+    [Fact]
+    public async Task StartFeatureAnalysisRoutesLowConfidenceObservationsToReviewList()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        await SeedAnalysisFixtureAsync(options);
+        var service = new SqliteReferenceCorpusAnalysisService(
+            options,
+            new FixedAppSettingsService("fake/fake-model", "medium"),
+            new ConfidenceSplitFeatureFamilyAnalyzer(tokensPerCall: 1));
+
+        var started = await service.StartFeatureAnalysisAsync(
+            new StartReferenceCorpusFeatureAnalysisPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                Scope: ReferenceCorpusNodeTypes.Sentence,
+                TokenBudget: null,
+                Resume: false,
+                RunId: "analysis-service-confidence-routing-run-1"),
+            CancellationToken.None);
+
+        Assert.Equal(ReferenceCorpusAnalysisRunStatuses.Completed, started.Status);
+        Assert.Equal(2, started.ObservationCount);
+
+        var lowConfidencePage = await service.ListFeatureObservationsAsync(
+            new ListReferenceCorpusFeatureObservationsPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                NodeId: null,
+                PageRequest: new PageRequestPayload(
+                    Cursor: null,
+                    PageSize: 10,
+                    SortBy: "created_at",
+                    SortDir: "asc",
+                    Filters: new Dictionary<string, string>
+                    {
+                        ["run_id"] = "analysis-service-confidence-routing-run-1",
+                        ["feature_family"] = ReferenceCorpusFeatureFamilies.Syntax,
+                        ["review_state"] = "low_confidence"
+                    })),
+            CancellationToken.None);
+
+        var lowConfidence = Assert.Single(lowConfidencePage.Items);
+        Assert.Equal("node-a", lowConfidence.NodeId);
+        Assert.Equal("low_confidence", lowConfidence.ReviewState);
+        Assert.True(lowConfidence.Confidence < 0.70);
+        AssertFeatureObservationPayloadDoesNotLeakSourceFields(lowConfidence);
+
+        var unverifiedPage = await service.ListFeatureObservationsAsync(
+            new ListReferenceCorpusFeatureObservationsPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                NodeId: null,
+                PageRequest: new PageRequestPayload(
+                    Cursor: null,
+                    PageSize: 10,
+                    SortBy: "created_at",
+                    SortDir: "asc",
+                    Filters: new Dictionary<string, string>
+                    {
+                        ["run_id"] = "analysis-service-confidence-routing-run-1",
+                        ["feature_family"] = ReferenceCorpusFeatureFamilies.Syntax,
+                        ["review_state"] = "unverified"
+                    })),
+            CancellationToken.None);
+
+        var unverified = Assert.Single(unverifiedPage.Items);
+        Assert.Equal("node-b", unverified.NodeId);
+        Assert.Equal("unverified", unverified.ReviewState);
+        Assert.True(unverified.Confidence >= 0.70);
+        AssertFeatureObservationPayloadDoesNotLeakSourceFields(unverified);
+    }
+
+    [Fact]
+    public async Task ListTechniqueSpecimensReturnsSafeEvidenceTrace()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        await SeedAnalysisFixtureAsync(options);
+        var service = new SqliteReferenceCorpusAnalysisService(
+            options,
+            new FixedAppSettingsService("fake/fake-model", "medium"),
+            new EmptyObservationFeatureFamilyAnalyzer(tokensPerCall: 1),
+            techniqueSpecimenAnalyzer: new RecordingTechniqueSpecimenAnalyzer(tokensPerCall: 19));
+        await service.StartTechniqueSpecimenAnalysisAsync(
+            new StartReferenceCorpusTechniqueSpecimenAnalysisPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                SourceNodeType: ReferenceCorpusNodeTypes.Sentence,
+                MinObservationConfidence: 0.70,
+                RunId: "technique-service-list-run-1"),
+            CancellationToken.None);
+
+        var specimens = await service.ListTechniqueSpecimensAsync(
+            new ListReferenceCorpusTechniqueSpecimensPayload(
+                NovelId: 42,
+                AnchorId: 101,
+                SourceNodeId: "node-b",
+                PageRequest: new PageRequestPayload(
+                    Cursor: null,
+                    PageSize: 20,
+                    SortBy: "created_at",
+                    SortDir: "desc",
+                    Filters: new Dictionary<string, string> { ["technique_family"] = "action_as_emotion" })),
+            CancellationToken.None);
+
+        Assert.Single(specimens.Items);
+        Assert.Equal(1, specimens.Total);
+        var specimen = specimens.Items[0];
+        Assert.Equal("node-b", specimen.SourceNodeId);
+        Assert.Equal("technique-service-list-run-1", specimen.AnalysisRunId);
+        Assert.Equal("action_as_emotion", specimen.TechniqueFamily);
+        Assert.NotEmpty(specimen.TransferSlots);
+        Assert.NotEmpty(specimen.WhyItWorks.ContributingFactors);
+        Assert.True(specimen.WhyItWorks.TraceComplete);
+        Assert.Equal(2, specimen.Evidence.Count);
+        Assert.Contains(specimen.Evidence, item =>
+            item.FeatureFamily == ReferenceCorpusFeatureFamilies.Emotion &&
+            item.TextHash == "hash-node-b" &&
+            !string.IsNullOrWhiteSpace(item.EvidencePreview));
+        Assert.Contains(specimen.Evidence, item => item.FeatureFamily == ReferenceCorpusFeatureFamilies.Rhetoric);
+        Assert.All(specimen.WhyItWorks.ContributingFactors, factor => Assert.NotEmpty(factor.Evidence));
+        AssertTechniqueSpecimenPayloadDoesNotLeakSourceFields(specimen);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -174,9 +446,101 @@ public sealed class ReferenceCorpusAnalysisServiceTests : IDisposable
                    1, 0, 10, 10, 'hash-node-a', '雨声贴着门缝往里挤。', '2026-07-09T00:00:00Z'),
                   ('node-b', 101, NULL, 'sentence', 2, 1,
                    1, 11, 25, 14, 'hash-node-b', '她没有开口，只扣紧钥匙。', '2026-07-09T00:00:00Z');
+            """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await SeedTechniqueObservationFixtureAsync(connection);
+    }
+
+    private static async ValueTask SeedTechniqueObservationFixtureAsync(SqliteConnection connection)
+    {
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT OR IGNORE INTO reference_analysis_runs
+                  (run_id, anchor_id, analyzer_version, schema_version, model_provider, model_id,
+                   scope, status, token_budget, tokens_spent, resume_cursor, started_at, completed_at, observation_count)
+                VALUES
+                  ('feature-run-technique-service', 101, 'feature-v1', 'reference-corpus-feature-family-v1', 'fake', 'fake-model',
+                   'sentence', 'completed', NULL, 22, 'node-b|emotion', '2026-07-09T00:00:00Z', '2026-07-09T00:00:01Z', 2);
                 """;
             await command.ExecuteNonQueryAsync();
         }
+
+        var createdAt = DateTimeOffset.Parse("2026-07-09T00:00:00Z");
+        await ReferenceCorpusObservationWriter.UpsertAsync(
+            connection,
+            new ReferenceCorpusFeatureObservation(
+                NodeId: "node-b",
+                NodeType: ReferenceCorpusNodeTypes.Sentence,
+                RunId: "feature-run-technique-service",
+                AnchorId: 101,
+                FeatureFamily: ReferenceCorpusFeatureFamilies.Emotion,
+                FeatureKey: "emotion_state",
+                ValueKind: "enum",
+                ValueText: "restrained",
+                ValueNum: 7,
+                ValueBool: null,
+                ValueJson: """{"surface":"calm","subtext":"restrained"}""",
+                Intensity: 7,
+                Confidence: 0.86,
+                EvidenceStart: 0,
+                EvidenceEnd: 12,
+                Explanation: "动作和沉默共同显示压抑情绪。",
+                ReviewState: "unverified",
+                ValidityState: "active",
+                SupersededByRunId: null,
+                CreatedAt: createdAt),
+            CancellationToken.None);
+        await ReferenceCorpusObservationWriter.UpsertAsync(
+            connection,
+            new ReferenceCorpusFeatureObservation(
+                NodeId: "node-b",
+                NodeType: ReferenceCorpusNodeTypes.Sentence,
+                RunId: "feature-run-technique-service",
+                AnchorId: 101,
+                FeatureFamily: ReferenceCorpusFeatureFamilies.Emotion,
+                FeatureKey: "emotion_direction",
+                ValueKind: "enum",
+                ValueText: "inward",
+                ValueNum: 6,
+                ValueBool: null,
+                ValueJson: """{"direction":"inward"}""",
+                Intensity: 6,
+                Confidence: 0.84,
+                EvidenceStart: 0,
+                EvidenceEnd: 12,
+                Explanation: "反应向内收束。",
+                ReviewState: "unverified",
+                ValidityState: "active",
+                SupersededByRunId: null,
+                CreatedAt: createdAt.AddSeconds(1)),
+            CancellationToken.None);
+        await ReferenceCorpusObservationWriter.UpsertAsync(
+            connection,
+            new ReferenceCorpusFeatureObservation(
+                NodeId: "node-b",
+                NodeType: ReferenceCorpusNodeTypes.Sentence,
+                RunId: "feature-run-technique-service",
+                AnchorId: 101,
+                FeatureFamily: ReferenceCorpusFeatureFamilies.Rhetoric,
+                FeatureKey: "devices",
+                ValueKind: "array",
+                ValueText: "ellipsis",
+                ValueNum: null,
+                ValueBool: null,
+                ValueJson: """[{"type":"ellipsis","narrative_function":"withhold_direct_emotion"}]""",
+                Intensity: null,
+                Confidence: 0.82,
+                EvidenceStart: 0,
+                EvidenceEnd: 12,
+                Explanation: "省略直接情绪词，保留读者补全空间。",
+                ReviewState: "unverified",
+                ValidityState: "active",
+                SupersededByRunId: null,
+                CreatedAt: createdAt),
+            CancellationToken.None);
     }
 
     private static string ReferenceDatabasePath(AppInitializationOptions options)
@@ -217,6 +581,155 @@ public sealed class ReferenceCorpusAnalysisServiceTests : IDisposable
             throw new InvalidOperationException(
                 @"Analyzer failed in fixture; node_text: hidden source_text: secret raw_text: secret prompt: hidden model_output_json: secret embedding: [1] D:\private\reference.md");
         }
+    }
+
+    private sealed class ConfidenceSplitFeatureFamilyAnalyzer(int tokensPerCall) : IReferenceCorpusFeatureFamilyAnalyzer
+    {
+        public ValueTask<ReferenceCorpusFeatureFamilyAnalysisOutput> AnalyzeAsync(
+            ReferenceCorpusFeatureFamilyAnalysisInput input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (input.Family != ReferenceCorpusFeatureFamilies.Syntax)
+            {
+                return ValueTask.FromResult(new ReferenceCorpusFeatureFamilyAnalysisOutput(
+                    $$"""{"schema_version":"reference-corpus-feature-family-v1","family":"{{input.Family}}","node_type":"{{input.NodeType}}","observations":[]}""",
+                    tokensPerCall));
+            }
+
+            var confidence = input.NodeId == "node-a" ? 0.42 : 0.82;
+            return ValueTask.FromResult(new ReferenceCorpusFeatureFamilyAnalysisOutput(
+                $$"""
+                {
+                  "schema_version": "reference-corpus-feature-family-v1",
+                  "family": "syntax",
+                  "node_type": "sentence",
+                  "observations": [
+                    {
+                      "feature_key": "sentence_pattern",
+                      "label": "subject_predicate",
+                      "complexity": "simple",
+                      "confidence": {{confidence.ToString(System.Globalization.CultureInfo.InvariantCulture)}},
+                      "evidence_start": 0,
+                      "evidence_end": 4,
+                      "explanation": "fixture confidence split for review routing."
+                    }
+                  ]
+                }
+                """,
+                tokensPerCall));
+        }
+    }
+
+    private sealed class RecordingTechniqueSpecimenAnalyzer(int tokensPerCall) : IReferenceCorpusTechniqueSpecimenAnalyzer
+    {
+        public List<ReferenceCorpusTechniqueSpecimenAnalysisInput> Calls { get; } = [];
+
+        public ValueTask<ReferenceCorpusTechniqueSpecimenAnalysisOutput> AnalyzeAsync(
+            ReferenceCorpusTechniqueSpecimenAnalysisInput input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls.Add(input);
+            var emotionId = input.Observations
+                .First(item => item.FeatureFamily == ReferenceCorpusFeatureFamilies.Emotion)
+                .ObservationId;
+            var rhetoricId = input.Observations
+                .First(item => item.FeatureFamily == ReferenceCorpusFeatureFamilies.Rhetoric)
+                .ObservationId;
+            return ValueTask.FromResult(new ReferenceCorpusTechniqueSpecimenAnalysisOutput(
+                ValidTechniqueSpecimenJson(input.NodeId, [emotionId, rhetoricId]),
+                tokensPerCall));
+        }
+    }
+
+    private sealed class ThrowingTechniqueSpecimenAnalyzer : IReferenceCorpusTechniqueSpecimenAnalyzer
+    {
+        public ValueTask<ReferenceCorpusTechniqueSpecimenAnalysisOutput> AnalyzeAsync(
+            ReferenceCorpusTechniqueSpecimenAnalysisInput input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException(
+                @"Technique failed in fixture; node_text: hidden source_text: secret raw_source: secret raw_text: secret prompt: hidden model_output_json: secret value_json: secret embedding: [1] D:\private\reference.md");
+        }
+    }
+
+    private static string ValidTechniqueSpecimenJson(string sourceNodeId, IReadOnlyList<string> observationIds)
+    {
+        return $$"""
+        {
+          "schema_version": "reference-corpus-technique-specimen-v1",
+          "source_node_id": "{{sourceNodeId}}",
+          "technique_family": "action_as_emotion",
+          "technique_abstract": "用细节动作承载压抑情绪，以沉默留白放大张力",
+          "trigger_context": "角色有强烈情绪但不能直接说破的短句节点",
+          "transfer_template": "[角色] [外化细节动作]，随后留出沉默。",
+          "transfer_slots": [
+            { "slot_name": "role", "purpose": "当前承压角色", "constraints": "必须处在情绪压抑状态" }
+          ],
+          "effect_on_reader": "让读者从动作和空白中自行补全情绪，压迫感更稳",
+          "applicability_conditions": ["角色需要压住反应"],
+          "failure_modes": ["动作与情境没有因果时会显得装饰化"],
+          "anti_patterns": ["直接解释角色情绪"],
+          "world_context_dependencies": [],
+          "why_it_works": [
+            {
+              "factor": "外化动作提供可见证据",
+              "observation_ids": ["{{observationIds[0]}}"],
+              "explanation": "情绪 observation 证明该节点的压力来自外化细节，而不是直白说明。"
+            },
+            {
+              "factor": "留白让读者补全未说出口的反应",
+              "observation_ids": ["{{observationIds[1]}}"],
+              "explanation": "修辞 observation 证明省略和沉默承担了叙事作用。"
+            }
+          ],
+          "confidence": 0.86,
+          "mastery_notes": "适合短句，不适合需要大量信息交代的段落。"
+        }
+        """;
+    }
+
+    private static void AssertRunDiagnosticsDoNotLeakSensitiveFields(IReadOnlyList<string> diagnostics)
+    {
+        var diagnosticsJson = string.Join('\n', diagnostics);
+        Assert.DoesNotContain("node_text", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("source_text", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("raw_source", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("raw_text", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("prompt", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("model_output_json", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("value_json", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("embedding", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("D:\\private", diagnosticsJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AssertFeatureObservationPayloadDoesNotLeakSourceFields(ReferenceCorpusFeatureObservationPayload payload)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        AssertAnalysisPayloadDoesNotLeakSourceFields(json);
+    }
+
+    private static void AssertTechniqueSpecimenPayloadDoesNotLeakSourceFields(ReferenceCorpusTechniqueSpecimenPayload payload)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        AssertAnalysisPayloadDoesNotLeakSourceFields(json);
+    }
+
+    private static void AssertAnalysisPayloadDoesNotLeakSourceFields(string json)
+    {
+        Assert.DoesNotContain("node_text", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("source_text", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("raw_source", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("raw_text", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("prompt", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("model_output_json", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("value_json", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("why_it_works_json", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("embedding", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("source_path", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("rain-doorway.md", json, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class FixedAppSettingsService(string selectedModelKey, string reasoningEffort) : IAppSettingsService

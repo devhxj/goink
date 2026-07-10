@@ -95,13 +95,23 @@ import { usabilityObservation, writeUsabilityReport } from './usability-report.m
 
 const FULL_MATERIAL_LEAK_SENTINEL = '__FULL_MATERIAL_SHOULD_NOT_RENDER__'
 const MOCK_CORPUS_INSERTION_TEXT = '林岚把杯底半圈水痕压进记忆里，没有急着回头。'
+const MOCK_CORPUS_TRANSITION_TEXT = '门外的雨声把沉默往前推了一寸。'
 const MOCK_REFERENCE_CANDIDATE_TEXT = '林岚没有立刻抬头。杯底那半圈水痕贴着木纹，像刚被雨夜重新描过一遍；她只把指尖收紧，确认门外的人还不知道这条线索。'
 const CORPUS_LIBRARY_FORBIDDEN_CHAPTER_METHODS = [
   'GenerateReferenceChapterBlueprint',
+  'ReviewReferenceChapterBlueprint',
+  'ApproveReferenceChapterBlueprint',
+  'GetReferenceChapterBlueprint',
+  'GetReferenceChapterBlueprints',
   'StartReferenceOrchestrationRun',
+  'GetReferenceOrchestrationRuns',
+  'GetReferenceOrchestrationRunEvents',
+  'AdaptReferenceMaterial',
   'BindReferenceBlueprintMaterials',
   'GenerateReferenceAnchoredDraft',
   'GetReferenceDraftCandidates',
+  'AuditReferenceAnchoredDraft',
+  'GetReferenceAnchoredDraftAudits',
   'SaveContent',
 ]
 
@@ -351,12 +361,34 @@ async function assertCorpusLibraryNoChapterWritingBridgeCalls(page, context) {
   }
 }
 
+async function verifyCorpusLibraryAnalysisResultsTab(page, corpusTabs) {
+  await corpusTabs.getByRole('tab', { name: '分析结果' }).click()
+  const analysisTab = page.getByTestId('reference-corpus-analysis-library-tab')
+  await expectVisible(analysisTab, 'corpus library analysis results tab')
+  assert.equal(await corpusTabs.getByRole('tab', { name: '分析结果' }).getAttribute('aria-selected'), 'true', 'corpus library analysis results tab should be selected')
+
+  const observationCard = analysisTab
+    .locator('[data-testid="reference-corpus-feature-observation-card"], [data-testid="reference-corpus-analysis-observation-card"], [data-testid*="observation"][data-testid*="card"], article')
+    .filter({ hasText: /emotion_state|restrained|动作压住外显情绪/ })
+    .first()
+  await expectVisible(observationCard, 'corpus library analysis observation card')
+
+  const specimenCard = analysisTab
+    .locator('[data-testid="reference-corpus-technique-specimen-card"], [data-testid="reference-corpus-analysis-specimen-card"], [data-testid*="specimen"][data-testid*="card"], article')
+    .filter({ hasText: /action_as_emotion|细节动作承载压抑情绪|迁移时可以保留技法/ })
+    .first()
+  await expectVisible(specimenCard, 'corpus library analysis specimen card')
+
+  await assertCorpusLibraryLegacyWritingEntrypointsHidden(page, 'corpus library analysis results tab')
+  await assertCorpusLibraryNoChapterWritingBridgeCalls(page, 'corpus library analysis results tab')
+}
+
 async function verifyCorpusLibraryWorkflow(page) {
   await clickActivity(page, '素材库')
   await expectVisible(page.getByRole('heading', { name: '语料库管理' }), 'corpus library heading')
   const corpusTabs = page.getByTestId('corpus-library-tabs')
   await expectVisible(corpusTabs, 'corpus library task tabs')
-  for (const tabName of ['处理后语料', '素材来源', '标签校正', '风格画像', '处理记录', '高级']) {
+  for (const tabName of ['处理后语料', '分析结果', '素材来源', '标签校正', '风格画像', '处理记录', '高级']) {
     await expectVisible(corpusTabs.getByRole('tab', { name: tabName }), `corpus library ${tabName} tab`)
   }
   await expectVisible(page.getByTestId('reference-import-panel'), 'corpus library default source import panel')
@@ -364,6 +396,8 @@ async function verifyCorpusLibraryWorkflow(page) {
   await assertCorpusLibraryLegacyWritingEntrypointsHidden(page, 'corpus library default source tab')
   await assertCorpusLibraryNoChapterWritingBridgeCalls(page, 'corpus library default source tab')
   await verifyCorpusLibraryPartialImportFailure(page)
+
+  await verifyCorpusLibraryAnalysisResultsTab(page, corpusTabs)
 
   await corpusTabs.getByRole('tab', { name: '高级' }).click()
   await expectVisible(page.getByTestId('reference-corpus-advanced-tab'), 'corpus library advanced tab')
@@ -1315,33 +1349,170 @@ async function verifyChapterReferenceWorkflow(page) {
   await expectHidden(drawer.getByRole('button', { name: '启动参考流程' }), 'advanced strict flow start before expand')
   assert.equal(await bridgeCallCount(page, 'SearchReferenceMaterials'), chapterSearchCountBefore, 'chapter reference default path must not run material recommendation before advanced expansion')
 
-  const corpusDraftCountBefore = await bridgeCallCount(page, 'GenerateReferenceCorpusInsertionDraft')
+  const blueprintGenerateCountBefore = await bridgeCallCount(page, 'GenerateReferenceCorpusBlueprintCandidates')
+  await drawer.getByTestId('chapter-corpus-blueprint-generate-button').click()
+  const firstBlueprintCandidateCall = await waitForLatestBridgeCallWithResult(page, 'GenerateReferenceCorpusBlueprintCandidates', blueprintGenerateCountBefore)
+  const firstBlueprintCandidates = firstBlueprintCandidateCall.result
+  assert(firstBlueprintCandidates?.candidates?.length >= 2, 'chapter corpus blueprint candidate mock must return at least two candidates')
+  const blueprintCandidates = drawer.getByTestId('chapter-corpus-blueprint-candidates')
+  await expectVisible(blueprintCandidates, 'chapter corpus blueprint candidates')
+  await expectVisible(blueprintCandidates.locator('[data-testid="chapter-corpus-blueprint-candidate-select"]').first(), 'chapter corpus blueprint candidate select')
+  await blueprintCandidates.locator('[data-testid="chapter-corpus-blueprint-candidate-select"]').first().click()
+
+  const secondBlueprintGenerateCountBefore = await bridgeCallCount(page, 'GenerateReferenceCorpusBlueprintCandidates')
+  await drawer.getByTestId('chapter-corpus-blueprint-feedback-button').click()
+  const secondBlueprintCandidateCall = await waitForLatestBridgeCallWithResult(page, 'GenerateReferenceCorpusBlueprintCandidates', secondBlueprintGenerateCountBefore)
+  const secondBlueprintCandidates = secondBlueprintCandidateCall.result
+  assert(
+    (secondBlueprintCandidateCall.args?.[0]?.feedback?.problem_tags ?? []).includes('source_repetition'),
+    'chapter corpus blueprint candidate feedback button must send source_repetition problem tag',
+  )
+  assert.equal(secondBlueprintCandidates?.feedback_applied, true, 'chapter corpus blueprint candidate mock must apply feedback on the second round')
+  assert.match(
+    String(secondBlueprintCandidates?.feedback_summary ?? ''),
+    /rejected_blueprints:1/,
+    'chapter corpus blueprint candidate mock must summarize applied feedback',
+  )
+  assert.match(
+    String(secondBlueprintCandidates?.feedback_summary ?? ''),
+    /fallback:feedback_filters_no_matches,fallback_to_base_filters/,
+    'chapter corpus blueprint candidate mock must expose fallback diagnostics after feedback',
+  )
+  assert(
+    (secondBlueprintCandidates?.candidates?.[0]?.gap_reasons ?? []).includes('feedback_filters_no_matches') &&
+      (secondBlueprintCandidates?.candidates?.[0]?.gap_reasons ?? []).includes('fallback_to_base_filters'),
+    'chapter corpus blueprint candidate mock must include fallback diagnostic gap reasons',
+  )
+  assert(
+    (secondBlueprintCandidates?.candidates?.[0]?.gap_positions ?? []).some((position) =>
+      (position?.gap_reasons ?? []).includes('missing_rhythm_evidence') &&
+      (position?.missing_dimensions ?? []).includes('rhythm')),
+    'chapter corpus blueprint candidate mock must include beat-level gap positions',
+  )
+  const firstRegeneratedSources = secondBlueprintCandidates?.candidates?.[0]?.source_distribution ?? []
+  assert(
+    new Set(firstRegeneratedSources.map((source) => source.library_id)).size >= 2 ||
+      new Set(firstRegeneratedSources.map((source) => source.anchor_id)).size >= 2,
+    'chapter corpus blueprint candidate mock must prioritize a cross-library or cross-anchor first candidate after source_repetition feedback',
+  )
+  assert(
+    JSON.stringify(firstBlueprintCandidates.candidates.map((candidate) => candidate.blueprint.strategy)) !==
+      JSON.stringify(secondBlueprintCandidates.candidates.map((candidate) => candidate.blueprint.strategy)) ||
+      JSON.stringify(firstBlueprintCandidates.candidates.map((candidate) => candidate.source_distribution)) !==
+        JSON.stringify(secondBlueprintCandidates.candidates.map((candidate) => candidate.source_distribution)),
+    'chapter corpus blueprint candidate mock must visibly change strategy or source distribution after feedback',
+  )
+  await expectVisible(drawer.getByTestId('chapter-corpus-blueprint-feedback-summary'), 'chapter corpus blueprint feedback summary')
+  await expectVisible(drawer.getByTestId('chapter-corpus-blueprint-feedback-reason').first(), 'chapter corpus blueprint feedback fallback reason')
+  await expectVisible(drawer.getByTestId('chapter-corpus-blueprint-gap-reasons').first(), 'chapter corpus blueprint fallback gap reasons')
+  await expectVisible(drawer.getByTestId('chapter-corpus-blueprint-gap-positions').first(), 'chapter corpus blueprint beat-level gap positions')
+  await expectVisible(
+    drawer.getByText('严格反馈约束没有命中可用语料').first(),
+    'chapter corpus blueprint readable fallback diagnostic',
+  )
+  await expectVisible(blueprintCandidates.locator('[data-testid="chapter-corpus-blueprint-candidate-select"]').first(), 'chapter corpus regenerated blueprint candidate select')
+  await blueprintCandidates.locator('[data-testid="chapter-corpus-blueprint-candidate-select"]').first().click()
+
+  const corpusDraftCountBefore = await bridgeCallCount(page, 'GenerateReferenceCorpusInsertionDraftCandidates')
   const saveCountBeforeCorpusDraft = await bridgeCallCount(page, 'SaveContent')
-  await drawer.getByRole('button', { name: '生成插入草稿' }).click()
-  const corpusDraftCall = await waitForLatestBridgeCallWithResult(page, 'GenerateReferenceCorpusInsertionDraft', corpusDraftCountBefore)
+  await drawer.getByTestId('chapter-corpus-draft-generate-button').click()
+  const corpusDraftCall = await waitForLatestBridgeCallWithResult(page, 'GenerateReferenceCorpusInsertionDraftCandidates', corpusDraftCountBefore)
   const corpusDraftInput = corpusDraftCall.args?.[0] ?? null
-  assert(corpusDraftInput, 'chapter corpus insertion must call GenerateReferenceCorpusInsertionDraft with input')
+  assert(corpusDraftInput, 'chapter corpus insertion must call GenerateReferenceCorpusInsertionDraftCandidates with input')
+  assert(corpusDraftInput.selected_blueprint?.blueprint_id, 'chapter corpus insertion must include selected_blueprint.blueprint_id')
+  assert(
+    secondBlueprintCandidates.candidates.some((candidate) =>
+      candidate.blueprint?.blueprint_id === corpusDraftInput.selected_blueprint.blueprint_id),
+    `chapter corpus insertion selected_blueprint must come from second-round candidates; got ${JSON.stringify(corpusDraftInput.selected_blueprint?.blueprint_id)}`,
+  )
   assert.equal(corpusDraftInput.chapter_context?.chapter_number, 1, 'chapter corpus insertion must derive active chapter number')
   assert.equal(corpusDraftInput.chapter_context?.current_draft_text, '林岚在雨夜旧宅门前停住。\n\n她看见桌上的水痕。', 'chapter corpus insertion must send current editor draft text')
   assert.equal(typeof corpusDraftInput.chapter_context?.insertion_offset, 'number', 'chapter corpus insertion must send editor insertion offset')
-  assert.deepEqual(corpusDraftInput.scope?.library_ids, ['project:42:default', 'global:workspace'], 'chapter corpus insertion must use project and workspace corpus libraries by default')
+  assert.deepEqual(corpusDraftInput.scope?.library_ids, [], 'chapter corpus insertion must leave default library resolution to the backend session scope')
+  assert.equal(corpusDraftInput.scope?.session_id, 'project:42:default', 'chapter corpus insertion must send the current chapter default corpus session')
   assert.deepEqual(corpusDraftInput.scope?.reuse_policies, ['verbatim_ok', 'adapted_only'], 'chapter corpus insertion must use insertion-safe reuse policies')
-  await expectVisible(drawer.getByText(MOCK_CORPUS_INSERTION_TEXT), 'chapter corpus insertion preview text')
+  assert.equal(corpusDraftInput.requested_count, 3, 'chapter corpus insertion must request multiple draft candidates')
+  assert(corpusDraftCall.result?.candidates?.length >= 2, 'chapter corpus insertion candidate mock must return at least two candidates')
+  await expectVisible(drawer.getByTestId('chapter-corpus-draft-candidates'), 'chapter corpus insertion draft candidates')
+  const corpusDraftCandidateCards = drawer.locator('[data-testid="chapter-corpus-draft-candidate-card"]')
+  assert((await corpusDraftCandidateCards.count()) >= 2, 'chapter corpus insertion UI must render at least two draft candidate cards')
+  await expectVisible(corpusDraftCandidateCards.getByText('转场重组').first(), 'chapter corpus transition repair draft candidate label')
   await expectVisible(drawer.getByTestId('chapter-corpus-draft-diff'), 'chapter corpus insertion diff preview')
+  await expectVisible(drawer.getByTestId('chapter-corpus-draft-diff').getByText(MOCK_CORPUS_INSERTION_TEXT), 'chapter corpus insertion preview text')
   await expectVisible(drawer.getByTestId('chapter-corpus-diff-preserved').first(), 'chapter corpus insertion preserved text')
   await expectVisible(drawer.getByTestId('chapter-corpus-diff-slot-replacement'), 'chapter corpus insertion slot replacement highlight')
   await assertEditorNotContains(page, MOCK_CORPUS_INSERTION_TEXT)
   assert.equal(await bridgeCallCount(page, 'SaveContent'), saveCountBeforeCorpusDraft, 'generating corpus insertion draft must not save chapter content')
-  await drawer.getByRole('button', { name: '应用到编辑器' }).click()
+  const blockedCorpusDraftIndex = corpusDraftCall.result.candidates.findIndex((candidate) =>
+    candidate.draft?.gate?.passed === true && candidate.draft?.audit?.passed === false)
+  assert(blockedCorpusDraftIndex >= 0, 'chapter corpus insertion mock must include an audit-blocked draft candidate')
+  assert.equal(corpusDraftCall.result.candidates[blockedCorpusDraftIndex].draft.ready_for_insertion, false, 'audit-blocked corpus draft must not be ready for insertion')
+  await expectVisible(corpusDraftCandidateCards.nth(blockedCorpusDraftIndex).getByText('审计阻断'), 'chapter corpus blocked draft card status')
+  await expectVisible(drawer.getByText('审计阻断').first(), 'chapter corpus blocked draft preview status')
+  await expectVisible(drawer.getByText('preserved_text_hash_mismatch').first(), 'chapter corpus blocked draft audit error')
+  const applyCorpusButton = drawer.getByRole('button', { name: '应用到编辑器' })
+  assert.equal(await applyCorpusButton.isDisabled(), true, 'audit-blocked corpus draft apply button must be disabled')
+  await assertEditorNotContains(page, MOCK_CORPUS_INSERTION_TEXT)
+
+  const transitionBlockedCorpusDraftIndex = corpusDraftCall.result.candidates.findIndex((candidate) =>
+    candidate.draft?.audit?.transitions?.some((transition) => transition.passed === false))
+  assert(transitionBlockedCorpusDraftIndex >= 0, 'chapter corpus insertion mock must include a transition-audit-blocked draft candidate')
+  await drawer.locator('[data-testid="chapter-corpus-draft-candidate-select"]').nth(transitionBlockedCorpusDraftIndex).click()
+  await expectVisible(drawer.getByText('过渡审计阻断').first(), 'chapter corpus transition blocked draft status')
+  await expectVisible(drawer.getByText('transition_piece_replacement_required').first(), 'chapter corpus transition replacement blocked draft audit error')
+  const transitionBlockedCorpusDraftCandidate = corpusDraftCall.result.candidates[transitionBlockedCorpusDraftIndex]
+  const transitionNextAction = transitionBlockedCorpusDraftCandidate.next_action
+  assert(transitionNextAction, 'chapter corpus transition blocked draft candidate must include next_action')
+  assert.equal(transitionNextAction.action, 'regenerate_blueprint', 'chapter corpus transition blocked draft next_action must regenerate blueprint candidates')
+  assert(
+    (transitionNextAction.feedback?.problem_tags ?? []).includes('transition_replacement_required'),
+    'chapter corpus transition blocked draft next_action feedback must carry transition_replacement_required',
+  )
+  const transitionNextActionButton = corpusDraftCandidateCards.nth(transitionBlockedCorpusDraftIndex).getByTestId('chapter-corpus-draft-next-action-button')
+  await expectVisible(transitionNextActionButton, 'chapter corpus transition blocked draft next action button')
+  assert.equal(await applyCorpusButton.isDisabled(), true, 'transition-audit-blocked corpus draft apply button must be disabled')
+  await assertEditorNotContains(page, MOCK_CORPUS_TRANSITION_TEXT)
+
+  const selectedCorpusDraftIndex = corpusDraftCall.result.candidates.findIndex((candidate) =>
+    candidate.draft?.ready_for_insertion === true &&
+    candidate.draft?.gate?.passed === true &&
+    candidate.draft?.audit?.passed === true &&
+    candidate.draft?.transitions?.some((transition) => transition.text === MOCK_CORPUS_TRANSITION_TEXT))
+  assert(selectedCorpusDraftIndex >= 0, 'chapter corpus insertion mock must include a ready draft candidate')
+  const selectedCorpusDraft = corpusDraftCall.result.candidates[selectedCorpusDraftIndex].draft
+  await drawer.locator('[data-testid="chapter-corpus-draft-candidate-select"]').nth(selectedCorpusDraftIndex).click()
+  await expectVisible(drawer.getByTestId('chapter-corpus-draft-diff').getByText(selectedCorpusDraft.pieces[0].output_text), 'chapter corpus selected insertion preview first source text')
+  await expectVisible(drawer.getByTestId('chapter-corpus-draft-diff').getByText(selectedCorpusDraft.pieces[1].output_text), 'chapter corpus selected insertion preview second source text')
+  await expectVisible(drawer.getByTestId('chapter-corpus-draft-transition').getByText(MOCK_CORPUS_TRANSITION_TEXT), 'chapter corpus selected transition preview text')
+  assert.equal(await applyCorpusButton.isDisabled(), false, 'ready corpus draft apply button must be enabled')
+  await applyCorpusButton.click()
   await page.waitForFunction(
     (expectedText) => window.__novelistEditor?.getValue?.() === expectedText,
-    corpusDraftCall.result.chapter_text_after_insertion,
+    selectedCorpusDraft.chapter_text_after_insertion,
     { timeout: 12_000 },
   )
   await page.waitForTimeout(700)
   assert.equal(await bridgeCallCount(page, 'SaveContent'), saveCountBeforeCorpusDraft, 'applying corpus insertion draft must update editor buffer without direct SaveContent')
+  await assertEditorContains(page, MOCK_CORPUS_TRANSITION_TEXT)
   await page.keyboard.press(shortcutKey('z'))
   await assertEditorNotContains(page, MOCK_CORPUS_INSERTION_TEXT)
+  await assertEditorNotContains(page, MOCK_CORPUS_TRANSITION_TEXT)
+
+  const draftNextActionBlueprintCountBefore = await bridgeCallCount(page, 'GenerateReferenceCorpusBlueprintCandidates')
+  await transitionNextActionButton.click()
+  const draftNextActionBlueprintCall = await waitForLatestBridgeCallWithResult(page, 'GenerateReferenceCorpusBlueprintCandidates', draftNextActionBlueprintCountBefore)
+  assert.deepEqual(
+    draftNextActionBlueprintCall.args?.[0]?.feedback,
+    transitionNextAction.feedback,
+    'chapter corpus transition blocked draft next_action button must pass feedback through to blueprint regeneration',
+  )
+  assert(
+    (draftNextActionBlueprintCall.args?.[0]?.feedback?.rejected_node_ids ?? []).includes(transitionNextAction.rejected_node_id),
+    'chapter corpus transition blocked draft next_action feedback must reject the blocked node',
+  )
+  assert.equal(draftNextActionBlueprintCall.result?.feedback_applied, true, 'chapter corpus transition blocked draft next_action must return feedback-applied blueprint candidates')
+  await expectVisible(drawer.getByText('已按正文候选诊断重组蓝图').first(), 'chapter corpus draft next action blueprint regeneration message')
+  await expectVisible(drawer.getByTestId('chapter-corpus-blueprint-feedback-summary'), 'chapter corpus draft next action blueprint feedback summary')
 
   await drawer.getByText('高级参考流程').click()
   await expectVisible(drawer.getByRole('heading', { name: '推荐素材' }), 'chapter reference recommendations heading')

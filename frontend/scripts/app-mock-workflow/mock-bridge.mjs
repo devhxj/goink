@@ -745,6 +745,8 @@ export function installConfigurableAppMockBridge(options = {}) {
     nextReferenceBlueprintId: 701,
     referenceCorpusFeatureAnalysisRuns: [],
     nextReferenceCorpusFeatureAnalysisRunId: 1,
+    referenceCorpusTechniqueSpecimenAnalysisRuns: [],
+    nextReferenceCorpusTechniqueSpecimenAnalysisRunId: 1,
     referenceOrchestrationRuns: [],
     nextReferenceOrchestrationRunId: 1,
     contentByPath: options.contentByPath ?? defaultContentByPath,
@@ -1211,7 +1213,13 @@ export function installConfigurableAppMockBridge(options = {}) {
       case 'GetReferenceSourceProcessingDetail': return getReferenceSourceProcessingDetail(args[0])
       case 'StartReferenceCorpusFeatureAnalysis': return startReferenceCorpusFeatureAnalysis(args[0])
       case 'GetReferenceCorpusFeatureAnalysisRun': return getReferenceCorpusFeatureAnalysisRun(args[0])
+      case 'StartReferenceCorpusTechniqueSpecimenAnalysis': return startReferenceCorpusTechniqueSpecimenAnalysis(args[0])
+      case 'GetReferenceCorpusTechniqueSpecimenAnalysisRun': return getReferenceCorpusTechniqueSpecimenAnalysisRun(args[0])
+      case 'ListReferenceCorpusFeatureObservations': return listReferenceCorpusFeatureObservations(args[0])
+      case 'ListReferenceCorpusTechniqueSpecimens': return listReferenceCorpusTechniqueSpecimens(args[0])
+      case 'GenerateReferenceCorpusBlueprintCandidates': return generateReferenceCorpusBlueprintCandidates(args[0])
       case 'GenerateReferenceCorpusInsertionDraft': return generateReferenceCorpusInsertionDraft(args[0])
+      case 'GenerateReferenceCorpusInsertionDraftCandidates': return generateReferenceCorpusInsertionDraftCandidates(args[0])
       case 'UpdateReferenceMaterialTags': return updateReferenceMaterialTags(args[0])
       case 'UpdateReferenceMaterialsTags': return updateReferenceMaterialsTags(args[0])
       case 'AdaptReferenceMaterial': return adaptReferenceMaterial(args[0])
@@ -5895,10 +5903,290 @@ export function installConfigurableAppMockBridge(options = {}) {
       run.run_id === runId && Number(run.novel_id) === novelId) ?? null
   }
 
+  function startReferenceCorpusTechniqueSpecimenAnalysis(input = {}) {
+    const sourceNodeType = normalizeReferenceCorpusTechniqueSpecimenSourceNodeType(input?.source_node_type)
+    const novelId = normalizeReferenceCorpusFeatureAnalysisId(input?.novel_id ?? state.activeNovelId, 'novel_id', true)
+    const anchorId = normalizeReferenceCorpusFeatureAnalysisId(input?.anchor_id ?? 101, 'anchor_id', false)
+    const requestedRunId = normalizeReferenceCorpusFeatureAnalysisRunId(input?.run_id)
+    const minObservationConfidence = normalizeReferenceCorpusTechniqueSpecimenConfidence(input?.min_observation_confidence)
+
+    if (requestedRunId) {
+      const existing = getReferenceCorpusTechniqueSpecimenAnalysisRun({ novel_id: novelId, run_id: requestedRunId })
+      if (existing) return existing
+    }
+
+    const runId = requestedRunId ??
+      `corpus-technique:${anchorId}:${sourceNodeType}:mock-${String(state.nextReferenceCorpusTechniqueSpecimenAnalysisRunId++).padStart(3, '0')}`
+    const run = {
+      run_id: runId,
+      novel_id: novelId,
+      anchor_id: anchorId,
+      scope: 'technique_specimen',
+      status: 'completed',
+      tokens_spent: 48,
+      specimen_count: sourceNodeType === 'passage' ? 2 : 1,
+      processed_nodes: sourceNodeType === 'passage' ? 2 : 1,
+      analyzer_version: 'reference-corpus-technique-specimen-llm-v1',
+      schema_version: 'reference-corpus-technique-specimen-v1',
+      model_provider: 'mock',
+      model_id: 'gpt',
+      started_at: now,
+      completed_at: now,
+      diagnostics: [`mock technique specimen analysis completed at min confidence ${minObservationConfidence}`],
+    }
+
+    state.referenceCorpusTechniqueSpecimenAnalysisRuns = [
+      run,
+      ...state.referenceCorpusTechniqueSpecimenAnalysisRuns.filter((item) => item.run_id !== run.run_id),
+    ]
+    return run
+  }
+
+  function getReferenceCorpusTechniqueSpecimenAnalysisRun(input = {}) {
+    const runId = String(input?.run_id ?? '').trim()
+    if (!runId) return null
+    const novelId = normalizeReferenceCorpusFeatureAnalysisId(input?.novel_id ?? state.activeNovelId, 'novel_id', true)
+    return state.referenceCorpusTechniqueSpecimenAnalysisRuns.find((run) =>
+      run.run_id === runId && Number(run.novel_id) === novelId) ?? null
+  }
+
+  function listReferenceCorpusFeatureObservations(input = {}) {
+    const novelId = normalizeReferenceCorpusFeatureAnalysisId(input?.novel_id ?? state.activeNovelId, 'novel_id', true)
+    const anchorId = normalizeReferenceCorpusFeatureAnalysisId(input?.anchor_id ?? 101, 'anchor_id', false)
+    const nodeId = String(input?.node_id ?? 'mock-node-rain-001').trim()
+    const page = normalizeReferenceCorpusAnalysisPage(input?.page_request, ['created_at', 'feature_family', 'confidence', 'observation_id'], 'feature_family')
+    const filters = page.filters ?? {}
+    const observations = mockReferenceCorpusFeatureObservations(novelId, anchorId, nodeId)
+      .filter((item) => !filters.feature_family || item.feature_family === filters.feature_family)
+      .filter((item) => !filters.feature_key || item.feature_key === filters.feature_key)
+      .filter((item) => !filters.node_type || item.node_type === filters.node_type)
+      .filter((item) => !filters.run_id || item.run_id === filters.run_id)
+      .filter((item) => (filters.validity_state ?? 'active') === item.validity_state)
+      .filter((item) => !filters.min_confidence || item.confidence >= Number(filters.min_confidence))
+    return pageReferenceCorpusAnalysisItems(sortReferenceCorpusAnalysisItems(observations, page.sort_by, page.sort_dir), page)
+  }
+
+  function listReferenceCorpusTechniqueSpecimens(input = {}) {
+    const novelId = normalizeReferenceCorpusFeatureAnalysisId(input?.novel_id ?? state.activeNovelId, 'novel_id', true)
+    const anchorId = normalizeReferenceCorpusFeatureAnalysisId(input?.anchor_id ?? 101, 'anchor_id', false)
+    const sourceNodeId = String(input?.source_node_id ?? 'mock-node-rain-001').trim()
+    const page = normalizeReferenceCorpusAnalysisPage(input?.page_request, ['created_at', 'technique_family', 'confidence', 'specimen_id'], 'confidence')
+    const filters = page.filters ?? {}
+    const specimens = mockReferenceCorpusTechniqueSpecimens(novelId, anchorId, sourceNodeId)
+      .filter((item) => !filters.technique_family || item.technique_family === filters.technique_family)
+      .filter((item) => !filters.run_id || item.analysis_run_id === filters.run_id)
+      .filter((item) => (filters.validity_state ?? 'active') === item.validity_state)
+      .filter((item) => !filters.min_confidence || item.confidence >= Number(filters.min_confidence))
+    return pageReferenceCorpusAnalysisItems(sortReferenceCorpusAnalysisItems(specimens, page.sort_by, page.sort_dir), page)
+  }
+
+  function mockReferenceCorpusFeatureObservations(novelId, anchorId, nodeId) {
+    return [
+      {
+        observation_id: `mock-${anchorId}-${nodeId}-emotion-state`,
+        node_id: nodeId,
+        anchor_id: anchorId,
+        node_type: 'sentence',
+        text_hash: `hash-${nodeId}`,
+        feature_family: 'emotion',
+        feature_key: 'emotion_state',
+        value_kind: 'enum',
+        value_preview: 'restrained',
+        value_text: 'restrained',
+        value_num: 7,
+        value_bool: null,
+        intensity: 7,
+        confidence: 0.88,
+        evidence_start: 0,
+        evidence_end: 14,
+        evidence_preview: '把杯底半圈水痕压进记忆里',
+        explanation: '动作压住外显情绪，让压力停在可见细节上。',
+        review_state: 'unverified',
+        validity_state: 'active',
+        run_id: `mock-feature:${anchorId}:sentence`,
+        created_at: now,
+        novel_id: novelId,
+      },
+      {
+        observation_id: `mock-${anchorId}-${nodeId}-rhythm-cadence`,
+        node_id: nodeId,
+        anchor_id: anchorId,
+        node_type: 'sentence',
+        text_hash: `hash-${nodeId}`,
+        feature_family: 'rhythm',
+        feature_key: 'cadence',
+        value_kind: 'enum',
+        value_preview: '短促后停顿',
+        value_text: '短促后停顿',
+        value_num: null,
+        value_bool: null,
+        intensity: 6,
+        confidence: 0.82,
+        evidence_start: 0,
+        evidence_end: 18,
+        evidence_preview: '没有急着回头',
+        explanation: '句尾把动作停住，给读者留出反应时间。',
+        review_state: 'unverified',
+        validity_state: 'active',
+        run_id: `mock-feature:${anchorId}:sentence`,
+        created_at: now,
+        novel_id: novelId,
+      },
+      {
+        observation_id: `mock-${anchorId}-${nodeId}-rhetoric-ellipsis`,
+        node_id: nodeId,
+        anchor_id: anchorId,
+        node_type: 'sentence',
+        text_hash: `hash-${nodeId}`,
+        feature_family: 'rhetoric',
+        feature_key: 'devices',
+        value_kind: 'array',
+        value_preview: '动作替代心理陈述',
+        value_text: '动作替代心理陈述',
+        value_num: null,
+        value_bool: null,
+        intensity: null,
+        confidence: 0.84,
+        evidence_start: 0,
+        evidence_end: 20,
+        evidence_preview: '把杯底半圈水痕压进记忆里',
+        explanation: '不直接写情绪词，用动作承载未说出口的反应。',
+        review_state: 'unverified',
+        validity_state: 'active',
+        run_id: `mock-feature:${anchorId}:sentence`,
+        created_at: now,
+        novel_id: novelId,
+      },
+    ]
+  }
+
+  function mockReferenceCorpusTechniqueSpecimens(novelId, anchorId, sourceNodeId) {
+    const evidence = mockReferenceCorpusFeatureObservations(novelId, anchorId, sourceNodeId).filter((item) =>
+      item.feature_family === 'emotion' || item.feature_family === 'rhetoric')
+    const evidencePayload = evidence.map((item) => ({
+      observation_id: item.observation_id,
+      node_id: item.node_id,
+      node_type: item.node_type,
+      text_hash: item.text_hash,
+      feature_family: item.feature_family,
+      feature_key: item.feature_key,
+      confidence: item.confidence,
+      evidence_start: item.evidence_start,
+      evidence_end: item.evidence_end,
+      evidence_preview: item.evidence_preview,
+      value_preview: item.value_preview,
+      explanation: item.explanation,
+    }))
+    return [{
+      specimen_id: `mock-technique-${anchorId}-${sourceNodeId}`,
+      source_node_id: sourceNodeId,
+      source_anchor_id: anchorId,
+      analysis_run_id: `mock-technique:${anchorId}:sentence`,
+      technique_family: 'action_as_emotion',
+      technique_abstract: '用细节动作承载压抑情绪，省略直接情绪陈述，以留白放大张力',
+      trigger_context: '角色承压但不能把真实反应说出口',
+      transfer_template: '[角色] [细节动作]，随后压住即时反应。',
+      transfer_slots: [{
+        slot_name: 'character',
+        purpose: '当前承压角色',
+        constraints: '必须处在强情绪但不可直说的场景',
+      }],
+      effect_on_reader: '读者从动作和停顿里补全情绪，紧张感更稳。',
+      applicability_conditions: ['短句节点', '角色需要克制', '上下文已经有压力来源'],
+      failure_modes: ['动作没有因果会变成装饰', '连续使用会显得程式化'],
+      anti_patterns: ['直接解释“他很愤怒”', '动作与角色目标无关'],
+      world_context_dependencies: [],
+      why_it_works: {
+        contributing_factors: [{
+          factor: '外化动作提供可见证据',
+          observation_ids: evidencePayload.map((item) => item.observation_id),
+          explanation: '情绪和修辞 observation 同时指向动作承载情绪，迁移时可以保留技法而替换人物与动作。',
+          evidence: evidencePayload,
+        }],
+        trace_complete: true,
+      },
+      confidence: 0.86,
+      review_state: 'unverified',
+      validity_state: 'active',
+      mastery_notes: '适合短句或段尾，不适合需要密集信息交代的位置。',
+      created_at: now,
+      evidence: evidencePayload,
+    }]
+  }
+
+  function normalizeReferenceCorpusAnalysisPage(request = {}, allowedSorts, defaultSort) {
+    const pageSize = Number(request?.page_size ?? 20)
+    if (!Number.isInteger(pageSize) || pageSize <= 0 || pageSize > 200) {
+      throw new Error('page_size must be between 1 and 200.')
+    }
+
+    const sortBy = String(request?.sort_by ?? defaultSort).trim() || defaultSort
+    if (!allowedSorts.includes(sortBy)) {
+      throw new Error(`sort_by '${sortBy}' is not supported.`)
+    }
+
+    const sortDir = String(request?.sort_dir ?? 'desc').trim().toLowerCase()
+    if (sortDir !== 'asc' && sortDir !== 'desc') {
+      throw new Error("sort_dir must be 'asc' or 'desc'.")
+    }
+
+    const cursorText = String(request?.cursor ?? '').trim()
+    const offset = cursorText === '' ? 0 : Number(cursorText)
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new Error('cursor is invalid.')
+    }
+
+    return {
+      page_size: pageSize,
+      sort_by: sortBy,
+      sort_dir: sortDir,
+      cursor: cursorText,
+      offset,
+      filters: request?.filters && typeof request.filters === 'object' ? request.filters : {},
+    }
+  }
+
+  function sortReferenceCorpusAnalysisItems(items, sortBy, sortDir) {
+    const direction = sortDir === 'asc' ? 1 : -1
+    return [...items].sort((left, right) => {
+      const primary = compareReferenceCorpusAnalysisValues(left[sortBy], right[sortBy])
+      if (primary !== 0) return primary * direction
+      return compareReferenceCorpusAnalysisValues(left.created_at, right.created_at) * direction ||
+        compareReferenceCorpusAnalysisValues(left.observation_id ?? left.specimen_id, right.observation_id ?? right.specimen_id) * direction
+    })
+  }
+
+  function compareReferenceCorpusAnalysisValues(left, right) {
+    if (typeof left === 'number' && typeof right === 'number') return left - right
+    return String(left ?? '').localeCompare(String(right ?? ''))
+  }
+
+  function pageReferenceCorpusAnalysisItems(items, page) {
+    const visible = items.slice(page.offset, page.offset + page.page_size)
+    const nextOffset = page.offset + visible.length
+    const hasMore = nextOffset < items.length
+    return {
+      items: visible,
+      total: items.length,
+      page: Math.floor(page.offset / page.page_size) + 1,
+      size: page.page_size,
+      total_pages: items.length === 0 ? 0 : Math.ceil(items.length / page.page_size),
+      next_cursor: hasMore ? String(nextOffset) : null,
+      has_more: hasMore,
+      total_estimate: items.length,
+    }
+  }
+
   function normalizeReferenceCorpusFeatureAnalysisScope(scope) {
     const normalized = String(scope ?? 'sentence').trim()
     if (normalized === 'sentence' || normalized === 'passage') return normalized
     throw new Error('Feature analysis scope must be sentence or passage.')
+  }
+
+  function normalizeReferenceCorpusTechniqueSpecimenSourceNodeType(sourceNodeType) {
+    const normalized = String(sourceNodeType ?? 'sentence').trim()
+    if (normalized === 'sentence' || normalized === 'passage') return normalized
+    throw new Error('Technique specimen source_node_type must be sentence or passage.')
   }
 
   function referenceCorpusFeatureAnalysisFamilies(scope) {
@@ -5936,6 +6224,217 @@ export function installConfigurableAppMockBridge(options = {}) {
     return tokenBudget
   }
 
+  function normalizeReferenceCorpusTechniqueSpecimenConfidence(value) {
+    if (value == null) return 0.70
+    const confidence = Number(value)
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 0.95) {
+      throw new Error('min_observation_confidence must be between 0 and 0.95.')
+    }
+
+    return confidence
+  }
+
+  function generateReferenceCorpusBlueprintCandidates(input = {}) {
+    const chapterContext = input?.chapter_context ?? {}
+    const novelId = Number(chapterContext.novel_id ?? 42)
+    const libraryIds = Array.isArray(input?.scope?.library_ids) ? input.scope.library_ids : []
+    const defaultProjectLibraryId = `project:${novelId}:default`
+    const effectiveLibraryIds = libraryIds.length > 0
+      ? libraryIds
+      : [defaultProjectLibraryId, 'global:workspace']
+    const feedback = input?.feedback ?? null
+    const feedbackApplied = hasCorpusBlueprintFeedback(feedback)
+    const problemTags = Array.isArray(feedback?.problem_tags)
+      ? feedback.problem_tags.map((tag) => String(tag))
+      : []
+    const sourceRepetitionFeedback = feedbackApplied && problemTags.includes('source_repetition')
+    const fallbackReasonCodes = sourceRepetitionFeedback
+      ? ['feedback_filters_no_matches', 'fallback_to_base_filters']
+      : []
+    const feedbackSummary = describeCorpusBlueprintFeedback(feedback, fallbackReasonCodes)
+    const count = Math.max(2, Math.min(5, Number(input?.requested_count ?? 2) || 2))
+    const primaryLibraryId = feedbackApplied && feedback?.avoid_library_ids?.includes(effectiveLibraryIds[0])
+      ? effectiveLibraryIds[1] ?? 'global:workspace'
+      : effectiveLibraryIds[0] ?? defaultProjectLibraryId
+    const secondaryLibraryId = feedbackApplied
+      ? 'project:42:contrast'
+      : effectiveLibraryIds[1] ?? 'global:workspace'
+    const primaryAnchorId = feedbackApplied && feedback?.avoid_anchor_ids?.includes(101) ? 104 : 101
+    const secondaryAnchorId = feedbackApplied ? 108 : 104
+    const candidateSeeds = [{
+      id: feedbackApplied ? 'mock-corpus-blueprint-alt-001' : 'mock-corpus-blueprint-001',
+      strategy: sourceRepetitionFeedback
+        ? 'source_repetition_diversity_m1'
+        : feedbackApplied
+        ? '避开已拒绝水痕节点，改用钟楼回声材料制造压力递进'
+        : '先用杯底水痕建立线索压力，再以受限视角延迟判断',
+      nodeIds: sourceRepetitionFeedback
+        ? ['mock-node-clock-001', 'mock-node-restart-001', 'mock-node-pause-002']
+        : feedbackApplied ? ['mock-node-clock-001', 'mock-node-pause-002'] : ['mock-node-rain-001', 'mock-node-pause-001'],
+      libraryId: primaryLibraryId,
+      anchorId: primaryAnchorId,
+      coverage: feedbackApplied ? 0.84 : 0.91,
+      sourceDistribution: sourceRepetitionFeedback
+        ? [{
+          library_id: primaryLibraryId,
+          anchor_id: primaryAnchorId,
+          node_count: 1,
+        }, {
+          library_id: secondaryLibraryId,
+          anchor_id: secondaryAnchorId,
+          node_count: 2,
+        }]
+        : null,
+      feedbackReason: sourceRepetitionFeedback
+        ? feedbackSummary
+        : feedbackApplied ? '已避开上一轮拒绝的蓝图、节点或来源。' : '',
+      gapReasons: sourceRepetitionFeedback
+        ? fallbackReasonCodes
+        : feedbackApplied ? ['水痕节点被反馈排除，改用相邻压力材料补位。'] : [],
+      gapPositions: sourceRepetitionFeedback
+        ? [{
+          beatIndex: 0,
+          coveredDimensions: ['emotion'],
+          missingDimensions: ['rhythm', 'narrative', 'technique'],
+          gapReasons: ['missing_rhythm_evidence', 'missing_narrative_evidence', 'missing_technique_coverage'],
+        }]
+        : [],
+    }, {
+      id: feedbackApplied ? 'mock-corpus-blueprint-alt-002' : 'mock-corpus-blueprint-002',
+      strategy: feedbackApplied
+        ? '改走外部环境压迫路线，降低同一语料库节点占比'
+        : '从门缝停顿切入，补充环境细节后回扣水痕线索',
+      nodeIds: feedbackApplied ? ['mock-node-restart-001', 'mock-node-slot-001', 'mock-node-recovery-001'] : ['mock-node-door-001', 'mock-node-rain-002'],
+      libraryId: secondaryLibraryId,
+      anchorId: secondaryAnchorId,
+      coverage: feedbackApplied ? 0.79 : 0.86,
+      feedbackReason: feedbackApplied ? '根据 avoid/rejected 反馈切换来源分布。' : '',
+      gapReasons: feedbackApplied ? ['可用来源变窄，覆盖率略低。'] : ['缺少更强的角色内心节点。'],
+      gapPositions: feedbackApplied
+        ? [{
+          beatIndex: 1,
+          coveredDimensions: ['rhythm'],
+          missingDimensions: ['emotion', 'technique'],
+          gapReasons: ['missing_emotion_evidence', 'missing_technique_coverage'],
+        }]
+        : [],
+    }]
+    const candidates = Array.from({ length: count }, (_, index) => {
+      const seed = candidateSeeds[index] ?? {
+        ...candidateSeeds[index % candidateSeeds.length],
+        id: `mock-corpus-blueprint-extra-${index + 1}`,
+        coverage: Math.max(0.6, candidateSeeds[index % candidateSeeds.length].coverage - (index * 0.03)),
+      }
+      const blueprint = makeCorpusInsertionBlueprint(seed.id, seed.strategy, seed.nodeIds)
+      return {
+        blueprint,
+        source_distribution: seed.sourceDistribution ?? [{
+          library_id: seed.libraryId,
+          anchor_id: seed.anchorId,
+          node_count: seed.nodeIds.length,
+        }],
+        coverage_score: seed.coverage,
+        gap_reasons: seed.gapReasons,
+        feedback_reason: seed.feedbackReason,
+        gap_positions: makeCorpusBlueprintGapPositions(blueprint, seed.gapPositions ?? []),
+      }
+    })
+
+    return {
+      query_context: {
+        scene_type: 'rain_threshold',
+        emotion_target: 'restrained_pressure',
+        pacing_target: feedbackApplied ? 'varied' : 'tight',
+        narrative_position: 'chapter_insert',
+        commercial_mechanic: 'clue_hook',
+        character_states: ['current_chapter_focus'],
+        required_narrative_functions: ['clue_pressure'],
+        chapter_context: chapterContext,
+        scope: input?.scope ?? {
+          library_ids: libraryIds,
+          reuse_policies: ['verbatim_ok', 'adapted_only'],
+          include_anchor_ids: [],
+          exclude_anchor_ids: [],
+          session_id: `project:${novelId}:default`,
+        },
+      },
+      candidates,
+      feedback_applied: feedbackApplied,
+      feedback_summary: feedbackSummary,
+    }
+  }
+
+  function hasCorpusBlueprintFeedback(feedback) {
+    if (!feedback || typeof feedback !== 'object') return false
+    return [
+      feedback.rejected_blueprint_ids,
+      feedback.rejected_node_ids,
+      feedback.avoid_library_ids,
+      feedback.avoid_anchor_ids,
+      feedback.problem_tags,
+    ].some((value) => Array.isArray(value) && value.length > 0) ||
+      String(feedback.notes ?? '').trim().length > 0
+  }
+
+  function describeCorpusBlueprintFeedback(feedback, fallbackReasonCodes = []) {
+    if (!feedback || typeof feedback !== 'object') return 'none'
+    const parts = []
+    if (Array.isArray(feedback.rejected_blueprint_ids) && feedback.rejected_blueprint_ids.length > 0) {
+      parts.push(`rejected_blueprints:${feedback.rejected_blueprint_ids.length}`)
+    }
+    if (Array.isArray(feedback.rejected_node_ids) && feedback.rejected_node_ids.length > 0) {
+      parts.push(`rejected_nodes:${feedback.rejected_node_ids.length}`)
+    }
+    if (Array.isArray(feedback.avoid_library_ids) && feedback.avoid_library_ids.length > 0) {
+      parts.push(`avoid_libraries:${feedback.avoid_library_ids.length}`)
+    }
+    if (Array.isArray(feedback.avoid_anchor_ids) && feedback.avoid_anchor_ids.length > 0) {
+      parts.push(`avoid_anchors:${feedback.avoid_anchor_ids.length}`)
+    }
+    if (Array.isArray(feedback.problem_tags) && feedback.problem_tags.length > 0) {
+      parts.push(`problems:${feedback.problem_tags.join(',')}`)
+    }
+    if (fallbackReasonCodes.length > 0) {
+      parts.push(`fallback:${fallbackReasonCodes.join(',')}`)
+    }
+    return parts.length > 0 ? parts.join(';') : 'feedback_present'
+  }
+
+  function makeCorpusInsertionBlueprint(blueprintId, strategy, nodeIds) {
+    return {
+      blueprint_id: blueprintId,
+      query_context_hash: `mock-query-context-hash-${blueprintId}`,
+      strategy,
+      beats: nodeIds.map((nodeId, index) => ({
+        beat_id: `${blueprintId}-beat-${index + 1}`,
+        beat_index: index,
+        role_in_beat: index === 0 ? 'establish_clue_pressure' : 'deepen_restrained_reaction',
+        narrative_function: index === 0 ? 'clue_pressure' : 'emotional_pressure',
+        node_ids: [nodeId],
+      })),
+    }
+  }
+
+  function makeCorpusBlueprintGapPositions(blueprint, seeds) {
+    return seeds
+      .map((seed) => {
+        const beatIndex = Number(seed.beatIndex ?? 0)
+        const beat = blueprint.beats?.[beatIndex]
+        if (!beat) return null
+        return {
+          beat_id: beat.beat_id,
+          beat_index: beat.beat_index,
+          role_in_beat: beat.role_in_beat,
+          narrative_function: beat.narrative_function,
+          node_ids: beat.node_ids,
+          covered_dimensions: seed.coveredDimensions ?? [],
+          missing_dimensions: seed.missingDimensions ?? [],
+          gap_reasons: seed.gapReasons ?? [],
+        }
+      })
+      .filter(Boolean)
+  }
+
   function generateReferenceCorpusInsertionDraft(input = {}) {
     const chapterContext = input?.chapter_context ?? {}
     const currentDraft = String(chapterContext.current_draft_text ?? '')
@@ -5949,6 +6448,14 @@ export function installConfigurableAppMockBridge(options = {}) {
     const assembledText = '林岚把杯底半圈水痕压进记忆里，没有急着回头。'
     const chapterTextAfterInsertion = `${currentDraft.slice(0, insertionOffset)}${prefix}${assembledText}${currentDraft.slice(insertionOffset)}`
     const libraryIds = Array.isArray(input?.scope?.library_ids) ? input.scope.library_ids : []
+    const novelId = Number(chapterContext.novel_id ?? 42)
+    const defaultProjectLibraryId = `project:${novelId}:default`
+    const effectiveLibraryIds = libraryIds.length > 0
+      ? libraryIds
+      : [defaultProjectLibraryId, 'global:workspace']
+    const selectedBlueprint = input?.selected_blueprint && typeof input.selected_blueprint === 'object'
+      ? input.selected_blueprint
+      : null
 
     return {
       query_context: {
@@ -5965,9 +6472,10 @@ export function installConfigurableAppMockBridge(options = {}) {
           reuse_policies: ['verbatim_ok', 'adapted_only'],
           include_anchor_ids: [],
           exclude_anchor_ids: [],
+          session_id: `project:${novelId}:default`,
         },
       },
-      blueprint: {
+      blueprint: selectedBlueprint ?? {
         blueprint_id: 'mock-corpus-blueprint-001',
         query_context_hash: 'mock-query-context-hash-001',
         strategy: '自动检索共享语料并迁移为当前章节插入片段',
@@ -5985,13 +6493,24 @@ export function installConfigurableAppMockBridge(options = {}) {
         candidate_id: 'mock-corpus-candidate-001',
         node_id: 'mock-node-rain-001',
         anchor_id: 101,
-        library_id: libraryIds[0] ?? 'global:workspace',
+        library_id: effectiveLibraryIds[0] ?? 'global:workspace',
         text_hash: 'hash-mock-node-rain-001',
         reuse_policy: 'adapted_only',
         license_state: 'authorized',
         output_text: assembledText,
         preserved_text_hash: 'hash-preserved-mock-corpus-001',
         preserved_hash_matches: true,
+        preserved_spans: [{
+          span_id: 'mock-preserved-span-001',
+          source_start: 1,
+          source_end: 10,
+          output_start: 2,
+          output_end: 11,
+          source_text_hash: 'hash-preserved-span-mock-corpus-001',
+          output_text_hash: 'hash-preserved-span-mock-corpus-001',
+          matches: true,
+        }],
+        locked_spans: [],
         slot_replacements: [{
           slot_name: 'character',
           source_value: '她',
@@ -6011,6 +6530,7 @@ export function installConfigurableAppMockBridge(options = {}) {
         output_start: 0,
         output_end: 2,
       }],
+      transitions: [],
       assembled_text: assembledText,
       chapter_text_after_insertion: chapterTextAfterInsertion,
       ready_for_insertion: true,
@@ -6027,7 +6547,402 @@ export function installConfigurableAppMockBridge(options = {}) {
           violations: [],
         }],
       },
+      audit: {
+        passed: true,
+        status: 'passed',
+        errors: [],
+        pieces: [{
+          piece_id: 'mock-corpus-piece-001',
+          node_id: 'mock-node-rain-001',
+          passed: true,
+          preserved_span_count: 1,
+          mismatched_span_count: 0,
+          violations: [],
+        }],
+        transitions: [],
+      },
     }
+  }
+
+  function generateReferenceCorpusInsertionDraftCandidates(input = {}) {
+    const selectedBlueprint = input?.selected_blueprint && typeof input.selected_blueprint === 'object'
+      ? input.selected_blueprint
+      : makeCorpusInsertionBlueprint(
+        'mock-corpus-blueprint-001',
+        '自动检索共享语料并迁移为当前章节插入片段',
+        ['mock-node-rain-001'])
+    const requestedSlotVariants = Array.isArray(input?.slot_value_variants)
+      ? input.slot_value_variants.filter((variant) => variant && typeof variant === 'object')
+      : []
+    if (requestedSlotVariants.length > 0) {
+      return buildMockCorpusSlotValueDraftCandidates(input, selectedBlueprint, requestedSlotVariants)
+    }
+
+    const count = Math.max(2, Math.min(4, Number(input?.requested_count ?? 2) || 2))
+    const firstBeat = selectedBlueprint.beats?.[0] ?? {
+      beat_id: 'mock-corpus-beat-001',
+      node_ids: ['mock-node-rain-001'],
+    }
+    const secondBeat = selectedBlueprint.beats?.[1] ?? firstBeat
+    const variants = [{
+      candidate_id: 'mock-corpus-draft-candidate-001',
+      strategy: 'source_variant_1',
+      explanation: '保留选中蓝图首选节点，但审计发现保留片段不一致，必须阻断。',
+      text: '林岚把杯底半圈水痕压进记忆里，没有急着回头。',
+      piece_id: 'mock-corpus-piece-001',
+      beat_id: firstBeat.beat_id,
+      node_id: firstBeat.node_ids?.[0] ?? 'mock-node-rain-001',
+      auditBlocked: true,
+    }, {
+      candidate_id: 'mock-corpus-draft-candidate-002',
+      strategy: 'transition_repair',
+      explanation: '转场分析要求换用选中蓝图同一节拍内的备选语料，重组后重新通过审计。',
+      text: '林岚把门外的雨声留在身后，指尖仍压着那枚钥匙。',
+      transitionText: '门外的雨声把沉默往前推了一寸。',
+      secondText: '她没有立刻开口，只让视线落回那道水痕。',
+      piece_id: 'mock-corpus-piece-002',
+      second_piece_id: 'mock-corpus-piece-002b',
+      beat_id: secondBeat.beat_id,
+      node_id: secondBeat.node_ids?.[0] ?? firstBeat.node_ids?.[1] ?? 'mock-node-door-001',
+      second_node_id: firstBeat.node_ids?.[1] ?? 'mock-node-pause-001',
+    }, {
+      candidate_id: 'mock-corpus-draft-candidate-003',
+      strategy: 'source_variant_3',
+      explanation: '转场分析要求换源，但替代节点不在选中蓝图节拍内，必须回到蓝图重组。',
+      text: '林岚没有回头，只把钥匙扣在掌心。',
+      secondText: '雨声贴着门缝往里挤。',
+      piece_id: 'mock-corpus-piece-003',
+      second_piece_id: 'mock-corpus-piece-003b',
+      beat_id: firstBeat.beat_id,
+      node_id: firstBeat.node_ids?.[1] ?? firstBeat.node_ids?.[0] ?? 'mock-node-pause-001',
+      second_node_id: secondBeat.node_ids?.[0] ?? 'mock-node-door-001',
+      replacePieceBlocked: true,
+      replacement_node_id: 'mock-node-outside-selected-blueprint',
+    }]
+    const drafts = variants.slice(0, count).map((variant) => {
+      const draft = buildMockCorpusInsertionDraft(input, selectedBlueprint, variant)
+      const nextAction = buildMockCorpusDraftCandidateNextAction(selectedBlueprint, variant)
+      return {
+        candidate_id: variant.candidate_id,
+        strategy: variant.strategy,
+        explanation: variant.explanation,
+        draft,
+        ...(nextAction ? { next_action: nextAction } : {}),
+      }
+    })
+
+    return {
+      query_context: drafts[0]?.draft?.query_context ?? generateReferenceCorpusInsertionDraft(input).query_context,
+      selected_blueprint: selectedBlueprint,
+      candidates: drafts,
+    }
+  }
+
+  function buildMockCorpusSlotValueDraftCandidates(input, selectedBlueprint, requestedSlotVariants) {
+    const count = Math.max(1, Math.min(
+      requestedSlotVariants.length,
+      Number(input?.requested_count ?? requestedSlotVariants.length) || requestedSlotVariants.length))
+    const firstBeat = selectedBlueprint.beats?.[0] ?? {
+      beat_id: 'mock-corpus-beat-001',
+      node_ids: ['mock-node-rain-001'],
+    }
+    const nodeId = firstBeat.node_ids?.[0] ?? 'mock-node-rain-001'
+    const drafts = requestedSlotVariants.slice(0, count).map((slotVariant, index) => {
+      const suffix = index + 1
+      const slotValues = {
+        ...(input?.slot_values && typeof input.slot_values === 'object' && !Array.isArray(input.slot_values)
+          ? input.slot_values
+          : {}),
+        ...(slotVariant.slot_values && typeof slotVariant.slot_values === 'object' && !Array.isArray(slotVariant.slot_values)
+          ? slotVariant.slot_values
+          : {}),
+      }
+      const transferred = buildMockCorpusTransferredSlotSentence(slotValues)
+      const variant = {
+        candidate_id: `mock-corpus-slot-draft-candidate-${suffix}`,
+        strategy: `slot_variant_${suffix}`,
+        explanation: `复用同一选中蓝图和同一语料节点，仅按槽位映射生成正文候选：${String(slotVariant.label ?? slotVariant.variant_id ?? suffix)}`,
+        text: transferred.text,
+        piece_id: `mock-corpus-slot-piece-${suffix}`,
+        beat_id: firstBeat.beat_id,
+        node_id: nodeId,
+        slot_replacements: transferred.slotReplacements,
+      }
+      const draft = buildMockCorpusInsertionDraft(
+        { ...input, slot_values: slotValues },
+        selectedBlueprint,
+        variant)
+      return {
+        candidate_id: variant.candidate_id,
+        strategy: variant.strategy,
+        explanation: variant.explanation,
+        draft,
+      }
+    })
+
+    return {
+      query_context: drafts[0]?.draft?.query_context ?? generateReferenceCorpusInsertionDraft(input).query_context,
+      selected_blueprint: selectedBlueprint,
+      candidates: drafts,
+    }
+  }
+
+  function buildMockCorpusTransferredSlotSentence(slotValues) {
+    const sourceText = '她在旧市集门口没有立刻开口，只叫了一声师兄，把钥匙扣在掌心，《旧市集门口师兄钥匙案》没有改。'
+    const character = readMockSlotValue(slotValues, ['character:她', '角色:她', '她', 'character'], '林岚')
+    const place = readMockSlotValue(slotValues, ['place:旧市集门口', '地点:旧市集门口', '旧市集门口', 'place'], '雨廊门口')
+    const honorific = readMockSlotValue(slotValues, ['honorific:师兄', '称谓:师兄', '师兄', 'honorific'], '师兄')
+    const plotObject = readMockSlotValue(slotValues, ['plot_object:钥匙', '道具:钥匙', '钥匙', 'plot_object'], '钥匙')
+    const outputText = `${character}在${place}没有立刻开口，只叫了一声${honorific}，把${plotObject}扣在掌心，《旧市集门口师兄钥匙案》没有改。`
+    const slotReplacements = [
+      makeMockSlotReplacement('character', '她', character, sourceText, outputText),
+      makeMockSlotReplacement('place', '旧市集门口', place, sourceText, outputText),
+      makeMockSlotReplacement('honorific', '师兄', honorific, sourceText, outputText),
+      makeMockSlotReplacement('plot_object', '钥匙', plotObject, sourceText, outputText),
+    ].filter(Boolean)
+    return { text: outputText, slotReplacements }
+  }
+
+  function readMockSlotValue(slotValues, keys, fallback) {
+    for (const key of keys) {
+      const value = slotValues?.[key]
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim()
+      }
+    }
+
+    return fallback
+  }
+
+  function makeMockSlotReplacement(slotName, sourceValue, replacementValue, sourceText, outputText) {
+    const sourceStart = sourceText.indexOf(sourceValue)
+    const outputStart = outputText.indexOf(replacementValue)
+    if (sourceStart < 0 || outputStart < 0) return null
+    return {
+      slot_name: slotName,
+      source_value: sourceValue,
+      replacement_value: replacementValue,
+      source_start: sourceStart,
+      source_end: sourceStart + sourceValue.length,
+      output_start: outputStart,
+      output_end: outputStart + replacementValue.length,
+    }
+  }
+
+  function buildMockCorpusDraftCandidateNextAction(selectedBlueprint, variant) {
+    if (variant.replacePieceBlocked !== true) return null
+
+    const transitionId = `mock-transition-${variant.candidate_id}`
+    const rejectedNodeId = String(variant.node_id ?? '')
+    const replacementNodeId = String(variant.replacement_node_id ?? '')
+
+    return {
+      action: 'regenerate_blueprint',
+      reason_code: 'transition_replacement_outside_selected_blueprint',
+      message: '替代节点不在当前选中蓝图节拍内，请回到共享语料库重新组合蓝图。',
+      transition_id: transitionId,
+      rejected_piece_id: variant.piece_id,
+      rejected_node_id: rejectedNodeId,
+      replacement_node_id: replacementNodeId,
+      feedback: {
+        rejected_blueprint_ids: [selectedBlueprint.blueprint_id],
+        rejected_node_ids: rejectedNodeId ? [rejectedNodeId] : [],
+        avoid_library_ids: [],
+        avoid_anchor_ids: [],
+        problem_tags: [
+          'transition_replacement_required',
+          'transition_replacement_outside_selected_blueprint',
+        ],
+        notes: `正文候选 ${variant.candidate_id} 的转场要求替换为 ${replacementNodeId || 'unknown'}，但该节点不在选中蓝图节拍内。请重新检索可闭合的蓝图。`,
+      },
+    }
+  }
+
+  function buildMockCorpusInsertionDraft(input, selectedBlueprint, variant) {
+    const base = generateReferenceCorpusInsertionDraft({
+      ...input,
+      selected_blueprint: selectedBlueprint,
+    })
+    const auditBlocked = variant.auditBlocked === true
+    const replacementBlocked = variant.replacePieceBlocked === true
+    const transitionBlocked = variant.transitionBlocked === true || replacementBlocked
+    const hasTransitionText = typeof variant.transitionText === 'string' && variant.transitionText.length > 0
+    const hasTransition = hasTransitionText || replacementBlocked
+    const assembledText = hasTransitionText
+      ? `${variant.text}\n${variant.transitionText}\n${variant.secondText}`
+      : replacementBlocked
+        ? `${variant.text}\n${variant.secondText}`
+      : variant.text
+    const chapterTextAfterInsertion = buildMockCorpusChapterTextAfterInsertion(
+      input?.chapter_context ?? {},
+      assembledText)
+    const blockedViolation = {
+      violation_id: `mock-draft-audit-violation-${variant.piece_id}`,
+      code: 'preserved_text_hash_mismatch',
+      severity: 'error',
+      piece_id: variant.piece_id,
+      node_id: variant.node_id,
+      span_id: `mock-preserved-span-${variant.piece_id}`,
+      message: '保留片段 hash 与输出不一致，不能插入。',
+      transition_id: null,
+    }
+    const blockedAuditErrors = [`preserved_text_hash_mismatch:${variant.node_id}:${blockedViolation.span_id}`]
+    const transitionId = `mock-transition-${variant.candidate_id}`
+    const transitionText = replacementBlocked ? '' : variant.transitionText
+    const transitionOutputStart = replacementBlocked ? variant.text.length : variant.text.length + 1
+    const transition = hasTransition
+      ? {
+          transition_id: transitionId,
+          gap_id: `mock-transition-gap-${variant.candidate_id}`,
+          after_piece_id: variant.piece_id,
+          before_piece_id: variant.second_piece_id,
+          decision: replacementBlocked ? 'replace_piece' : 'insert_transition',
+          strategy: replacementBlocked ? 'replace_piece' : 'bridge_sentence',
+          text: transitionText,
+          text_hash: `hash-${transitionId}`,
+          output_start: transitionOutputStart,
+          output_end: transitionOutputStart + transitionText.length,
+          approved: !transitionBlocked,
+          reason: replacementBlocked
+            ? 'mock transition requested a source replacement outside selected blueprint'
+            : transitionBlocked ? 'mock transition rejected by audit' : 'mock bridge transition between selected blueprint pieces',
+          replacement_piece_id: replacementBlocked ? variant.piece_id : null,
+          replacement_node_id: replacementBlocked ? variant.replacement_node_id : null,
+        }
+      : null
+    const transitionViolation = transitionBlocked && transition
+      ? {
+          violation_id: `mock-draft-audit-violation-${transition.transition_id}`,
+          code: replacementBlocked ? 'transition_piece_replacement_required' : 'transition_not_approved',
+          severity: 'error',
+          piece_id: variant.piece_id,
+          node_id: variant.node_id,
+          span_id: null,
+          message: replacementBlocked
+            ? '替代节点不在选中蓝图节拍内，需要回到蓝图重组。'
+            : '过渡句未通过 transition resolver 审批，不能插入。',
+          transition_id: transition.transition_id,
+        }
+      : null
+    const transitionAuditErrors = transitionViolation
+      ? [`${transitionViolation.code}:${variant.node_id}:${transitionId}`]
+      : []
+    const secondPiece = hasTransition
+      ? {
+          ...base.pieces[0],
+          piece_id: variant.second_piece_id,
+          beat_id: variant.beat_id,
+          candidate_id: variant.candidate_id,
+          node_id: variant.second_node_id,
+          output_text: variant.secondText,
+          preserved_hash_matches: true,
+          preserved_spans: [{
+            span_id: `mock-preserved-span-${variant.second_piece_id}`,
+            source_start: 0,
+            source_end: variant.secondText.length,
+            output_start: 0,
+            output_end: variant.secondText.length,
+            source_text_hash: `hash-preserved-span-${variant.second_piece_id}`,
+            output_text_hash: `hash-preserved-span-${variant.second_piece_id}`,
+            matches: true,
+          }],
+          locked_spans: [],
+          slot_replacements: [],
+        }
+      : null
+    const firstAuditPiece = {
+      ...base.audit.pieces[0],
+      piece_id: variant.piece_id,
+      node_id: variant.node_id,
+      passed: !auditBlocked,
+      mismatched_span_count: auditBlocked ? 1 : 0,
+      violations: auditBlocked ? [blockedViolation] : [],
+    }
+    const secondAuditPiece = secondPiece
+      ? {
+          ...base.audit.pieces[0],
+          piece_id: secondPiece.piece_id,
+          node_id: secondPiece.node_id,
+          passed: true,
+          preserved_span_count: 1,
+          mismatched_span_count: 0,
+          violations: [],
+        }
+      : null
+
+    return {
+      ...base,
+      blueprint: selectedBlueprint,
+      pieces: [{
+        ...base.pieces[0],
+        piece_id: variant.piece_id,
+        beat_id: variant.beat_id,
+        candidate_id: variant.candidate_id,
+        node_id: variant.node_id,
+        output_text: variant.text,
+        preserved_hash_matches: !auditBlocked,
+        preserved_spans: [{
+          ...base.pieces[0].preserved_spans[0],
+          span_id: `mock-preserved-span-${variant.piece_id}`,
+          matches: !auditBlocked,
+          output_text_hash: auditBlocked ? `hash-mismatch-${variant.piece_id}` : base.pieces[0].preserved_spans[0].output_text_hash,
+        }],
+        locked_spans: [],
+        slot_replacements: variant.slot_replacements ?? base.pieces[0].slot_replacements,
+      }, ...(secondPiece ? [secondPiece] : [])],
+      slot_replacements: variant.slot_replacements ?? base.slot_replacements,
+      transitions: transition ? [transition] : [],
+      assembled_text: assembledText,
+      chapter_text_after_insertion: (auditBlocked || transitionBlocked)
+        ? String(input?.chapter_context?.current_draft_text ?? '')
+        : chapterTextAfterInsertion,
+      ready_for_insertion: !auditBlocked && !transitionBlocked,
+      gate: {
+        ...base.gate,
+        pieces: [{
+          ...base.gate.pieces[0],
+          piece_id: variant.piece_id,
+          node_id: variant.node_id,
+        }, ...(secondPiece ? [{
+          ...base.gate.pieces[0],
+          piece_id: secondPiece.piece_id,
+          node_id: secondPiece.node_id,
+        }] : [])],
+      },
+      audit: {
+        ...base.audit,
+        passed: !auditBlocked && !transitionBlocked,
+        status: (auditBlocked || transitionBlocked) ? 'blocked' : 'passed',
+        errors: [
+          ...(auditBlocked ? blockedAuditErrors : []),
+          ...transitionAuditErrors,
+        ],
+        pieces: [firstAuditPiece, ...(secondAuditPiece ? [secondAuditPiece] : [])],
+        transitions: transition
+          ? [{
+              transition_id: transition.transition_id,
+              gap_id: transition.gap_id,
+              after_piece_id: transition.after_piece_id,
+              before_piece_id: transition.before_piece_id,
+              decision: transition.decision,
+              passed: !transitionBlocked,
+              violations: transitionViolation ? [transitionViolation] : [],
+            }]
+          : [],
+      },
+    }
+  }
+
+  function buildMockCorpusChapterTextAfterInsertion(chapterContext, assembledText) {
+    const currentDraft = String(chapterContext.current_draft_text ?? '')
+    const requestedOffset = Number(chapterContext.insertion_offset ?? currentDraft.length)
+    const insertionOffset = Number.isFinite(requestedOffset)
+      ? Math.max(0, Math.min(currentDraft.length, requestedOffset))
+      : currentDraft.length
+    const prefix = currentDraft.length === 0
+      ? ''
+      : currentDraft.slice(0, insertionOffset).endsWith('\n') ? '\n' : '\n\n'
+    return `${currentDraft.slice(0, insertionOffset)}${prefix}${assembledText}${currentDraft.slice(insertionOffset)}`
   }
 
   function cancelReferenceOrchestrationRun(input = {}) {

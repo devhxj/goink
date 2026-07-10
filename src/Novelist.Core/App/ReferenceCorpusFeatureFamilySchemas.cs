@@ -64,6 +64,12 @@ public static class ReferenceCorpusFeatureFamilyValidationStatuses
     public const string InvalidSchema = "invalid_schema";
 }
 
+public static class ReferenceCorpusFeatureObservationReviewStates
+{
+    public const string Unverified = "unverified";
+    public const string LowConfidence = "low_confidence";
+}
+
 public sealed record ReferenceCorpusFeatureFamilySchema(
     string SchemaId,
     string SchemaVersion,

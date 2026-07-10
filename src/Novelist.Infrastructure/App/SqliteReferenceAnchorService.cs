@@ -2648,6 +2648,20 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService, IRef
             await member.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        await using (var binding = connection.CreateCommand())
+        {
+            binding.Transaction = transaction;
+            binding.CommandText = """
+                INSERT OR IGNORE INTO reference_session_library_binding
+                  (session_id, library_id)
+                VALUES
+                  ($session_id, $library_id);
+                """;
+            binding.Parameters.AddWithValue("$session_id", libraryId);
+            binding.Parameters.AddWithValue("$library_id", libraryId);
+            await binding.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         var license = MapLicenseStatus(licenseStatus);
         await using (var gate = connection.CreateCommand())
         {
@@ -5582,6 +5596,68 @@ public sealed class SqliteReferenceAnchorService : IReferenceAnchorService, IRef
               FOREIGN KEY(source_node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
               FOREIGN KEY(source_anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE,
               FOREIGN KEY(analysis_run_id) REFERENCES reference_analysis_runs(run_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_technique_vectors (
+              vector_id TEXT PRIMARY KEY,
+              specimen_id TEXT NOT NULL,
+              source_node_id TEXT NOT NULL,
+              source_anchor_id INTEGER NOT NULL,
+              provider_key TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              technique_hash TEXT NOT NULL,
+              embedding_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(specimen_id) REFERENCES reference_technique_specimens(specimen_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_reference_technique_vectors_generation
+              ON reference_technique_vectors(specimen_id, provider_key, model_id, dimensions);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_vectors_node
+              ON reference_technique_vectors(source_node_id, provider_key, model_id, dimensions);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_vectors_anchor
+              ON reference_technique_vectors(source_anchor_id, provider_key, model_id, dimensions);
+
+            CREATE TABLE IF NOT EXISTS reference_technique_vector_rows (
+              index_scope_key TEXT NOT NULL,
+              row_id INTEGER NOT NULL,
+              vector_id TEXT NOT NULL,
+              specimen_id TEXT NOT NULL,
+              source_node_id TEXT NOT NULL,
+              source_anchor_id INTEGER NOT NULL,
+              provider_key TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              technique_hash TEXT NOT NULL,
+              table_name TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY(index_scope_key, row_id),
+              FOREIGN KEY(vector_id) REFERENCES reference_technique_vectors(vector_id) ON DELETE CASCADE,
+              FOREIGN KEY(specimen_id) REFERENCES reference_technique_specimens(specimen_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_reference_technique_vector_rows_vector
+              ON reference_technique_vector_rows(index_scope_key, vector_id);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_vector_rows_scope_node
+              ON reference_technique_vector_rows(index_scope_key, source_node_id);
+
+            CREATE TABLE IF NOT EXISTS reference_technique_vector_index_state (
+              index_scope_key TEXT PRIMARY KEY,
+              table_name TEXT NOT NULL,
+              provider_key TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              source_hash TEXT NOT NULL,
+              source_count INTEGER NOT NULL,
+              updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS reference_specimen_evidence (

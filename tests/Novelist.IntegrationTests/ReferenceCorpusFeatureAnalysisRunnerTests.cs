@@ -166,7 +166,7 @@ public sealed class ReferenceCorpusFeatureAnalysisRunnerTests
     }
 
     [Fact]
-    public async Task RunAsyncKeepsLowConfidenceObservationsUnverifiedInsteadOfConflicted()
+    public async Task RunAsyncRoutesLowConfidenceObservationsToReviewState()
     {
         await using var connection = await OpenFixtureConnectionAsync();
         var runner = new ReferenceCorpusFeatureAnalysisRunner(new LowConfidenceFeatureFamilyAnalyzer());
@@ -188,7 +188,7 @@ public sealed class ReferenceCorpusFeatureAnalysisRunnerTests
 
         Assert.Equal(ReferenceCorpusAnalysisRunStatuses.Completed, result.Status);
         Assert.Equal(2, result.ObservationCount);
-        Assert.Equal(["unverified"], await ReadDistinctReviewStatesAsync(connection, "llm-low-confidence-run-1"));
+        Assert.Equal(["low_confidence"], await ReadDistinctReviewStatesAsync(connection, "llm-low-confidence-run-1"));
     }
 
     [Fact]

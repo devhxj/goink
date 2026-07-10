@@ -79,6 +79,19 @@ public sealed class PageRequestNormalizerTests
         Assert.Equal(PageRequestErrorCodes.InvalidFilterKey, exception.Code);
     }
 
+    [Theory]
+    [InlineData("cursor with spaces")]
+    [InlineData("cursor\nnext")]
+    public void NormalizeRejectsInvalidCursorSyntaxBeforeServiceDispatch(string cursor)
+    {
+        var exception = Assert.Throws<PageRequestValidationException>(() =>
+            PageRequestNormalizer.Normalize(
+                new PageRequestPayload(cursor, 20, "score", "desc"),
+                DefaultPolicy()));
+
+        Assert.Equal(PageRequestErrorCodes.InvalidCursor, exception.Code);
+    }
+
     private static PageRequestPolicy DefaultPolicy()
     {
         return new PageRequestPolicy(

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { AlertTriangle, Copy, CornerDownLeft, FileSearch, ListEnd, Loader2, Replace, Search, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, CornerDownLeft, FileSearch, ListEnd, Loader2, RefreshCw, Replace, Search, Wand2, X } from 'lucide-react'
 import { useApp } from '@/hooks/useApp'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
@@ -26,6 +26,12 @@ type ReferenceErrorState = {
   title: string
   message: string
   diagnostic: diagnostics.CopyableDiagnostic
+}
+
+type CorpusWritingRequestContext = {
+  naturalGoal: string
+  chapterContext: reference.CurrentChapterContext
+  scope: reference.CorpusScope
 }
 
 interface Props {
@@ -54,6 +60,76 @@ function scoreComponentEntries(scoreComponents?: Record<string, number> | null):
 
 function formatConfidence(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : '0.00'
+}
+
+const CORPUS_BLUEPRINT_DIAGNOSTIC_LABELS: Record<string, string> = {
+  initial_candidate: '初始候选',
+  feedback_filters_no_matches: '严格反馈约束没有命中可用语料',
+  fallback_to_base_filters: '已退回目标基础检索以保持蓝图循环',
+  fallback_base_no_candidates: '退回基础检索后仍无候选',
+  avoid_sources_no_alternatives: '避开来源后没有可替代候选',
+  fallback_ignored_avoid_sources: '已临时放宽避开来源约束',
+  rejected_nodes_exhausted_candidates: '拒绝节点耗尽候选',
+  insufficient_beats: '可用节拍不足',
+  single_library_source: '当前方案仍集中在单一语料库',
+  single_anchor_source: '当前方案仍集中在同一参考来源',
+  missing_emotion_evidence: '缺少情绪证据',
+  missing_rhythm_evidence: '缺少节奏证据',
+  missing_narrative_evidence: '缺少叙事功能证据',
+  missing_technique_coverage: '缺少技法标本覆盖',
+}
+
+function formatCorpusBlueprintDiagnosticReason(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (trimmed.startsWith('fallback:')) {
+    const reasons = trimmed
+      .slice('fallback:'.length)
+      .split(',')
+      .map(reason => reason.trim())
+      .filter(Boolean)
+    const readable = reasons
+      .map(reason => CORPUS_BLUEPRINT_DIAGNOSTIC_LABELS[reason] ?? reason)
+      .join('；')
+    return readable ? `回退：${readable}（${trimmed}）` : trimmed
+  }
+
+  const label = CORPUS_BLUEPRINT_DIAGNOSTIC_LABELS[trimmed]
+  return label ? `${label}（${trimmed}）` : trimmed
+}
+
+function formatCorpusBlueprintFeedbackReason(value: string): string {
+  return value
+    .split(';')
+    .map(formatCorpusBlueprintDiagnosticReason)
+    .filter(Boolean)
+    .join('；')
+}
+
+const CORPUS_BLUEPRINT_DIMENSION_LABELS: Record<string, string> = {
+  emotion: '情绪',
+  rhythm: '节奏',
+  narrative: '叙事',
+  technique: '技法',
+}
+
+function formatCorpusBlueprintDimension(value: string): string {
+  const trimmed = value.trim()
+  return CORPUS_BLUEPRINT_DIMENSION_LABELS[trimmed] ?? trimmed
+}
+
+const CORPUS_DRAFT_STRATEGY_LABELS: Record<string, string> = {
+  source_variant_1: '来源变体 1',
+  source_variant_2: '来源变体 2',
+  source_variant_3: '来源变体 3',
+  transition_repair: '转场重组',
+  selected_blueprint_empty: '蓝图无来源',
+}
+
+function formatCorpusDraftStrategy(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return '来源变体'
+  return CORPUS_DRAFT_STRATEGY_LABELS[trimmed] ?? trimmed
 }
 
 type BoundedPreview = {
@@ -106,10 +182,6 @@ function decisionPayloadFor(run: reference.OrchestrationRun, decision: reference
   }
 
   return 'confirmed'
-}
-
-function defaultCorpusLibraryIds(novelId: number): string[] {
-  return [`project:${novelId}:default`, 'global:workspace']
 }
 
 function inferPrimaryCharacterSnapshot(
@@ -171,8 +243,15 @@ export default function ChapterReferencePanel({
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [candidateError, setCandidateError] = useState<ReferenceErrorState | null>(null)
   const [candidateActionMessage, setCandidateActionMessage] = useState('')
+  const [corpusBlueprintPath, setCorpusBlueprintPath] = useState('')
+  const [corpusBlueprintCandidates, setCorpusBlueprintCandidates] = useState<reference.CorpusBlueprintCandidates | null>(null)
+  const [corpusBlueprintLoading, setCorpusBlueprintLoading] = useState(false)
+  const [corpusBlueprintError, setCorpusBlueprintError] = useState<ReferenceErrorState | null>(null)
+  const [corpusBlueprintActionMessage, setCorpusBlueprintActionMessage] = useState('')
+  const [selectedCorpusBlueprintId, setSelectedCorpusBlueprintId] = useState('')
   const [corpusDraftPath, setCorpusDraftPath] = useState('')
-  const [corpusDraft, setCorpusDraft] = useState<reference.CorpusInsertionDraft | null>(null)
+  const [corpusDraftCandidates, setCorpusDraftCandidates] = useState<reference.CorpusInsertionDraftCandidates | null>(null)
+  const [selectedCorpusDraftCandidateId, setSelectedCorpusDraftCandidateId] = useState('')
   const [corpusDraftLoading, setCorpusDraftLoading] = useState(false)
   const [corpusDraftError, setCorpusDraftError] = useState<ReferenceErrorState | null>(null)
   const [corpusDraftActionMessage, setCorpusDraftActionMessage] = useState('')
@@ -402,7 +481,21 @@ export default function ChapterReferencePanel({
     : ''
   const visibleDraftCandidates = finalCandidateKey && candidateContextKey === finalCandidateKey ? draftCandidates : []
   const visibleDraftAudits = finalCandidateKey && candidateContextKey === finalCandidateKey ? draftAudits : []
-  const visibleCorpusDraft = corpusDraftPath === activePath ? corpusDraft : null
+  const visibleCorpusBlueprintCandidates = corpusBlueprintPath === activePath ? corpusBlueprintCandidates : null
+  const visibleCorpusBlueprintError = corpusBlueprintPath === activePath ? corpusBlueprintError : null
+  const visibleCorpusBlueprintActionMessage = corpusBlueprintPath === activePath ? corpusBlueprintActionMessage : ''
+  const selectedCorpusBlueprintCandidate = useMemo(() => {
+    const candidates = visibleCorpusBlueprintCandidates?.candidates ?? []
+    if (candidates.length === 0) return null
+    return candidates.find(candidate => candidate.blueprint.blueprint_id === selectedCorpusBlueprintId) ?? candidates[0]
+  }, [selectedCorpusBlueprintId, visibleCorpusBlueprintCandidates])
+  const visibleCorpusDraftCandidates = corpusDraftPath === activePath ? corpusDraftCandidates : null
+  const selectedCorpusDraftCandidate = useMemo(() => {
+    const candidates = visibleCorpusDraftCandidates?.candidates ?? []
+    if (candidates.length === 0) return null
+    return candidates.find(candidate => candidate.candidate_id === selectedCorpusDraftCandidateId) ?? candidates[0]
+  }, [selectedCorpusDraftCandidateId, visibleCorpusDraftCandidates])
+  const visibleCorpusDraft = selectedCorpusDraftCandidate?.draft ?? null
   const visibleCorpusDraftError = corpusDraftPath === activePath ? corpusDraftError : null
   const visibleCorpusDraftActionMessage = corpusDraftPath === activePath ? corpusDraftActionMessage : ''
 
@@ -590,21 +683,55 @@ export default function ChapterReferencePanel({
       : '无法插入候选，请切回正文编辑器并确认光标或选区。')
   }, [onInsertCandidate])
 
-  const generateCorpusDraft = useCallback(async () => {
-    if (!activePath || !hasValidChapter) return
+  const buildCorpusWritingRequestContext = useCallback((): CorpusWritingRequestContext | null => {
+    if (!activePath || !hasValidChapter) return null
     const snapshot = getEditorSnapshot()
     if (!snapshot) {
-      const fallbackMessage = '语料草稿生成失败'
-      setCorpusDraftPath(activePath)
-      setCorpusDraft(null)
-      setCorpusDraftActionMessage('')
-      setCorpusDraftError({
+      return null
+    }
+
+    const known = inputLines(knownFacts)
+    const forbidden = inputLines(forbiddenFacts)
+    const naturalGoal = goal.trim() || activeTitle || `第 ${chapterNumber} 章`
+    return {
+      naturalGoal,
+      chapterContext: {
+        novel_id: novelId,
+        chapter_number: chapterNumber,
+        current_draft_text: snapshot.currentDraftText,
+        insertion_offset: snapshot.insertionOffset,
+        previous_chapter_summary: known.length > 0 ? known.join('；') : null,
+        character_snapshots: inferPrimaryCharacterSnapshot(naturalGoal, snapshot.currentDraftText, forbidden),
+      },
+      scope: {
+        library_ids: [],
+        reuse_policies: ['verbatim_ok', 'adapted_only'],
+        include_anchor_ids: [],
+        exclude_anchor_ids: [],
+        session_id: `project:${novelId}:default`,
+      },
+    }
+  }, [activePath, activeTitle, chapterNumber, forbiddenFacts, getEditorSnapshot, goal, hasValidChapter, knownFacts, novelId])
+
+  const generateCorpusBlueprintCandidates = useCallback(async (
+    feedback: reference.CorpusBlueprintFeedback | null = null,
+    feedbackLabel = '反馈',
+  ) => {
+    if (!activePath || !hasValidChapter) return
+    const context = buildCorpusWritingRequestContext()
+    if (!context) {
+      const fallbackMessage = '蓝图候选生成失败'
+      setCorpusBlueprintPath(activePath)
+      setCorpusBlueprintCandidates(null)
+      setSelectedCorpusBlueprintId('')
+      setCorpusBlueprintActionMessage('')
+      setCorpusBlueprintError({
         title: fallbackMessage,
         message: '无法读取当前正文缓冲区。请切回章节正文编辑器后重试。',
         diagnostic: buildCopyableDiagnostic({
           fallbackMessage,
-          operation: '生成语料驱动插入草稿',
-          bridgeMethod: 'GenerateReferenceCorpusInsertionDraft',
+          operation: '生成语料蓝图候选',
+          bridgeMethod: 'GenerateReferenceCorpusBlueprintCandidates',
           detail: {
             novel_id: novelId,
             chapter_number: chapterNumber,
@@ -615,36 +742,211 @@ export default function ChapterReferencePanel({
       return
     }
 
-    const known = inputLines(knownFacts)
-    const forbidden = inputLines(forbiddenFacts)
-    const naturalGoal = goal.trim() || activeTitle || `第 ${chapterNumber} 章`
-    setCorpusDraftLoading(true)
+    setCorpusBlueprintLoading(true)
+    setCorpusBlueprintPath(activePath)
+    setCorpusBlueprintError(null)
+    setCorpusBlueprintActionMessage('')
     setCorpusDraftPath(activePath)
+    setCorpusDraftCandidates(null)
+    setSelectedCorpusDraftCandidateId('')
     setCorpusDraftError(null)
     setCorpusDraftActionMessage('')
     try {
-      const draft = await app.GenerateReferenceCorpusInsertionDraft({
-        natural_language_goal: naturalGoal,
-        chapter_context: {
-          novel_id: novelId,
-          chapter_number: chapterNumber,
-          current_draft_text: snapshot.currentDraftText,
-          insertion_offset: snapshot.insertionOffset,
-          previous_chapter_summary: known.length > 0 ? known.join('；') : null,
-          character_snapshots: inferPrimaryCharacterSnapshot(naturalGoal, snapshot.currentDraftText, forbidden),
-        },
-        scope: {
-          library_ids: defaultCorpusLibraryIds(novelId),
-          reuse_policies: ['verbatim_ok', 'adapted_only'],
-          include_anchor_ids: [],
-          exclude_anchor_ids: [],
-        },
-        slot_values: {},
+      const result = await app.GenerateReferenceCorpusBlueprintCandidates({
+        natural_language_goal: context.naturalGoal,
+        chapter_context: context.chapterContext,
+        scope: context.scope,
+        requested_count: 3,
+        feedback,
       })
-      setCorpusDraft(draft)
+      const firstCandidate = result.candidates[0] ?? null
+      setCorpusBlueprintCandidates(result)
+      setSelectedCorpusBlueprintId(firstCandidate?.blueprint.blueprint_id ?? '')
+      setCorpusBlueprintActionMessage(result.feedback_applied
+        ? `已按${feedbackLabel}重组蓝图：${result.feedback_summary || 'feedback_applied'}`
+        : `已生成 ${result.candidates.length} 份蓝图候选。`)
+    } catch (caught) {
+      const fallbackMessage = '蓝图候选生成失败'
+      setCorpusBlueprintCandidates(null)
+      setSelectedCorpusBlueprintId('')
+      setCorpusBlueprintError({
+        title: fallbackMessage,
+        message: diagnosticMessage(caught, fallbackMessage),
+        diagnostic: buildCopyableDiagnostic({
+          error: caught,
+          fallbackMessage,
+          operation: '生成语料蓝图候选',
+          bridgeMethod: 'GenerateReferenceCorpusBlueprintCandidates',
+          detail: {
+            novel_id: novelId,
+            chapter_number: chapterNumber,
+            chapter_path: activePath,
+            session_id: `project:${novelId}:default`,
+          },
+        }),
+      })
+    } finally {
+      setCorpusBlueprintLoading(false)
+    }
+  }, [activePath, app, buildCorpusWritingRequestContext, chapterNumber, hasValidChapter, novelId])
+
+  const selectCorpusBlueprintCandidate = useCallback((candidate: reference.CorpusBlueprintCandidate) => {
+    setSelectedCorpusBlueprintId(candidate.blueprint.blueprint_id)
+    setCorpusBlueprintActionMessage(`已选择蓝图 ${candidate.blueprint.blueprint_id}`)
+    setCorpusDraftPath(activePath)
+    setCorpusDraftCandidates(null)
+    setSelectedCorpusDraftCandidateId('')
+    setCorpusDraftError(null)
+    setCorpusDraftActionMessage('')
+  }, [activePath])
+
+  const regenerateCorpusBlueprintCandidatesFromSelection = useCallback(async () => {
+    if (!selectedCorpusBlueprintCandidate) {
+      const fallbackMessage = '蓝图反馈重组失败'
+      setCorpusBlueprintPath(activePath)
+      setCorpusBlueprintError({
+        title: fallbackMessage,
+        message: '当前没有可反馈的蓝图候选。',
+        diagnostic: buildCopyableDiagnostic({
+          fallbackMessage,
+          operation: '反馈重组语料蓝图候选',
+          bridgeMethod: 'GenerateReferenceCorpusBlueprintCandidates',
+          detail: {
+            novel_id: novelId,
+            chapter_number: chapterNumber,
+            chapter_path: activePath,
+          },
+        }),
+      })
+      return
+    }
+
+    const rejectedNodeIds = Array.from(new Set(
+      selectedCorpusBlueprintCandidate.blueprint.beats
+        .flatMap(beat => beat.node_ids)
+        .filter(Boolean),
+    ))
+    const avoidLibraryIds = Array.from(new Set(
+      selectedCorpusBlueprintCandidate.source_distribution
+        .map(source => source.library_id)
+        .filter(Boolean),
+    ))
+    const avoidAnchorIds = Array.from(new Set(
+      selectedCorpusBlueprintCandidate.source_distribution
+        .map(source => source.anchor_id)
+        .filter(anchorId => Number.isFinite(anchorId)),
+    ))
+
+    await generateCorpusBlueprintCandidates({
+      rejected_blueprint_ids: [selectedCorpusBlueprintCandidate.blueprint.blueprint_id],
+      rejected_node_ids: rejectedNodeIds,
+      avoid_library_ids: avoidLibraryIds,
+      avoid_anchor_ids: avoidAnchorIds,
+      problem_tags: ['source_repetition'],
+      notes: '上一轮蓝图不合适，请换一组来源和节奏。',
+    })
+  }, [activePath, chapterNumber, generateCorpusBlueprintCandidates, novelId, selectedCorpusBlueprintCandidate])
+
+  const regenerateCorpusBlueprintCandidatesFromDraftAction = useCallback(async (candidate: reference.CorpusInsertionDraftCandidate) => {
+    const nextAction = candidate.next_action
+    if (!nextAction || nextAction.action !== 'regenerate_blueprint') {
+      const fallbackMessage = '正文候选诊断重组失败'
+      setCorpusBlueprintPath(activePath)
+      setCorpusBlueprintError({
+        title: fallbackMessage,
+        message: '当前正文候选没有可执行的蓝图重组建议。',
+        diagnostic: buildCopyableDiagnostic({
+          fallbackMessage,
+          operation: '按正文候选诊断重组语料蓝图候选',
+          bridgeMethod: 'GenerateReferenceCorpusBlueprintCandidates',
+          detail: {
+            novel_id: novelId,
+            chapter_number: chapterNumber,
+            chapter_path: activePath,
+            candidate_id: candidate.candidate_id,
+            next_action: nextAction?.action ?? null,
+          },
+        }),
+      })
+      return
+    }
+
+    await generateCorpusBlueprintCandidates(nextAction.feedback, '正文候选诊断')
+  }, [activePath, chapterNumber, generateCorpusBlueprintCandidates, novelId])
+
+  const generateCorpusDraft = useCallback(async () => {
+    if (!activePath || !hasValidChapter) return
+    if (!selectedCorpusBlueprintCandidate) {
+      const fallbackMessage = '语料草稿生成失败'
+      setCorpusDraftPath(activePath)
+      setCorpusDraftCandidates(null)
+      setSelectedCorpusDraftCandidateId('')
+      setCorpusDraftActionMessage('')
+      setCorpusDraftError({
+        title: fallbackMessage,
+        message: '请先生成并选择一份蓝图候选。',
+        diagnostic: buildCopyableDiagnostic({
+          fallbackMessage,
+          operation: '生成语料驱动插入草稿',
+          bridgeMethod: 'GenerateReferenceCorpusInsertionDraftCandidates',
+          detail: {
+            novel_id: novelId,
+            chapter_number: chapterNumber,
+            chapter_path: activePath,
+          },
+        }),
+      })
+      return
+    }
+
+    const context = buildCorpusWritingRequestContext()
+    if (!context) {
+      const fallbackMessage = '语料草稿生成失败'
+      setCorpusDraftPath(activePath)
+      setCorpusDraftCandidates(null)
+      setSelectedCorpusDraftCandidateId('')
+      setCorpusDraftActionMessage('')
+      setCorpusDraftError({
+        title: fallbackMessage,
+        message: '无法读取当前正文缓冲区。请切回章节正文编辑器后重试。',
+        diagnostic: buildCopyableDiagnostic({
+          fallbackMessage,
+          operation: '生成语料驱动插入草稿',
+          bridgeMethod: 'GenerateReferenceCorpusInsertionDraftCandidates',
+          detail: {
+            novel_id: novelId,
+            chapter_number: chapterNumber,
+            chapter_path: activePath,
+          },
+        }),
+      })
+      return
+    }
+
+    setCorpusDraftLoading(true)
+    setCorpusDraftPath(activePath)
+    setCorpusDraftCandidates(null)
+    setSelectedCorpusDraftCandidateId('')
+    setCorpusDraftError(null)
+    setCorpusDraftActionMessage('')
+    try {
+      const result = await app.GenerateReferenceCorpusInsertionDraftCandidates({
+        natural_language_goal: context.naturalGoal,
+        chapter_context: context.chapterContext,
+        scope: context.scope,
+        slot_values: {},
+        selected_blueprint: selectedCorpusBlueprintCandidate.blueprint,
+        requested_count: 3,
+      })
+      setCorpusDraftCandidates(result)
+      setSelectedCorpusDraftCandidateId(result.candidates[0]?.candidate_id ?? '')
+      setCorpusDraftActionMessage(result.candidates.length > 0
+        ? `已生成 ${result.candidates.length} 份正文候选。`
+        : '未生成可用正文候选。')
     } catch (caught) {
       const fallbackMessage = '语料草稿生成失败'
-      setCorpusDraft(null)
+      setCorpusDraftCandidates(null)
+      setSelectedCorpusDraftCandidateId('')
       setCorpusDraftError({
         title: fallbackMessage,
         message: diagnosticMessage(caught, fallbackMessage),
@@ -652,22 +954,27 @@ export default function ChapterReferencePanel({
           error: caught,
           fallbackMessage,
           operation: '生成语料驱动插入草稿',
-          bridgeMethod: 'GenerateReferenceCorpusInsertionDraft',
+          bridgeMethod: 'GenerateReferenceCorpusInsertionDraftCandidates',
           detail: {
             novel_id: novelId,
             chapter_number: chapterNumber,
             chapter_path: activePath,
-            library_ids: defaultCorpusLibraryIds(novelId),
+            session_id: `project:${novelId}:default`,
           },
         }),
       })
     } finally {
       setCorpusDraftLoading(false)
     }
-  }, [activePath, activeTitle, app, chapterNumber, forbiddenFacts, getEditorSnapshot, goal, hasValidChapter, knownFacts, novelId])
+  }, [activePath, app, buildCorpusWritingRequestContext, chapterNumber, hasValidChapter, novelId, selectedCorpusBlueprintCandidate])
 
   const applyCorpusDraft = useCallback(() => {
     if (!visibleCorpusDraft) return
+    if (!corpusDraftCanApply(visibleCorpusDraft)) {
+      setCorpusDraftActionMessage('草稿审计未通过，不能应用到编辑器。')
+      return
+    }
+
     const applied = onApplyChapterText(visibleCorpusDraft.chapter_text_after_insertion)
     setCorpusDraftActionMessage(applied
       ? '已应用到当前章节编辑器缓冲区。'
@@ -698,6 +1005,11 @@ export default function ChapterReferencePanel({
       })
     }
   }, [activePath, chapterNumber, novelId, visibleCorpusDraft])
+
+  const selectCorpusDraftCandidate = useCallback((candidate: reference.CorpusInsertionDraftCandidate) => {
+    setSelectedCorpusDraftCandidateId(candidate.candidate_id)
+    setCorpusDraftActionMessage(`已选择正文候选 ${candidate.candidate_id}`)
+  }, [])
 
   return (
     <aside
@@ -740,20 +1052,84 @@ export default function ChapterReferencePanel({
         </section>
 
         <section data-testid="chapter-corpus-insertion" className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-semibold text-foreground">语料驱动草稿</h3>
-            <button
-              type="button"
-              onClick={() => {
-                void generateCorpusDraft()
-              }}
-              disabled={!hasValidChapter || corpusDraftLoading}
-              className="inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {corpusDraftLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              生成插入草稿
-            </button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold text-foreground">语料驱动草稿</h3>
+              <button
+                type="button"
+                data-testid="chapter-corpus-blueprint-generate-button"
+                onClick={() => {
+                  void generateCorpusBlueprintCandidates()
+                }}
+                disabled={!hasValidChapter || corpusBlueprintLoading || corpusDraftLoading}
+                className="inline-flex shrink-0 items-center gap-1 rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {corpusBlueprintLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                生成蓝图候选
+              </button>
+            </div>
+
+            <div className="rounded border border-border bg-background px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              按当前章节会话跨已启用语料库检索，先生成多份蓝图；选中满意蓝图后再生成可插入草稿。
+            </div>
           </div>
+
+          {visibleCorpusBlueprintError && (
+            <ErrorCallout
+              compact
+              title={visibleCorpusBlueprintError.title}
+              message={visibleCorpusBlueprintError.message}
+              diagnostic={visibleCorpusBlueprintError.diagnostic}
+              className="rounded-md"
+              onRetry={() => {
+                void generateCorpusBlueprintCandidates()
+              }}
+              retryLabel="重试蓝图候选"
+              onClose={() => setCorpusBlueprintError(null)}
+            />
+          )}
+
+          {visibleCorpusBlueprintActionMessage && (
+            <p className="rounded bg-secondary/70 px-2 py-1 text-[11px] text-muted-foreground">{visibleCorpusBlueprintActionMessage}</p>
+          )}
+
+          {visibleCorpusBlueprintCandidates?.feedback_applied && (
+            <p
+              data-testid="chapter-corpus-blueprint-feedback-summary"
+              className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-300"
+            >
+              反馈已应用：{visibleCorpusBlueprintCandidates.feedback_summary || 'feedback_applied'}
+            </p>
+          )}
+
+          {visibleCorpusBlueprintCandidates ? (
+            <CorpusBlueprintCandidateList
+              result={visibleCorpusBlueprintCandidates}
+              selectedCandidate={selectedCorpusBlueprintCandidate}
+              loading={corpusBlueprintLoading}
+              onSelect={selectCorpusBlueprintCandidate}
+              onRegenerate={() => {
+                void regenerateCorpusBlueprintCandidatesFromSelection()
+              }}
+            />
+          ) : !corpusBlueprintLoading && !visibleCorpusBlueprintError ? (
+            <div className="rounded border border-dashed border-border bg-background px-3 py-3 text-xs leading-relaxed text-muted-foreground">
+              输入章节目标后生成多份参考剧本蓝图。这里不会处理素材库，只消费当前章节会话可访问的公共语料库。
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            data-testid="chapter-corpus-draft-generate-button"
+            onClick={() => {
+              void generateCorpusDraft()
+            }}
+            disabled={!hasValidChapter || corpusDraftLoading || corpusBlueprintLoading || !selectedCorpusBlueprintCandidate}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
+          >
+            {corpusDraftLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CornerDownLeft className="h-3.5 w-3.5" />}
+            按选中蓝图生成草稿
+          </button>
 
           {visibleCorpusDraftError && (
             <ErrorCallout
@@ -774,18 +1150,36 @@ export default function ChapterReferencePanel({
             <p className="rounded bg-secondary/70 px-2 py-1 text-[11px] text-muted-foreground">{visibleCorpusDraftActionMessage}</p>
           )}
 
-          {visibleCorpusDraft ? (
-            <CorpusInsertionDraftPreview
-              draft={visibleCorpusDraft}
-              insertionDisabled={insertionDisabled}
-              onApply={applyCorpusDraft}
-              onCopy={() => {
-                void copyCorpusDraft()
-              }}
-            />
+          {visibleCorpusDraftCandidates ? (
+            <div className="space-y-2">
+              <CorpusInsertionDraftCandidateList
+                result={visibleCorpusDraftCandidates}
+                selectedCandidate={selectedCorpusDraftCandidate}
+                onSelect={selectCorpusDraftCandidate}
+                onNextAction={regenerateCorpusBlueprintCandidatesFromDraftAction}
+              />
+              {visibleCorpusDraft && (
+                <>
+                  <CorpusInsertionDraftPreview
+                    draft={visibleCorpusDraft}
+                    insertionDisabled={insertionDisabled}
+                    onApply={applyCorpusDraft}
+                    onCopy={() => {
+                      void copyCorpusDraft()
+                    }}
+                  />
+                  <CorpusAnalysisPanel
+                    novelId={novelId}
+                    draft={visibleCorpusDraft}
+                    chapterNumber={chapterNumber}
+                    chapterPath={activePath}
+                  />
+                </>
+              )}
+            </div>
           ) : !corpusDraftLoading && !visibleCorpusDraftError ? (
             <div className="rounded border border-dashed border-border bg-background px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-              输入章节目标后可直接生成一份蓝图和可插入草稿；默认检索当前项目库与工作区公用语料。
+              输入章节目标后可生成多份可比较正文候选；默认按当前章节会话检索已启用语料库与工作区公用语料。
             </div>
           ) : null}
         </section>
@@ -1050,6 +1444,602 @@ export default function ChapterReferencePanel({
   )
 }
 
+type CorpusAnalysisTarget = {
+  key: string
+  label: string
+  anchorId: number
+  nodeId: string
+  textHash: string
+}
+
+function CorpusAnalysisPanel({
+  novelId,
+  draft,
+  chapterNumber,
+  chapterPath,
+}: {
+  novelId: number
+  draft: reference.CorpusInsertionDraft
+  chapterNumber: number
+  chapterPath: string
+}) {
+  const app = useApp()
+  const requestRef = useRef(0)
+  const targets = useMemo<CorpusAnalysisTarget[]>(() => {
+    const seen = new Set<string>()
+    return draft.pieces
+      .map((piece, index) => ({
+        key: `${piece.anchor_id}:${piece.node_id}`,
+        label: `${index + 1}. ${piece.node_id}`,
+        anchorId: piece.anchor_id,
+        nodeId: piece.node_id,
+        textHash: piece.text_hash,
+      }))
+      .filter(target => {
+        if (!target.nodeId || seen.has(target.key)) return false
+        seen.add(target.key)
+        return true
+      })
+  }, [draft.pieces])
+  const [selectedKey, setSelectedKey] = useState('')
+  const selectedTarget = targets.find(target => target.key === selectedKey) ?? targets[0] ?? null
+  const [observations, setObservations] = useState<reference.CorpusFeatureObservation[]>([])
+  const [specimens, setSpecimens] = useState<reference.CorpusTechniqueSpecimen[]>([])
+  const [totals, setTotals] = useState({ observations: 0, specimens: 0 })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<ReferenceErrorState | null>(null)
+
+  const loadAnalysis = useCallback(async (target: CorpusAnalysisTarget) => {
+    const requestId = requestRef.current + 1
+    requestRef.current = requestId
+    setLoading(true)
+    setError(null)
+    try {
+      const [observationPage, specimenPage] = await Promise.all([
+        app.ListReferenceCorpusFeatureObservations({
+          novel_id: novelId,
+          anchor_id: target.anchorId,
+          node_id: target.nodeId,
+          page_request: {
+            cursor: null,
+            page_size: 8,
+            sort_by: 'feature_family',
+            sort_dir: 'asc',
+            filters: { validity_state: 'active' },
+          },
+        }),
+        app.ListReferenceCorpusTechniqueSpecimens({
+          novel_id: novelId,
+          anchor_id: target.anchorId,
+          source_node_id: target.nodeId,
+          page_request: {
+            cursor: null,
+            page_size: 5,
+            sort_by: 'confidence',
+            sort_dir: 'desc',
+            filters: { validity_state: 'active' },
+          },
+        }),
+      ])
+      if (requestRef.current !== requestId) return
+      setObservations(observationPage.items ?? [])
+      setSpecimens(specimenPage.items ?? [])
+      setTotals({
+        observations: observationPage.total_estimate ?? observationPage.total ?? observationPage.items.length,
+        specimens: specimenPage.total_estimate ?? specimenPage.total ?? specimenPage.items.length,
+      })
+    } catch (caught) {
+      if (requestRef.current !== requestId) return
+      const fallbackMessage = '节点分析加载失败'
+      setObservations([])
+      setSpecimens([])
+      setTotals({ observations: 0, specimens: 0 })
+      setError({
+        title: fallbackMessage,
+        message: diagnosticMessage(caught, fallbackMessage),
+        diagnostic: buildCopyableDiagnostic({
+          error: caught,
+          fallbackMessage,
+          operation: '加载当前章节语料节点分析',
+          bridgeMethod: 'ListReferenceCorpusFeatureObservations/ListReferenceCorpusTechniqueSpecimens',
+          detail: {
+            novel_id: novelId,
+            chapter_number: chapterNumber,
+            chapter_path: chapterPath,
+            anchor_id: target.anchorId,
+            node_id: target.nodeId,
+          },
+        }),
+      })
+    } finally {
+      if (requestRef.current === requestId) {
+        setLoading(false)
+      }
+    }
+  }, [app, chapterNumber, chapterPath, novelId])
+
+  useEffect(() => {
+    if (!selectedTarget) return
+    const timer = window.setTimeout(() => {
+      void loadAnalysis(selectedTarget)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [loadAnalysis, selectedTarget])
+
+  if (targets.length === 0 || !selectedTarget) {
+    return null
+  }
+
+  return (
+    <section data-testid="chapter-corpus-analysis-panel" className="rounded border border-border bg-background text-xs">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-2">
+        <div className="min-w-0">
+          <h3 className="truncate text-xs font-semibold text-foreground">节点分析 / 技法标本</h3>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            {selectedTarget.nodeId} · {selectedTarget.textHash}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            void loadAnalysis(selectedTarget)
+          }}
+          disabled={loading}
+          className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSearch className="h-3.5 w-3.5" />}
+          刷新
+        </button>
+      </div>
+
+      {targets.length > 1 && (
+        <div className="flex gap-1 overflow-x-auto border-b border-border px-2.5 py-2">
+          {targets.map(target => (
+            <button
+              key={target.key}
+              type="button"
+              onClick={() => setSelectedKey(target.key)}
+              className={`max-w-[150px] shrink-0 truncate rounded px-2 py-1 text-[11px] ${target.key === selectedTarget.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
+              title={target.nodeId}
+            >
+              {target.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-3 px-2.5 py-2">
+        {error && (
+          <ErrorCallout
+            compact
+            title={error.title}
+            message={error.message}
+            diagnostic={error.diagnostic}
+            className="rounded-md"
+            onRetry={() => {
+              void loadAnalysis(selectedTarget)
+            }}
+            retryLabel="重试加载分析"
+            onClose={() => setError(null)}
+          />
+        )}
+
+        {loading && !error ? (
+          <div className="rounded border border-border bg-card px-3 py-3 text-center text-[11px] text-muted-foreground">
+            正在加载分析结果...
+          </div>
+        ) : null}
+
+        {!loading && !error && (
+          <>
+            <div>
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">观察维度</span>
+                <span>{totals.observations}</span>
+              </div>
+              {observations.length > 0 ? (
+                <div className="mt-1 divide-y divide-border rounded border border-border">
+                  {observations.map(observation => (
+                    <div key={observation.observation_id} className="space-y-1 px-2 py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium text-foreground">
+                          {observation.feature_family}.{observation.feature_key}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{formatConfidence(observation.confidence)}</span>
+                      </div>
+                      {observation.value_preview && (
+                        <p className="leading-relaxed text-foreground">{observation.value_preview}</p>
+                      )}
+                      {(observation.evidence_preview || observation.explanation) && (
+                        <p className="leading-relaxed text-muted-foreground">
+                          {[observation.evidence_preview, observation.explanation].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 rounded border border-dashed border-border px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                  当前节点暂无观察结果。
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">技法标本</span>
+                <span>{totals.specimens}</span>
+              </div>
+              {specimens.length > 0 ? (
+                <div className="mt-1 divide-y divide-border rounded border border-border">
+                  {specimens.map(specimen => (
+                    <div key={specimen.specimen_id} className="space-y-1.5 px-2 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium text-foreground">{specimen.technique_family}</span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{formatConfidence(specimen.confidence)}</span>
+                      </div>
+                      <p className="leading-relaxed text-foreground">{specimen.technique_abstract}</p>
+                      <p className="rounded bg-secondary/60 px-2 py-1 leading-relaxed text-muted-foreground">{specimen.transfer_template}</p>
+                      {specimen.why_it_works.contributing_factors.slice(0, 2).map(factor => (
+                        <div key={`${specimen.specimen_id}:${factor.factor}`} className="space-y-1">
+                          <p className="leading-relaxed text-muted-foreground">{factor.factor} · {factor.explanation}</p>
+                          {factor.evidence.length > 0 && (
+                            <p className="break-words text-[11px] leading-relaxed text-muted-foreground">
+                              {factor.evidence.map(item => `${item.feature_family}.${item.feature_key}`).join(' / ')}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {!specimen.why_it_works.trace_complete && (
+                        <p className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800 dark:text-amber-200">
+                          证据链不完整
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 rounded border border-dashed border-border px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                  当前节点暂无技法标本。
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CorpusBlueprintCandidateList({
+  result,
+  selectedCandidate,
+  loading,
+  onSelect,
+  onRegenerate,
+}: {
+  result: reference.CorpusBlueprintCandidates
+  selectedCandidate: reference.CorpusBlueprintCandidate | null
+  loading: boolean
+  onSelect: (candidate: reference.CorpusBlueprintCandidate) => void
+  onRegenerate: () => void
+}) {
+  const selectedId = selectedCandidate?.blueprint.blueprint_id ?? ''
+  const candidates = result.candidates ?? []
+
+  return (
+    <section data-testid="chapter-corpus-blueprint-candidates" className="rounded border border-border bg-background text-xs">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-2">
+        <div className="min-w-0">
+          <h4 className="truncate font-semibold text-foreground">蓝图候选</h4>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            {result.query_context.scene_type || 'story_context'} · {result.query_context.pacing_target || 'auto'} · {candidates.length} 份
+          </p>
+        </div>
+        <button
+          type="button"
+          data-testid="chapter-corpus-blueprint-feedback-button"
+          onClick={onRegenerate}
+          disabled={!selectedCandidate || loading}
+          className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          反馈重组
+        </button>
+      </div>
+
+      {candidates.length > 0 ? (
+        <div className="divide-y divide-border">
+          {candidates.map((candidate, index) => {
+            const blueprint = candidate.blueprint
+            const isSelected = blueprint.blueprint_id === selectedId
+            const feedbackReason = candidate.feedback_reason
+              ? formatCorpusBlueprintFeedbackReason(candidate.feedback_reason)
+              : ''
+            const gapReasons = candidate.gap_reasons
+              .map(formatCorpusBlueprintDiagnosticReason)
+              .filter(Boolean)
+            const gapPositions = (candidate.gap_positions ?? [])
+              .map(position => ({
+                ...position,
+                gapReasonLabels: (position.gap_reasons ?? [])
+                  .map(formatCorpusBlueprintDiagnosticReason)
+                  .filter(Boolean),
+                missingLabels: (position.missing_dimensions ?? [])
+                  .map(formatCorpusBlueprintDimension)
+                  .filter(Boolean),
+                coveredLabels: (position.covered_dimensions ?? [])
+                  .map(formatCorpusBlueprintDimension)
+                  .filter(Boolean),
+              }))
+              .filter(position => position.missingLabels.length > 0 || position.gapReasonLabels.length > 0)
+
+            return (
+              <article
+                key={blueprint.blueprint_id}
+                data-testid="chapter-corpus-blueprint-candidate-card"
+                className={`space-y-2 px-2.5 py-2 ${isSelected ? 'bg-primary/5' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium text-foreground">方案 {index + 1}</span>
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {blueprint.strategy || 'auto'}
+                      </span>
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        coverage {formatConfidence(candidate.coverage_score)}
+                      </span>
+                    </div>
+                    <p className="mt-1 break-all text-[11px] leading-relaxed text-muted-foreground">
+                      {blueprint.blueprint_id}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="chapter-corpus-blueprint-candidate-select"
+                    onClick={() => onSelect(candidate)}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {isSelected ? <Check className="h-3.5 w-3.5" /> : null}
+                    {isSelected ? '已选' : '选择'}
+                  </button>
+                </div>
+
+                {candidate.source_distribution.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-foreground">来源分布</p>
+                    <div className="flex flex-wrap gap-1">
+                      {candidate.source_distribution.map((source, sourceIndex) => (
+                        <span
+                          key={`${blueprint.blueprint_id}:source:${source.library_id}:${source.anchor_id}:${sourceIndex}`}
+                          className="max-w-full break-all rounded bg-secondary/70 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                        >
+                          {source.library_id} / anchor {source.anchor_id} / nodes {source.node_count}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">节拍</p>
+                  {blueprint.beats.map(beat => (
+                    <p key={beat.beat_id} className="break-all text-[11px] leading-relaxed text-muted-foreground">
+                      {beat.beat_index + 1}. {beat.narrative_function || 'function'} · {beat.role_in_beat || 'role'} · {beat.node_ids.join(', ')}
+                    </p>
+                  ))}
+                </div>
+
+                {(gapReasons.length > 0 || gapPositions.length > 0 || feedbackReason) && (
+                  <div
+                    data-testid="chapter-corpus-blueprint-diagnostics"
+                    className="space-y-1 rounded border border-border bg-card px-2 py-1.5 text-[11px] leading-relaxed text-muted-foreground"
+                  >
+                    {feedbackReason && (
+                      <p data-testid="chapter-corpus-blueprint-feedback-reason" className="break-words">
+                        反馈：{feedbackReason}
+                      </p>
+                    )}
+                    {gapReasons.length > 0 && (
+                      <p data-testid="chapter-corpus-blueprint-gap-reasons" className="break-words">
+                        缺口：{gapReasons.join('；')}
+                      </p>
+                    )}
+                    {gapPositions.length > 0 && (
+                      <div data-testid="chapter-corpus-blueprint-gap-positions" className="space-y-1">
+                        {gapPositions.map(position => (
+                          <p key={`${blueprint.blueprint_id}:gap:${position.beat_id}`} className="break-words">
+                            第 {position.beat_index + 1} 拍缺 {position.missingLabels.join('、')}
+                            {position.coveredLabels.length > 0 ? ` · 已有 ${position.coveredLabels.join('、')}` : ''}
+                            {position.node_ids.length > 0 ? ` · ${position.node_ids.join(', ')}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="px-2.5 py-3 text-xs leading-relaxed text-muted-foreground">
+          当前没有可用蓝图候选。请调整章节目标或检查当前会话启用的语料库。
+        </div>
+      )}
+
+      {selectedCandidate && (
+        <div data-testid="chapter-corpus-blueprint-selected" className="border-t border-border px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          已选：{selectedCandidate.blueprint.blueprint_id} · beats={selectedCandidate.blueprint.beats.length}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function CorpusInsertionDraftCandidateList({
+  result,
+  selectedCandidate,
+  onSelect,
+  onNextAction,
+}: {
+  result: reference.CorpusInsertionDraftCandidates
+  selectedCandidate: reference.CorpusInsertionDraftCandidate | null
+  onSelect: (candidate: reference.CorpusInsertionDraftCandidate) => void
+  onNextAction?: (candidate: reference.CorpusInsertionDraftCandidate) => void
+}) {
+  const selectedId = selectedCandidate?.candidate_id ?? ''
+  const candidates = result.candidates ?? []
+
+  return (
+    <section data-testid="chapter-corpus-draft-candidates" className="rounded border border-border bg-background text-xs">
+      <div className="border-b border-border px-2.5 py-2">
+        <h4 className="truncate font-semibold text-foreground">正文候选</h4>
+        <p className="mt-0.5 break-all text-[11px] leading-relaxed text-muted-foreground">
+          selected {result.selected_blueprint.blueprint_id} · {candidates.length} 份
+        </p>
+      </div>
+
+      {candidates.length > 0 ? (
+        <div className="divide-y divide-border">
+          {candidates.map((candidate, index) => {
+            const isSelected = candidate.candidate_id === selectedId
+            const draft = candidate.draft
+            const canInsert = corpusDraftCanApply(draft)
+            const transitionIssueMessages = corpusDraftTransitionIssueMessages(draft)
+            const nextAction = candidate.next_action?.action === 'regenerate_blueprint'
+              ? candidate.next_action
+              : null
+            const statusLabel = canInsert
+              ? '可插入'
+              : transitionIssueMessages.length > 0 ? '过渡审计阻断' : draft.audit.passed ? draft.gate.status || '闸门阻断' : '审计阻断'
+
+            return (
+              <article
+                key={candidate.candidate_id}
+                data-testid="chapter-corpus-draft-candidate-card"
+                className={`space-y-2 px-2.5 py-2 ${isSelected ? 'bg-primary/5' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium text-foreground">正文 {index + 1}</span>
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {formatCorpusDraftStrategy(candidate.strategy || draft.blueprint.strategy || 'source_variant')}
+                      </span>
+                      <span className={`rounded px-1.5 py-0.5 text-[11px] ${canInsert ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-800 dark:text-amber-200'}`}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                    <p className="mt-1 break-all text-[11px] leading-relaxed text-muted-foreground">
+                      {candidate.candidate_id}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="chapter-corpus-draft-candidate-select"
+                    onClick={() => onSelect(candidate)}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {isSelected ? <Check className="h-3.5 w-3.5" /> : null}
+                    {isSelected ? '已选' : '选择'}
+                  </button>
+                </div>
+
+                <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                  {candidate.explanation || '按选中蓝图复用语料节点生成。'}
+                </p>
+                <p className="line-clamp-2 text-[11px] leading-relaxed text-foreground">
+                  {draft.assembled_text || '未生成正文'}
+                </p>
+                {nextAction && onNextAction && (
+                  <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-900 dark:text-amber-100">
+                    <p className="break-all">
+                      {nextAction.message || '当前正文候选需要回到蓝图重组。'}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="break-all text-muted-foreground">{nextAction.reason_code}</span>
+                      <button
+                        type="button"
+                        data-testid="chapter-corpus-draft-next-action-button"
+                        onClick={() => onNextAction(candidate)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded bg-background px-2 py-1 text-[11px] font-medium text-foreground shadow-sm ring-1 ring-border hover:bg-secondary"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        回到蓝图重组
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  beats={draft.blueprint.beats.length} · pieces={draft.pieces.length} · transitions={(draft.transitions ?? []).length}
+                </p>
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="px-2.5 py-3 text-xs leading-relaxed text-muted-foreground">
+          当前没有可用正文候选。请调整章节目标或重新选择蓝图。
+        </div>
+      )}
+    </section>
+  )
+}
+
+function corpusDraftCanApply(draft: reference.CorpusInsertionDraft): boolean {
+  return draft.ready_for_insertion &&
+    draft.gate.passed &&
+    draft.audit.passed &&
+    corpusDraftTransitionIssueMessages(draft).length === 0
+}
+
+function corpusDraftTransitionIssueMessages(draft: reference.CorpusInsertionDraft): string[] {
+  const transitions = draft.transitions ?? []
+  if (transitions.length === 0) return []
+
+  const auditByTransitionId = new Map((draft.audit.transitions ?? []).map(transition => [transition.transition_id, transition]))
+  const messages: string[] = []
+  for (const transition of transitions) {
+    const audit = auditByTransitionId.get(transition.transition_id)
+    if (!audit) {
+      messages.push(`transition_audit_missing:${transition.transition_id}`)
+    } else {
+      if (!audit.passed) {
+        messages.push(`transition_blocked:${transition.transition_id}`)
+      }
+      for (const violation of audit.violations ?? []) {
+        messages.push(`${violation.code}:${violation.transition_id ?? transition.transition_id}`)
+      }
+    }
+
+    if (!transition.approved) {
+      messages.push(`transition_not_approved:${transition.transition_id}`)
+    }
+
+    if (transition.output_start < 0 ||
+      transition.output_end < transition.output_start ||
+      transition.output_end > draft.assembled_text.length ||
+      draft.assembled_text.slice(transition.output_start, transition.output_end) !== transition.text) {
+      messages.push(`transition_output_range_mismatch:${transition.transition_id}`)
+    }
+  }
+
+  return Array.from(new Set(messages))
+}
+
+function corpusDraftTransitionAfterPiece(
+  draft: reference.CorpusInsertionDraft,
+  piece: reference.CorpusInsertionPiece,
+  nextPiece: reference.CorpusInsertionPiece | undefined,
+): reference.CorpusInsertionTransition | null {
+  if (!nextPiece) return null
+  return (draft.transitions ?? []).find(transition =>
+    transition.after_piece_id === piece.piece_id &&
+    transition.before_piece_id === nextPiece.piece_id) ?? null
+}
+
 function CorpusInsertionDraftPreview({
   draft,
   insertionDisabled,
@@ -1061,8 +2051,18 @@ function CorpusInsertionDraftPreview({
   onApply: () => void
   onCopy: () => void
 }) {
-  const canApply = draft.ready_for_insertion && draft.gate.passed && !insertionDisabled
-  const gateLabel = draft.gate.passed ? '闸门通过' : draft.gate.status || '闸门阻断'
+  const transitionIssueMessages = corpusDraftTransitionIssueMessages(draft)
+  const draftCanApply = corpusDraftCanApply(draft)
+  const canApply = draftCanApply && !insertionDisabled
+  const gateLabel = draftCanApply
+    ? '闸门通过'
+    : transitionIssueMessages.length > 0 ? '过渡审计阻断' : draft.audit.passed ? draft.gate.status || '闸门阻断' : draft.audit.status || '审计阻断'
+  const blockingMessages = [
+    ...draft.gate.errors,
+    ...draft.audit.errors,
+    ...draft.audit.pieces.flatMap(piece => piece.violations.map(violation => `${violation.code}:${violation.node_id}`)),
+    ...transitionIssueMessages,
+  ]
 
   return (
     <article data-testid="chapter-corpus-draft-preview" className="space-y-2 rounded border border-border bg-background px-2.5 py-2 text-xs">
@@ -1078,11 +2078,25 @@ function CorpusInsertionDraftPreview({
         className="space-y-1 rounded border border-border bg-card px-2 py-2 leading-relaxed text-foreground"
       >
         {draft.pieces.length > 0 ? (
-          draft.pieces.map(piece => (
-            <p key={piece.piece_id} className="whitespace-pre-wrap">
-              {renderCorpusPieceText(piece.output_text, piece.slot_replacements)}
-            </p>
-          ))
+          draft.pieces.map((piece, index) => {
+            const transition = corpusDraftTransitionAfterPiece(draft, piece, draft.pieces[index + 1])
+            return (
+              <Fragment key={piece.piece_id}>
+                <p className="whitespace-pre-wrap">
+                  {renderCorpusPieceText(piece)}
+                </p>
+                {transition && transition.text.trim().length > 0 && (
+                  <p
+                    data-testid="chapter-corpus-draft-transition"
+                    className="whitespace-pre-wrap rounded border border-dashed border-border bg-secondary/40 px-2 py-1 text-[11px] text-muted-foreground"
+                    title={`${transition.strategy}: ${transition.reason}`}
+                  >
+                    {renderCorpusTransitionText(transition)}
+                  </p>
+                )}
+              </Fragment>
+            )
+          })
         ) : (
           <p className="whitespace-pre-wrap">{draft.assembled_text || '未生成可插入文本'}</p>
         )}
@@ -1109,16 +2123,18 @@ function CorpusInsertionDraftPreview({
         </button>
       </div>
 
-      {!draft.ready_for_insertion && (
+      {!draftCanApply && (
         <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
-          {draft.gate.errors.length > 0
-            ? draft.gate.errors.join('；')
+          {blockingMessages.length > 0
+            ? Array.from(new Set(blockingMessages)).join('；')
             : '当前草稿未通过授权、相似度或保留文本校验，不能写入编辑器。'}
         </div>
       )}
 
       <div className="space-y-1 text-[11px] leading-relaxed text-muted-foreground">
-        <p>蓝图：{draft.blueprint.blueprint_id} · beats={draft.blueprint.beats.length} · pieces={draft.pieces.length}</p>
+        <p>
+          蓝图：{draft.blueprint.blueprint_id} · beats={draft.blueprint.beats.length} · pieces={draft.pieces.length} · locked={draft.pieces.reduce((total, piece) => total + piece.locked_spans.length, 0)} · transitions={(draft.transitions ?? []).length}
+        </p>
         {draft.blueprint.beats.map(beat => (
           <p key={beat.beat_id} className="break-all">
             {beat.beat_index + 1}. {beat.narrative_function} · {beat.role_in_beat} · {beat.node_ids.join(', ')}
@@ -1142,6 +2158,24 @@ function CorpusInsertionDraftPreview({
             ))}
           </div>
         )}
+        {draft.audit.pieces.length > 0 && (
+          <div className="rounded border border-border bg-card px-2 py-1.5">
+            {draft.audit.pieces.map(piece => (
+              <p key={piece.piece_id} className="break-all">
+                {piece.node_id} · preserved {piece.preserved_span_count} · mismatch {piece.mismatched_span_count}
+              </p>
+            ))}
+          </div>
+        )}
+        {(draft.audit.transitions ?? []).length > 0 && (
+          <div className="rounded border border-border bg-card px-2 py-1.5">
+            {draft.audit.transitions.map(transition => (
+              <p key={transition.transition_id} className="break-all">
+                {transition.decision} · {transition.after_piece_id}{' -> '}{transition.before_piece_id} · {transition.passed ? 'passed' : 'blocked'}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
 
       {insertionDisabled && (
@@ -1153,54 +2187,108 @@ function CorpusInsertionDraftPreview({
   )
 }
 
-function renderCorpusPieceText(
-  text: string,
-  replacements: reference.CorpusSlotReplacement[],
-): ReactNode {
-  if (replacements.length === 0) {
-    return <span data-testid="chapter-corpus-diff-preserved">{text}</span>
-  }
-
-  const parts: ReactNode[] = []
-  let cursor = 0
-  const spans = replacements
+function renderCorpusPieceText(piece: reference.CorpusInsertionPiece): ReactNode {
+  const text = piece.output_text
+  const replacements = piece.slot_replacements
     .filter(replacement =>
       replacement.output_start >= 0 &&
       replacement.output_end > replacement.output_start &&
       replacement.output_end <= text.length)
-    .sort((left, right) => left.output_start - right.output_start)
+  const lockedSpans = piece.locked_spans
+    .filter(span =>
+      span.output_start >= 0 &&
+      span.output_end > span.output_start &&
+      span.output_end <= text.length)
+  const preservedSpans = piece.preserved_spans
+    .filter(span =>
+      span.output_start >= 0 &&
+      span.output_end > span.output_start &&
+      span.output_end <= text.length)
 
-  spans.forEach((replacement, index) => {
-    if (replacement.output_start > cursor) {
-      parts.push(
-        <span key={`preserved-${index}`} data-testid="chapter-corpus-diff-preserved">
-          {text.slice(cursor, replacement.output_start)}
-        </span>,
-      )
-    }
+  if (replacements.length === 0 && lockedSpans.length === 0 && preservedSpans.length === 0) {
+    return <span data-testid="chapter-corpus-diff-preserved">{text}</span>
+  }
 
-    parts.push(
-      <mark
-        key={`replacement-${replacement.output_start}-${index}`}
-        data-testid="chapter-corpus-diff-slot-replacement"
-        className="rounded bg-amber-200 px-0.5 text-amber-950 dark:bg-amber-400/30 dark:text-amber-100"
-        title={`${replacement.source_value} -> ${replacement.replacement_value}`}
-      >
-        {text.slice(replacement.output_start, replacement.output_end)}
-      </mark>,
-    )
-    cursor = replacement.output_end
+  const boundaries = new Set<number>([0, text.length])
+  replacements.forEach(replacement => {
+    boundaries.add(replacement.output_start)
+    boundaries.add(replacement.output_end)
+  })
+  lockedSpans.forEach(span => {
+    boundaries.add(span.output_start)
+    boundaries.add(span.output_end)
+  })
+  preservedSpans.forEach(span => {
+    boundaries.add(span.output_start)
+    boundaries.add(span.output_end)
   })
 
-  if (cursor < text.length) {
+  const parts: ReactNode[] = []
+  const sortedBoundaries = Array.from(boundaries)
+    .filter(value => value >= 0 && value <= text.length)
+    .sort((left, right) => left - right)
+
+  for (let index = 0; index + 1 < sortedBoundaries.length; index += 1) {
+    const start = sortedBoundaries[index]
+    const end = sortedBoundaries[index + 1]
+    if (end <= start) {
+      continue
+    }
+
+    const replacement = replacements.find(item => start >= item.output_start && end <= item.output_end)
+    if (replacement) {
+      parts.push(
+        <mark
+          key={`replacement-${start}-${index}`}
+          data-testid="chapter-corpus-diff-slot-replacement"
+          className="rounded bg-amber-200 px-0.5 text-amber-950 dark:bg-amber-400/30 dark:text-amber-100"
+          title={`${replacement.source_value} -> ${replacement.replacement_value}`}
+        >
+          {text.slice(start, end)}
+        </mark>,
+      )
+      continue
+    }
+
+    const locked = lockedSpans.find(span => start >= span.output_start && end <= span.output_end)
+    if (locked) {
+      parts.push(
+        <mark
+          key={`locked-${start}-${index}`}
+          data-testid="chapter-corpus-diff-locked-span"
+          className="rounded bg-sky-100 px-0.5 text-sky-950 ring-1 ring-sky-300 dark:bg-sky-400/20 dark:text-sky-100 dark:ring-sky-400/40"
+          title={locked.reason}
+        >
+          {text.slice(start, end)}
+        </mark>,
+      )
+      continue
+    }
+
+    const preserved = preservedSpans.find(span => start >= span.output_start && end <= span.output_end)
     parts.push(
-      <span key="preserved-tail" data-testid="chapter-corpus-diff-preserved">
-        {text.slice(cursor)}
+      <span
+        key={`preserved-span-${start}-${index}`}
+        data-testid={preserved?.matches === false ? 'chapter-corpus-diff-preserved-mismatch' : 'chapter-corpus-diff-preserved'}
+        className={preserved?.matches === false ? 'rounded bg-destructive/10 px-0.5 text-destructive' : undefined}
+      >
+        {text.slice(start, end)}
       </span>,
     )
   }
 
   return parts
+}
+
+function renderCorpusTransitionText(transition: reference.CorpusInsertionTransition): ReactNode {
+  return (
+    <span>
+      <span className="mr-1 rounded bg-secondary px-1 py-0.5 text-[10px] uppercase tracking-normal">
+        {transition.strategy || transition.decision}
+      </span>
+      <span>{transition.text}</span>
+    </span>
+  )
 }
 
 function CandidatePreviewList({
@@ -1394,7 +2482,7 @@ function ChapterMaterialDetailDrawer({
       aria-modal="false"
       aria-label="章节推荐材料明细"
       data-testid="chapter-reference-material-detail-drawer"
-      className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-[calc(100vw-3rem)] flex-col border-l border-border bg-card shadow-xl"
+      className="fixed inset-y-0 right-0 z-50 flex w-[640px] max-w-[calc(100vw-2rem)] flex-col border-l border-border bg-card shadow-xl"
     >
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
@@ -1448,7 +2536,7 @@ function ChapterMaterialDetailDrawer({
                   value={scores.length > 0 ? scores.map(([name, value]) => `${name} ${value.toFixed(2)}`).join(' · ') : '暂无评分明细'}
                 />
               </div>
-              <p className="rounded-md border border-border bg-background px-3 py-2 text-xs leading-relaxed text-foreground">
+              <p className="whitespace-pre-wrap break-words rounded-md border border-border bg-background px-3 py-2 text-xs leading-relaxed text-foreground">
                 {material.text_preview || '无预览'}
               </p>
               <PreviewBoundary truncated={material.text_truncated} />
@@ -1476,7 +2564,7 @@ function ChapterMaterialDetailDrawer({
                       <p className="text-[11px] text-muted-foreground">
                         {segment.segment_id} · 第 {segment.chapter_index} 章 · {segment.chapter_title || '未命名章节'}
                       </p>
-                      <p className="mt-1 text-xs leading-relaxed text-foreground">{segment.text_preview || '无预览'}</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">{segment.text_preview || '无预览'}</p>
                       <PreviewBoundary truncated={segment.text_truncated} compact />
                     </div>
                   ))}
@@ -1493,7 +2581,7 @@ function ChapterMaterialDetailDrawer({
                   {detail.processing_notes.map((note, index) => (
                     <div key={`${note.stage}-${index}`} className="rounded-md border border-border bg-background px-3 py-2">
                       <p className="text-[11px] text-muted-foreground">{note.stage} · {note.status}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-foreground">{note.message || '无诊断信息'}</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">{note.message || '无诊断信息'}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         segments={note.source_segment_count} · materials={note.material_count} · slots={note.slot_count} · vectors={note.vector_count}
                       </p>

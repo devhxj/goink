@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -190,6 +192,24 @@ public sealed class SqliteVecTableProvisioner : ISqliteVecTableProvisioner, ISql
         return string.Create(
             CultureInfo.InvariantCulture,
             $"vec_reference_anchor_{anchorId}_{dimensions}");
+    }
+
+    public static string BuildReferenceTechniqueVectorTableName(string indexScopeKey, int dimensions)
+    {
+        if (string.IsNullOrWhiteSpace(indexScopeKey))
+        {
+            throw new ArgumentException("Reference technique vector index scope key is required.", nameof(indexScopeKey));
+        }
+
+        if (dimensions <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dimensions), dimensions, "Vector dimensions must be positive.");
+        }
+
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(indexScopeKey))).ToLowerInvariant();
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"vec_reference_technique_{digest[..16]}_{dimensions}");
     }
 
     public static string BuildCreateTableSql(string tableName, int dimensions)

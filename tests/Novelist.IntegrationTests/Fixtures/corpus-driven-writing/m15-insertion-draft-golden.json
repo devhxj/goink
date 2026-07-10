@@ -117,6 +117,18 @@
             "output_text": "秦砚没有立刻开口，只把钥匙扣在掌心。",
             "preserved_text_hash": "527d2653fce533c62273c76f1725d1c986d29906732d277e83669b5f322c7dce",
             "preserved_hash_matches": true,
+            "preserved_spans": [
+              {
+                "span_alias": "item-1",
+                "source_start": 1,
+                "source_end": 17,
+                "output_start": 2,
+                "output_end": 18,
+                "source_text_hash": "527d2653fce533c62273c76f1725d1c986d29906732d277e83669b5f322c7dce",
+                "output_text_hash": "527d2653fce533c62273c76f1725d1c986d29906732d277e83669b5f322c7dce",
+                "matches": true
+              }
+            ],
             "slot_replacements": [
               {
                 "slot_name": "character",
@@ -141,6 +153,7 @@
             "output_end": 2
           }
         ],
+        "transitions": [],
         "assembled_text": "秦砚没有立刻开口，只把钥匙扣在掌心。",
         "chapter_text_after_insertion": "秦砚停在门里，指尖还按着锁。\n秦砚没有立刻开口，只把钥匙扣在掌心。",
         "ready_for_insertion": true,
@@ -158,6 +171,22 @@
               "violations": []
             }
           ]
+        },
+        "audit": {
+          "passed": true,
+          "status": "passed",
+          "errors": [],
+          "pieces": [
+            {
+              "piece_alias": "item-1",
+              "node_alias": "item-1",
+              "passed": true,
+              "preserved_span_count": 1,
+              "mismatched_span_count": 0,
+              "violations": []
+            }
+          ],
+          "transitions": []
         }
       }
     }

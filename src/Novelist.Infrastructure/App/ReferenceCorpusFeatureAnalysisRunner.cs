@@ -8,6 +8,8 @@ namespace Novelist.Infrastructure.App;
 
 internal sealed class ReferenceCorpusFeatureAnalysisRunner
 {
+    private const double LowConfidenceReviewThreshold = 0.70;
+
     private readonly IReferenceCorpusFeatureFamilyAnalyzer _analyzer;
 
     public ReferenceCorpusFeatureAnalysisRunner(IReferenceCorpusFeatureFamilyAnalyzer analyzer)
@@ -314,10 +316,17 @@ internal sealed class ReferenceCorpusFeatureAnalysisRunner
             EvidenceStart: candidate.EvidenceStart,
             EvidenceEnd: candidate.EvidenceEnd,
             Explanation: candidate.Explanation,
-            ReviewState: "unverified",
+            ReviewState: ResolveInitialReviewState(candidate.Confidence),
             ValidityState: "active",
             SupersededByRunId: null,
             CreatedAt: request.StartedAt);
+    }
+
+    private static string ResolveInitialReviewState(double confidence)
+    {
+        return confidence < LowConfidenceReviewThreshold
+            ? ReferenceCorpusFeatureObservationReviewStates.LowConfidence
+            : ReferenceCorpusFeatureObservationReviewStates.Unverified;
     }
 
     private static async ValueTask SyncProjectionAsync(

@@ -148,6 +148,7 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
         Assert.Contains("reference_feature_observations", tables);
         Assert.Contains("reference_obs_sensory", tables);
         Assert.Contains("reference_technique_specimens", tables);
+        Assert.Contains("reference_technique_vectors", tables);
         Assert.Contains("reference_specimen_evidence", tables);
         Assert.Contains("reference_template_examples", tables);
         Assert.Contains("reference_aggregate_provenance", tables);

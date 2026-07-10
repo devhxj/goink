@@ -34,6 +34,12 @@ public static class ReferenceCorpusBridgeHandlers
             return await service.SearchCandidatesAsync(input, cancellationToken);
         });
 
+        dispatcher.Register("BackfillReferenceCorpusTechniqueVectorIndex", async (context, cancellationToken) =>
+        {
+            var input = ReadObjectArg<BackfillReferenceCorpusTechniqueVectorIndexPayload>(context.Payload, 0, "input");
+            return await service.BackfillTechniqueVectorIndexAsync(input, cancellationToken);
+        });
+
         return dispatcher;
     }
 

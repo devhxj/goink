@@ -7,6 +7,36 @@ namespace Novelist.Core.Bridge;
 
 public static class ReferenceCorpusAnalysisBridgeHandlers
 {
+    private static readonly PageRequestPolicy ObservationPagePolicy = new(
+        AllowedSortFields: ["created_at", "feature_family", "confidence", "observation_id"],
+        DefaultSortBy: "created_at",
+        StableTieBreakers: ["created_at", "observation_id"]);
+
+    private static readonly PageRequestPolicy TechniqueSpecimenPagePolicy = new(
+        AllowedSortFields: ["created_at", "technique_family", "confidence", "specimen_id"],
+        DefaultSortBy: "created_at",
+        StableTieBreakers: ["created_at", "specimen_id"]);
+
+    private static readonly HashSet<string> ObservationFilterKeys = new(StringComparer.Ordinal)
+    {
+        "feature_family",
+        "feature_key",
+        "node_type",
+        "review_state",
+        "validity_state",
+        "run_id",
+        "min_confidence"
+    };
+
+    private static readonly HashSet<string> TechniqueSpecimenFilterKeys = new(StringComparer.Ordinal)
+    {
+        "technique_family",
+        "review_state",
+        "validity_state",
+        "run_id",
+        "min_confidence"
+    };
+
     public static BridgeDispatcher RegisterReferenceCorpusAnalysisHandlers(
         this BridgeDispatcher dispatcher,
         IReferenceCorpusAnalysisService service)
@@ -24,7 +54,69 @@ public static class ReferenceCorpusAnalysisBridgeHandlers
                 ReadObjectArg<GetReferenceCorpusFeatureAnalysisRunPayload>(context.Payload, 0, "input"),
                 cancellationToken));
 
+        dispatcher.Register("StartReferenceCorpusTechniqueSpecimenAnalysis", async (context, cancellationToken) =>
+            await service.StartTechniqueSpecimenAnalysisAsync(
+                ReadObjectArg<StartReferenceCorpusTechniqueSpecimenAnalysisPayload>(context.Payload, 0, "input"),
+                cancellationToken));
+
+        dispatcher.Register("GetReferenceCorpusTechniqueSpecimenAnalysisRun", async (context, cancellationToken) =>
+            await service.GetTechniqueSpecimenAnalysisRunAsync(
+                ReadObjectArg<GetReferenceCorpusTechniqueSpecimenAnalysisRunPayload>(context.Payload, 0, "input"),
+                cancellationToken));
+
+        dispatcher.Register("ListReferenceCorpusFeatureObservations", async (context, cancellationToken) =>
+        {
+            var input = ReadObjectArg<ListReferenceCorpusFeatureObservationsPayload>(context.Payload, 0, "input");
+            try
+            {
+                ValidatePageRequest(input.PageRequest, ObservationPagePolicy, ObservationFilterKeys);
+                return await service.ListFeatureObservationsAsync(input, cancellationToken);
+            }
+            catch (PageRequestValidationException exception)
+            {
+                throw Invalid("page_request", $"{exception.Code}: {exception.Message}");
+            }
+        });
+
+        dispatcher.Register("ListReferenceCorpusTechniqueSpecimens", async (context, cancellationToken) =>
+        {
+            var input = ReadObjectArg<ListReferenceCorpusTechniqueSpecimensPayload>(context.Payload, 0, "input");
+            try
+            {
+                ValidatePageRequest(input.PageRequest, TechniqueSpecimenPagePolicy, TechniqueSpecimenFilterKeys);
+                return await service.ListTechniqueSpecimensAsync(input, cancellationToken);
+            }
+            catch (PageRequestValidationException exception)
+            {
+                throw Invalid("page_request", $"{exception.Code}: {exception.Message}");
+            }
+        });
+
         return dispatcher;
+    }
+
+    private static void ValidatePageRequest(
+        PageRequestPayload pageRequest,
+        PageRequestPolicy policy,
+        IReadOnlySet<string> allowedFilters)
+    {
+        try
+        {
+            var normalized = PageRequestNormalizer.Normalize(pageRequest, policy);
+            foreach (var filterKey in normalized.Filters.Keys)
+            {
+                if (!allowedFilters.Contains(filterKey))
+                {
+                    throw new PageRequestValidationException(
+                        PageRequestErrorCodes.InvalidFilterKey,
+                        $"filter key '{filterKey}' is not supported.");
+                }
+            }
+        }
+        catch (PageRequestValidationException exception)
+        {
+            throw Invalid("page_request", $"{exception.Code}: {exception.Message}");
+        }
     }
 
     private static T ReadObjectArg<T>(JsonElement? payload, int index, string argumentName)

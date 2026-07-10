@@ -4,6 +4,8 @@ namespace Novelist.Core.App;
 
 public static class PageRequestNormalizer
 {
+    private const int MaxCursorLength = 512;
+
     public static NormalizedPageRequest Normalize(
         PageRequestPayload request,
         PageRequestPolicy policy)
@@ -34,12 +36,31 @@ public static class PageRequestNormalizer
         var stableSortFields = BuildStableSortFields(sortBy, policy);
 
         return new NormalizedPageRequest(
-            string.IsNullOrWhiteSpace(request.Cursor) ? null : request.Cursor.Trim(),
+            NormalizeCursor(request.Cursor),
             request.PageSize,
             sortBy,
             sortDir,
             filters,
             stableSortFields);
+    }
+
+    private static string? NormalizeCursor(string? cursor)
+    {
+        if (string.IsNullOrWhiteSpace(cursor))
+        {
+            return null;
+        }
+
+        var normalized = cursor.Trim();
+        if (normalized.Length > MaxCursorLength ||
+            normalized.Any(ch => !char.IsAscii(ch) || char.IsControl(ch) || char.IsWhiteSpace(ch)))
+        {
+            throw new PageRequestValidationException(
+                PageRequestErrorCodes.InvalidCursor,
+                "cursor is invalid.");
+        }
+
+        return normalized;
     }
 
     private static string NormalizeSortDirection(string sortDir)
@@ -175,6 +196,7 @@ public sealed class PageRequestValidationException : Exception
 public static class PageRequestErrorCodes
 {
     public const string PageSizeOutOfRange = "page_size_out_of_range";
+    public const string InvalidCursor = "invalid_cursor";
     public const string InvalidSortField = "invalid_sort_field";
     public const string InvalidSortDirection = "invalid_sort_direction";
     public const string InvalidFilterKey = "invalid_filter_key";

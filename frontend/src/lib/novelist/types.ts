@@ -956,6 +956,7 @@ export namespace reference {
     reuse_policies: CorpusReusePolicy[]
     include_anchor_ids: number[]
     exclude_anchor_ids: number[]
+    session_id?: string | null
   }
 
   export interface CorpusQueryContext {
@@ -973,6 +974,27 @@ export namespace reference {
   export interface SearchCorpusCandidatesInput {
     query_context: CorpusQueryContext
     page_request: storage.PageRequest
+  }
+
+  export type CorpusTechniqueVectorIndexBackfillStatus = 'ready' | 'empty' | 'skipped' | 'failed'
+
+  export interface BackfillCorpusTechniqueVectorIndexInput {
+    query_context: CorpusQueryContext
+    node_type?: CorpusNodeType | string | null
+  }
+
+  export interface CorpusTechniqueVectorIndexBackfill {
+    status: CorpusTechniqueVectorIndexBackfillStatus | string
+    index_scope_key?: string | null
+    table_name?: string | null
+    provider_key?: string | null
+    model_id?: string | null
+    dimensions: number
+    source_count: number
+    vector_count: number
+    skipped_vector_count: number
+    rebuilt: boolean
+    diagnostics: string[]
   }
 
   export type CorpusFeatureAnalysisScope = 'sentence' | 'passage'
@@ -1020,6 +1042,135 @@ export namespace reference {
     diagnostics: string[]
   }
 
+  export type CorpusTechniqueSpecimenAnalysisScope = 'technique_specimen'
+
+  export interface StartCorpusTechniqueSpecimenAnalysisInput {
+    novel_id: number
+    anchor_id: number
+    source_node_type: CorpusNodeType
+    min_observation_confidence?: number
+    run_id?: string | null
+  }
+
+  export interface GetCorpusTechniqueSpecimenAnalysisRunInput {
+    novel_id: number
+    run_id: string
+  }
+
+  export interface CorpusTechniqueSpecimenAnalysisRun {
+    run_id: string
+    novel_id: number
+    anchor_id: number
+    scope: CorpusTechniqueSpecimenAnalysisScope
+    status: CorpusFeatureAnalysisStatus
+    tokens_spent: number
+    specimen_count: number
+    processed_nodes: number
+    analyzer_version: string
+    schema_version: string
+    model_provider: string
+    model_id: string
+    started_at: Timestamp
+    completed_at?: Timestamp | null
+    diagnostics: string[]
+  }
+
+  export interface ListCorpusFeatureObservationsInput {
+    novel_id: number
+    anchor_id: number
+    node_id?: string | null
+    page_request: storage.PageRequest
+  }
+
+  export interface ListCorpusTechniqueSpecimensInput {
+    novel_id: number
+    anchor_id: number
+    source_node_id?: string | null
+    page_request: storage.PageRequest
+  }
+
+  export interface CorpusFeatureObservation {
+    observation_id: string
+    node_id: string
+    anchor_id: number
+    node_type: CorpusNodeType | string
+    text_hash: string
+    feature_family: string
+    feature_key: string
+    value_kind: string
+    value_preview?: string | null
+    value_text?: string | null
+    value_num?: number | null
+    value_bool?: boolean | null
+    intensity?: number | null
+    confidence: number
+    evidence_start?: number | null
+    evidence_end?: number | null
+    evidence_preview?: string | null
+    explanation?: string | null
+    review_state: string
+    validity_state: string
+    run_id: string
+    created_at: Timestamp
+  }
+
+  export interface CorpusTechniqueSpecimenEvidence {
+    observation_id: string
+    node_id: string
+    node_type: CorpusNodeType | string
+    text_hash: string
+    feature_family: string
+    feature_key: string
+    confidence: number
+    evidence_start?: number | null
+    evidence_end?: number | null
+    evidence_preview?: string | null
+    value_preview?: string | null
+    explanation?: string | null
+  }
+
+  export interface CorpusTechniqueTransferSlot {
+    slot_name: string
+    purpose: string
+    constraints: string
+  }
+
+  export interface CorpusTechniqueWhyFactor {
+    factor: string
+    observation_ids: string[]
+    explanation: string
+    evidence: CorpusTechniqueSpecimenEvidence[]
+  }
+
+  export interface CorpusTechniqueWhyItWorks {
+    contributing_factors: CorpusTechniqueWhyFactor[]
+    trace_complete: boolean
+  }
+
+  export interface CorpusTechniqueSpecimen {
+    specimen_id: string
+    source_node_id: string
+    source_anchor_id: number
+    analysis_run_id: string
+    technique_family: string
+    technique_abstract: string
+    trigger_context: string
+    transfer_template: string
+    transfer_slots: CorpusTechniqueTransferSlot[]
+    effect_on_reader: string
+    applicability_conditions: string[]
+    failure_modes: string[]
+    anti_patterns: string[]
+    world_context_dependencies: string[]
+    why_it_works: CorpusTechniqueWhyItWorks
+    confidence: number
+    review_state: string
+    validity_state: string
+    mastery_notes?: string | null
+    created_at: Timestamp
+    evidence: CorpusTechniqueSpecimenEvidence[]
+  }
+
   export interface CorpusCandidateEvidence {
     observation_id: string
     feature_family: string
@@ -1048,6 +1199,73 @@ export namespace reference {
     chapter_context: CurrentChapterContext
     scope: CorpusScope
     slot_values: Record<string, string>
+    selected_blueprint?: CorpusInsertionBlueprint | null
+  }
+
+  export interface CorpusDraftSlotValueVariant {
+    variant_id: string
+    label: string
+    slot_values: Record<string, string>
+  }
+
+  export interface GenerateCorpusInsertionDraftCandidatesInput {
+    natural_language_goal: string
+    chapter_context: CurrentChapterContext
+    scope: CorpusScope
+    slot_values: Record<string, string>
+    selected_blueprint: CorpusInsertionBlueprint
+    requested_count: number
+    slot_value_variants?: CorpusDraftSlotValueVariant[] | null
+  }
+
+  export interface GenerateCorpusBlueprintCandidatesInput {
+    natural_language_goal: string
+    chapter_context: CurrentChapterContext
+    scope: CorpusScope
+    requested_count: number
+    feedback?: CorpusBlueprintFeedback | null
+  }
+
+  export interface CorpusBlueprintFeedback {
+    rejected_blueprint_ids: string[]
+    rejected_node_ids: string[]
+    avoid_library_ids: string[]
+    avoid_anchor_ids: number[]
+    problem_tags: string[]
+    notes: string
+  }
+
+  export interface CorpusBlueprintSourceDistributionItem {
+    library_id: string
+    anchor_id: number
+    node_count: number
+  }
+
+  export interface CorpusBlueprintCandidate {
+    blueprint: CorpusInsertionBlueprint
+    source_distribution: CorpusBlueprintSourceDistributionItem[]
+    coverage_score: number
+    gap_reasons: string[]
+    feedback_reason: string
+    gap_positions?: CorpusBlueprintGapPosition[] | null
+  }
+
+  export interface CorpusBlueprintGapPosition {
+    beat_id: string
+    beat_index: number
+    role_in_beat: string
+    narrative_function: string
+    node_ids: string[]
+    covered_dimensions: string[]
+    missing_dimensions: string[]
+    gap_reasons: string[]
+  }
+
+  export interface CorpusBlueprintCandidates {
+    query_context: CorpusQueryContext
+    candidates: CorpusBlueprintCandidate[]
+    feedback_applied: boolean
+    feedback_summary: string
   }
 
   export interface CorpusInsertionBlueprint {
@@ -1075,6 +1293,29 @@ export namespace reference {
     output_end: number
   }
 
+  export interface CorpusPreservedSpan {
+    span_id: string
+    source_start: number
+    source_end: number
+    output_start: number
+    output_end: number
+    source_text_hash: string
+    output_text_hash: string
+    matches: boolean
+  }
+
+  export interface CorpusLockedSpan {
+    span_id: string
+    source_start: number
+    source_end: number
+    output_start: number
+    output_end: number
+    source_text_hash: string
+    output_text_hash: string
+    matches: boolean
+    reason: string
+  }
+
   export interface CorpusInsertionPiece {
     piece_id: string
     beat_id: string
@@ -1088,7 +1329,26 @@ export namespace reference {
     output_text: string
     preserved_text_hash: string
     preserved_hash_matches: boolean
+    preserved_spans: CorpusPreservedSpan[]
+    locked_spans: CorpusLockedSpan[]
     slot_replacements: CorpusSlotReplacement[]
+  }
+
+  export interface CorpusInsertionTransition {
+    transition_id: string
+    gap_id: string
+    after_piece_id: string
+    before_piece_id: string
+    decision: 'direct_join' | 'insert_transition' | 'replace_piece' | string
+    strategy: string
+    text: string
+    text_hash: string
+    output_start: number
+    output_end: number
+    approved: boolean
+    reason: string
+    replacement_piece_id?: string | null
+    replacement_node_id?: string | null
   }
 
   export interface CorpusInsertionGateViolation {
@@ -1113,15 +1373,80 @@ export namespace reference {
     pieces: CorpusInsertionGatePiece[]
   }
 
+  export interface CorpusDraftAuditViolation {
+    violation_id: string
+    code: string
+    severity: string
+    piece_id: string
+    node_id: string
+    span_id: string | null
+    message: string
+    transition_id?: string | null
+  }
+
+  export interface CorpusDraftAuditPiece {
+    piece_id: string
+    node_id: string
+    passed: boolean
+    preserved_span_count: number
+    mismatched_span_count: number
+    violations: CorpusDraftAuditViolation[]
+  }
+
+  export interface CorpusDraftAuditTransition {
+    transition_id: string
+    gap_id: string
+    after_piece_id: string
+    before_piece_id: string
+    decision: string
+    passed: boolean
+    violations: CorpusDraftAuditViolation[]
+  }
+
+  export interface CorpusDraftAudit {
+    passed: boolean
+    status: string
+    errors: string[]
+    pieces: CorpusDraftAuditPiece[]
+    transitions: CorpusDraftAuditTransition[]
+  }
+
   export interface CorpusInsertionDraft {
     query_context: CorpusQueryContext
     blueprint: CorpusInsertionBlueprint
     pieces: CorpusInsertionPiece[]
     slot_replacements: CorpusSlotReplacement[]
+    transitions: CorpusInsertionTransition[]
     assembled_text: string
     chapter_text_after_insertion: string
     ready_for_insertion: boolean
     gate: CorpusInsertionGate
+    audit: CorpusDraftAudit
+  }
+
+  export interface CorpusDraftCandidateNextAction {
+    action: 'regenerate_blueprint' | string
+    reason_code: string
+    message: string
+    transition_id?: string | null
+    rejected_piece_id?: string | null
+    rejected_node_id?: string | null
+    replacement_node_id?: string | null
+    feedback: CorpusBlueprintFeedback
+  }
+
+  export interface CorpusInsertionDraftCandidate {
+    candidate_id: string
+    strategy: string
+    explanation: string
+    draft: CorpusInsertionDraft
+    next_action?: CorpusDraftCandidateNextAction | null
+  }
+
+  export interface CorpusInsertionDraftCandidates {
+    query_context: CorpusQueryContext
+    selected_blueprint: CorpusInsertionBlueprint
+    candidates: CorpusInsertionDraftCandidate[]
   }
 
   export interface Material {
@@ -2226,6 +2551,28 @@ export namespace storage {
 
   export interface PageResult_reference_CorpusCandidate_ {
     items: reference.CorpusCandidate[]
+    total: number
+    page: number
+    size: number
+    total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
+  }
+
+  export interface PageResult_reference_CorpusFeatureObservation_ {
+    items: reference.CorpusFeatureObservation[]
+    total: number
+    page: number
+    size: number
+    total_pages: number
+    next_cursor?: string | null
+    has_more?: boolean
+    total_estimate?: number | null
+  }
+
+  export interface PageResult_reference_CorpusTechniqueSpecimen_ {
+    items: reference.CorpusTechniqueSpecimen[]
     total: number
     page: number
     size: number

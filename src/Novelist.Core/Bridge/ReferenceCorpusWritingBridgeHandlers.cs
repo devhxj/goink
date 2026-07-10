@@ -14,6 +14,15 @@ public static class ReferenceCorpusWritingBridgeHandlers
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(service);
 
+        dispatcher.Register("GenerateReferenceCorpusBlueprintCandidates", async (context, cancellationToken) =>
+        {
+            var input = ReadObjectArg<GenerateReferenceCorpusBlueprintCandidatesPayload>(
+                context.Payload,
+                0,
+                "input");
+            return await service.GenerateBlueprintCandidatesAsync(input, cancellationToken);
+        });
+
         dispatcher.Register("GenerateReferenceCorpusInsertionDraft", async (context, cancellationToken) =>
         {
             var input = ReadObjectArg<GenerateReferenceCorpusInsertionDraftPayload>(
@@ -21,6 +30,15 @@ public static class ReferenceCorpusWritingBridgeHandlers
                 0,
                 "input");
             return await service.GenerateInsertionDraftAsync(input, cancellationToken);
+        });
+
+        dispatcher.Register("GenerateReferenceCorpusInsertionDraftCandidates", async (context, cancellationToken) =>
+        {
+            var input = ReadObjectArg<GenerateReferenceCorpusInsertionDraftCandidatesPayload>(
+                context.Payload,
+                0,
+                "input");
+            return await service.GenerateInsertionDraftCandidatesAsync(input, cancellationToken);
         });
 
         return dispatcher;

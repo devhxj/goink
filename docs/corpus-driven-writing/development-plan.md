@@ -55,6 +55,16 @@
 | 交互模型 | 专家手动操作 | 自动模式默认，专家展开可选 |
 | 用户输入 | 表单填参数 | 自然语言大纲 → 系统解析 QueryContext |
 
+### 产品不变量与目标闭环
+
+1. **素材库处理侧与章节使用侧分离**：导入、授权、切分、分析、复核属于素材库处理侧；当前章节的大纲/目标解析、跨库检索、蓝图迭代、草稿候选与插入闸门属于章节使用侧。章节侧只能消费已处理语料和安全展示契约，不能把“处理某本参考书”的流程混进写作面板。
+2. **语料库是多小说共用资产**：一个 `reference_corpus_library` 可以由多本小说/多个 anchor 注册为成员；同一个写作 session 可绑定多个 library。检索作用域是所有已绑定且启用、授权允许、去重后有效的 library 成员，不是某一本参考小说，也不是单个 anchor。
+3. **写作检索按当前目标跨库召回**：系统根据当前大纲、目标、章节上下文和插入位置构造 `CorpusQueryContext`，在所有启用语料库中检索可复用片段、技法和结构。默认行为不得退化为“用户手选一本参考再生成”。
+4. **先多蓝图迭代，再正文候选**：章节使用侧必须生成多份参考剧本蓝图/剧情结构候选，允许用户选择、拒绝、勾选问题后再次检索和重组，循环到用户满意。正文候选只能从被接受或继续迭代的蓝图派生。
+5. **正文生成最大化复用语料**：正文候选尽可能复用来源语料的原句、段落结构、节奏和技法骨架，只按当前剧情做槽位替换、顺序调整、过渡补齐和必要微调；授权与相似度闸门仍是硬约束。
+
+以上是不随里程碑裁剪而改变的产品不变量。M1 可以薄，但必须验证跨库启用与多蓝图迭代的最小闭环；M3+ 不能把检索和蓝图重新简化为单 anchor 或单蓝图路径。
+
 ### 人机分工
 
 | 环节 | 负责方 |
@@ -222,7 +232,10 @@ CREATE TABLE reference_technique_specimens (
     mastery_notes              TEXT,
     created_at                 DATETIME NOT NULL
 );
--- technique_abstract 向量存 sqlite-vec 表 reference_technique_vectors(specimen_id, embedding)
+-- technique_abstract 向量先存 JSON fallback 投影表 reference_technique_vectors，
+-- 保证 sqlite-vec native extension 不可用时章节检索仍可工作；
+-- JSON fallback 只补充已通过 session/library/license/dedup 的 active 技法节点，
+-- 规模化后再从同一数据源回填 native sqlite-vec topK 索引。
 ```
 
 evidence 关系不放 JSON，改用 junction（见 5.4）。
@@ -241,6 +254,29 @@ CREATE TABLE reference_template_examples (
     template_id TEXT NOT NULL,
     node_id     TEXT NOT NULL REFERENCES reference_text_nodes(node_id),
     PRIMARY KEY (template_id, node_id)
+);
+CREATE TABLE reference_corpus_blueprints (
+    blueprint_id             TEXT PRIMARY KEY,
+    novel_id                 INTEGER NOT NULL,
+    chapter_number           INTEGER NOT NULL,
+    query_context_hash       TEXT NOT NULL,
+    assembly_strategy        TEXT NOT NULL,
+    coverage_score           REAL NOT NULL,
+    gap_reasons_json         TEXT NOT NULL,
+    gap_positions_json       TEXT NOT NULL,
+    query_context_json       TEXT NOT NULL,
+    source_distribution_json TEXT NOT NULL,
+    feedback_reason          TEXT NOT NULL,
+    created_at               TEXT NOT NULL,
+    updated_at               TEXT NOT NULL
+);
+CREATE TABLE reference_corpus_blueprint_beats (
+    blueprint_id       TEXT NOT NULL REFERENCES reference_corpus_blueprints(blueprint_id),
+    beat_id            TEXT NOT NULL,
+    beat_index         INTEGER NOT NULL,
+    role_in_beat       TEXT NOT NULL,
+    narrative_function TEXT NOT NULL,
+    PRIMARY KEY (blueprint_id, beat_id)
 );
 CREATE TABLE reference_blueprint_beat_pieces (
     beat_id        TEXT NOT NULL,
@@ -295,6 +331,10 @@ CREATE TABLE reference_analysis_runs (
 
 **产品触发入口（M2.2 薄入口）**：`StartReferenceCorpusFeatureAnalysis` 接收 `novel_id/anchor_id/scope/token_budget/resume/run_id`，后端按 `scope=sentence|passage` 派生默认 family 组，读取 selected model，校验 anchor 可访问性，然后启动对应 run；`GetReferenceCorpusFeatureAnalysisRun` 只按 `novel_id + run_id` 返回运行元数据（families/status/tokens/resume_cursor/observation_count/diagnostics）。bridge 返回体禁止包含 `node_text/source_text/raw_text/prompt/model_output_json/embedding` 等源文或模型内部字段。当前 M2.2 入口是一次调用内执行的薄触发，用于产品面接入和回归闭环；后台队列、章节优先级调度、取消状态属于后续调度层，不能在 UI 或文档中误标为已完成。
 
+**技法标本触发入口（M2.3 薄入口）**：`StartReferenceCorpusTechniqueSpecimenAnalysis` 接收 `novel_id/anchor_id/source_node_type/min_observation_confidence/run_id`，后端读取 selected model，校验 anchor 可访问性，然后启动 Stage 3 runner；`GetReferenceCorpusTechniqueSpecimenAnalysisRun` 返回运行元数据（scope/status/tokens/specimen_count/processed_nodes/diagnostics）。该入口不暴露 `token_budget/resume`，因为当前 Stage 3 runner 尚未定义预算与 cursor 语义；后台队列、章节优先级、取消和续跑仍属后续调度层。bridge 返回体禁止包含 `node_text/source_text/raw_text/raw_source/prompt/model_output_json/embedding/value_json` 等源文、观察明细或模型内部字段。
+
+**分析查阅入口（M2.4 薄入口）**：`ListReferenceCorpusFeatureObservations` / `ListReferenceCorpusTechniqueSpecimens` 接收 `novel_id + anchor_id + node_id/source_node_id + PageRequest`。后端默认只读 `validity_state='active'`，filter/sort 白名单在 bridge 和 service 双层校验，pageSize/cursor/filter 错误统一返回 validation error。Observation payload 只返回展示安全字段（`value_preview/value_text/value_num/value_bool/text_hash/evidence_preview`），不暴露 `value_json` 或 node 全文；TechniqueSpecimen payload 将 slots、条件、failure/anti-pattern、why_it_works 解析为 typed shape，并通过 `reference_specimen_evidence` junction 回填 evidence trace。章节侧只读嵌入基于当前插入草稿 pieces 的 `anchor_id/node_id`；素材库处理侧提供独立“分析结果”tab，用于按 anchor/node/filter 查阅 observation/specimen，不混入章节蓝图、候选生成或插入动作。
+
 **重跑语义（修复 #2）**：旧 observation **不删除**。新 run 完成后，被取代的旧 observation 置 `validity_state='superseded'`、`superseded_by_run_id=新run`，但 **`review_state` 原样保留**——用户确认过的判断不被污染。依赖旧 observation 的 specimen 触发 invalidation check：证据边全部 superseded 则 specimen 也标 superseded。查询默认 `validity_state='active'`。
 
 ### 5.6 语料库与授权（修复 #4 #6）
@@ -335,7 +375,7 @@ CREATE TABLE reference_source_license (
 );
 ```
 
-检索默认作用域 = 会话绑定的 libraries 中 `enabled=1` 且 license 允许复用的成员；去重按 dedup_group_id 折叠；低质量来源降权。
+`reference_session_library_binding` 是跨库启用模型：一个 session 可以绑定多个 library，每个 library 又可以包含多本小说/多个 anchor。检索默认作用域 = 所有会话绑定 libraries 中 `enabled=1` 且 license 允许复用的成员集合；去重按 dedup_group_id 跨库折叠；低质量来源降权。任何章节写作入口都不得把 session scope 收窄为单 anchor，除非用户在专家模式里显式禁用其他库，且禁用原因可追溯。
 
 ### 5.7 查询上下文（修复 #5）
 
@@ -449,6 +489,8 @@ QueryContext 确认、来源选择、gap 处理、槽位表、过渡清单、锁
 
 **核心交互原则**：问题优先（不是搜索优先）；可追溯（每片段可跳原文 + 分析依据）；渐进展示（先简洁结果，想深入再展开）。
 
+**阻断候选的下一步动作契约**：自动模式下，正文候选如果因 `replace_piece` 无法在 selected blueprint 同 beat 内修复，不能只显示错误。候选必须保持 blocked、`ready_for_insertion=false`、章节正文不变，并提供 `next_action`：`action=regenerate_blueprint`，`feedback` 与 `GenerateReferenceCorpusBlueprintCandidates` 的 `feedback` 入参同构，前端可一键原样带回蓝图重组；feedback 只包含结构化诊断、problem tags、rejected/avoid 信号、blueprint/beat/gap/node/source 标识和用户可见摘要，不包含源文、raw text、prompt、model output 或 embedding。
+
 ---
 
 ## 九、实现顺序（修复 #10）
@@ -456,15 +498,23 @@ QueryContext 确认、来源选择、gap 处理、槽位表、过渡清单、锁
 **纵向薄切片优先**，避免又交付一个"看起来很强但不能服务当前章节"的分析系统。详细里程碑见 tasks.md：
 
 1. **M0 修地基 schema** — text_nodes / 分层 observation / junction / license / library / 分页契约（防返工，最先做）
-2. **M1 纵向薄切片** — 导入一本书 → Stage 0-1 基础分析 → 当前章节检索 → 单蓝图 → 槽位替换 → 插入草稿（fake LLM + 小语料，自动模式，跑通闭环）
+2. **M1 纵向薄切片** — 注册多本小说到一个或多个共用语料库 → Stage 0-1 基础分析 → 当前章节按目标跨所有启用库检索 → 多份蓝图候选/至少一次反馈迭代 → 槽位替换 → 正文候选/插入草稿（fake LLM + 小语料，自动模式，跑通闭环；不得以单 anchor/单蓝图作为验收闭环）
 3. **M2 加深分析** — 10 family 锁定 schema、Stage 2 全量、技法标本
-4. **M3 加深检索** — 四类索引融合、当前章节上下文进排序
-5. **M4 加深蓝图** — N 策略、检查表反馈（专家模式）
-6. **M5 加深拼装** — 完整槽位/过渡/hash 校验、多草稿
+4. **M3 加深检索** — 四类索引融合、当前章节上下文进排序、跨库作用域与去重/授权/质量权重可回归
+5. **M4 加深蓝图** — N 策略、检查表反馈（专家模式）、多蓝图迭代循环
+6. **M5 加深拼装** — 完整槽位/过渡/hash 校验、blocked 候选 `next_action.feedback`、多草稿
 7. **M6 语料库产品化** — 库/成员/去重/授权闸门完善
 8. **M7 聚合知识** — 作者画像/场景模板/世界观
 9. **M8 复核工作流** — review/validity 状态机、重跑语义
 10. **M9 专家 UI + 打磨**
+
+**当前实现检查点（M3/M4 薄切片）：** 候选检索已支持 `feature_filter_{n}_family/key/value_text/value_num_min|max` 多 observation 条件，按 AND 语义叠加在 session/library/license/dedup 安全过滤之后；旧 `feature_family/key/value_*` 单条件过滤仍兼容。章节蓝图反馈中，`too_direct_emotion` 会约束到 `action.emotion_carrier=action_over_psychology`，`too_fast` 会约束到 `rhythm.length_band` 的中长句节点；当 `too_fast` 命中慢节奏候选时，蓝图组装优先使用 `rhythm_slow_m1`，按 rhythm evidence、句长和跨库来源选取中长慢压迫节点。当语料缺少对应 observation 导致强约束无命中时，系统退回目标基础检索并把 `feedback_filters_no_matches` / `fallback_to_base_filters` 写进 `feedback_summary`、候选 `feedback_reason` 与 `gap_reasons`，不再让用户误以为反馈已精准命中。若避开来源会耗尽候选，则系统会放宽 avoid 来源并标注 `avoid_sources_no_alternatives` / `fallback_ignored_avoid_sources`。二轮蓝图反馈已写入 `reference_user_feedback`，以被拒蓝图 id 为 target，记录 problem/fallback、rejected node、avoid library、avoid anchor 等信号，并用确定性 feedback id 做幂等。无显式反馈或空 feedback object 的后续轮次会读取同一小说内的 rejected node/library/anchor 信号，对相同素材组合软降权，避免上一轮拒绝过的蓝图默认再次排第一；这不是跨项目长期偏好学习。`rejected_blueprint_ids` 已按稳定 source node set 去重，避免用户只拒绝蓝图 id 时同一组素材换一个反馈摘要再次出现。`source_repetition` 已有第一层可用性策略：反馈命中时第一候选优先跨库/跨 anchor 取材，而不是继续按分数堆同一来源。`SearchCandidatesRanksInsertionWindowAndAllowedKnowledgeContext` 已新增 `local_context_fit`：候选排序会消费 insertion offset 周边窗口、previous summary、人物名/state 与 allowed knowledge，且 `ForbiddenKnowledge` 不进入正向命中，避免把角色未知事实带入检索。`SearchCandidatesMergesFourRecallRoutesWithDiagnostics` 已把 M3 route union 推进一步：在安全 scope 后，base prefetch window 外的文本语义、技法语义、结构化 observation、章节上下文代表可补入候选池，并用 `recall_text_semantic` / `recall_technique_semantic` / `recall_structured_observation` / `recall_chapter_context` 标注来源；`SearchCandidatesStructuredObservationRecallDoesNotDependOnBasePrefetchWindow` 和 `SearchCandidatesStructuredObservationRecallUsesExplicitFeatureFiltersBeyondPrefetchWindow` 证明结构化 observation 已拆出独立 SQL route，能分别按 QueryContext term 与显式 feature filter 召回远位置节点，且 `recall_structured_observation` 只表示真实 route hit；`SearchCandidatesChapterContextRecallMarksEveryRouteHitBeyondScoreWinner` 证明章节上下文也已拆出独立 SQL route，能给多个 context route hit 写入真实 `recall_chapter_context`，并用最小加权阈值避免弱泛词误标；`SearchCandidatesChapterContextRecallHonorsStructuredFiltersBeforeRouteLimit` 证明 context route 在 route topK 前应用结构化 filters，避免不满足 filters 的上下文噪声占满召回额度；`SearchCandidatesMergedRecallRoutesHonorScopeLicenseAndDedup` 证明这些 route 不能绕过 excluded anchor、forbidden license 或 dedup representative。`m3-retrieval-golden.json` 已固化基础授权检索和四路召回诊断，expected 只保存 hash/长度、component key、route marker、evidence 和 cache count，并由 fixture 自检阻止 raw source、embedding、prompt、`value_json` 泄露；这仍不是完整四路独立索引取数或完整权重标定。M4 策略权重已有第一条 profile 化实现，并已抽入可替换的 `IReferenceCorpusBlueprintCandidateAssembler` / `MultiStrategyReferenceCorpusBlueprintCandidateAssembler`：候选池同时具备 emotion/rhythm/narrative/technique 信号时，会按 evidence 与 score_components 生成 `emotion_priority_m4` / `rhythm_priority_m4` / `technique_diversity_m4` / `scene_template_m4` 四类蓝图候选，并用跨 library/anchor 代表选择避免只改策略名不换素材；`SqliteReferenceCorpusWritingService` 保持检索、反馈读写、蓝图持久化和返回编排职责。M4 profile 选材已开始 coverage-aware：保留 profile 头部素材后，会主动补齐缺失的 emotion/rhythm/narrative/technique 证据，并优先选择能增加 library/anchor 覆盖的候选；历史反馈 penalty 仍优先于覆盖强度。`gap_reasons` 已补上 `single_anchor_source`，可把“多句/多策略但实际都来自同一参考 anchor”的退化暴露给用户，并已进入 cross-library golden。`coverage_score` 已开始消费 M4 evidence：候选存在 M4 证据时，会把 emotion/rhythm/narrative/technique 覆盖纳入评分，并用 `missing_*_evidence` / `missing_technique_coverage` 暴露维度缺口；候选返回体也新增 `gap_positions[]`，把全局缺失维度定位到具体 beat，完整覆盖的蓝图不会误报位置缺口。候选生成阶段已写入 `reference_corpus_blueprints`、`reference_corpus_blueprint_beats` 和 `reference_blueprint_beat_pieces`，assembly strategy、coverage、gap positions、query context、source distribution、beat 元数据与 beat→node 边均可追溯，不再等到正文草稿阶段才有追溯边。前端候选卡会把 fallback/gap code 与 beat 级缺口翻译为中文诊断，mock workflow 已覆盖二轮反馈后诊断可见。该检查点只解决“检查表反馈能进入检索约束 + 反馈回退可诊断 + 反馈可持久追溯 + 历史拒绝软降权 + 拒绝蓝图不复现 + 来源重复反馈能改变第一候选 + M3 retrieval golden + M3 native topK + native backfill API 薄切片 + M3 structured observation 独立 route 薄切片 + M3 chapter context 独立 route 薄切片 + M4 profile 策略可断言变化 + 单 anchor 塌缩可诊断 + coverage 初步证据化 + profile 主动补齐覆盖 + beat 级缺口返回 + 候选蓝图持久化 + 多候选 assembler 地基”的第一步，不代表 M4 完成；仍需文本语义完整独立 topK、结构化 observation/context 热路径排序、情绪弧、真正的多轮会话状态、专家 UI 和更深的蓝图策略模型。
+
+**M3 native topK 补充：** `reference_technique_vectors` 仍是 JSON canonical cache，`reference_technique_vector_rows` / `reference_technique_vector_index_state` 只保存 vec0 rowid 映射和索引状态；native 命中只作为 `scoped_nodes.node_id IN (...)` 召回 hint，仍被 session/library/license/dedup/include/exclude/reuse 与结构化 filters 过滤；native provision/query 失败回退 JSON fallback。row 映射会按当前 entries 逐行校验，stale hash、伪造 row mapping、rejected/superseded specimen 都不能穿透；必要时清理或重建该 scope 的 native rows/state。当前已新增 `BackfillReferenceCorpusTechniqueVectorIndex` / `BackfillTechniqueVectorIndexAsync` 薄切片，可在不调用 `SearchCandidates` 的情况下显式预热 scoped technique vec0 index，返回 `ready/empty/skipped/failed`、provider/model/dim、source/vector/skipped 计数和诊断；搜索会复用已回填 rows/state，不重复 provision。结构化 observation 与章节上下文已有独立 SQL route，但还不是 projection/FTS/热路径排序的规模化索引。仍未完成：native 回填队列化、全量/增量调度、失败重试/巡检、文本语义独立 topK、结构化 observation/context 热路径排序、规模 fixture 与性能预算。
+
+**当前实现检查点（M5 拼装薄切片）：** 正文候选已开始锁定 selected blueprint 来源边界：`GenerateInsertionDraftCandidatesAsync` 只能在每个 beat 自己声明的 `NodeIds` 内生成 source variant，不再从重新检索结果、同 library/anchor 邻近句或其它 beat 拉替代 node；若 selected blueprint 请求的任一 node 因 scope/library/授权检索结果变化无法读到 source piece，则返回 blocked `source_node_missing`，保持章节正文不变，不残缺生成可插入正文。每个 insertion piece 现在返回结构化 `preserved_spans`，以稳定 `span_id` 记录非槽位保留片段的 source/output offset、source/output hash 与 matches；contract/bridge/TS 类型、前端 diff、mock workflow guardrail 与 M1 golden fixture 已同步。`ICorpusSlotResolver` 已补第一层 typed slot 能力：显式 `character/place/honorific/plot_object` 槽位归一化，代词/人名/地名/称谓/道具启发式识别；书名号/引号等受保护范围会进入 `locked_spans`，同样带 source/output offset 与 hash。`DraftAudit` 已消费这些证据：source 缺失、piece preserved hash mismatch、span offset 越界、source/output span hash 不一致、span.matches=false 都会进入 audit errors/violations；`locked_spans` 若 hash 不一致或被 slot replacement 相交，会以 `locked_span_hash_mismatch` / `slot_replacement_locked_range` 阻断；`ready_for_insertion` 已收紧为 `gate.passed && audit.passed`，因此 gate 通过但保留片段或锁定片段被篡改时仍拒绝插入并保持章节正文不变。审计外层包络也已补上第一层：输出 pieces 必须与 selected blueprint source pieces 一一对应，重复/缺失/身份错配会阻断；每个 piece 输出必须由 `preserved_spans` 或 `slot_replacements` 完整覆盖，piece 内额外新增的未审计文本会阻断；slot replacement 必须是安全短槽位，source/output range 与记录值一致，整句伪槽位替换会阻断；`assembled_text` 必须等于已审计 piece/transition 输出的换行拼接，额外未审计正文会阻断。过渡已从隐藏正文变成一等审计对象，不再是可选装饰：默认 `HeuristicReferenceCorpusTransitionResolver` 已具备第一层三决策，安全相邻 gap 返回 `direct_join`，`raise_pressure -> withhold_answer` 生成审计过的 `insert_transition`，重复/同源相邻 piece 生成 `replace_piece` 阻断；transition payload 包含 `transition_id/gap_id/decision/text_hash/output_start/output_end/approved`，`DraftAudit` 生成 `audit.transitions` 并校验 `gap_id` 绑定的相邻 piece 对、hash、approval、decision 与 output range，缺失/伪造/错配都会阻断。`replace_piece` 在单草稿路径仍阻断，避免静默换掉用户选定来源；在正文候选路径已接入第一层重组：若 replacement node 属于 selected blueprint 同一 beat 的备选 node，则生成 `transition_repair` 蓝图变体并重新通过 gate/audit 后才返回；若 replacement node 不在该 beat 备选内，或同 beat repair 仍未通过审计，则保留 blocked 诊断与 `next_action.feedback`，不从重新检索结果或邻近句偷换。M5 golden/验收口径已固化 `transitions`、`audit.transitions`、blocked candidate `next_action`，以及第三轮蓝图再派生正文候选：用 `next_action.feedback` 生成的新蓝图重新进入 `GenerateInsertionDraftCandidatesAsync` 后，必须得到不含被拒 node 且 `gate/audit/ready` 全通过的正文候选。请求侧 slot-only 多草稿已有第一层：`slot_value_variants` 可让同一 selected blueprint 和同一 primary source nodes 生成 `slot_variant_1..N`，候选之间保持 source node/source hash/preserved span source range/locked span source range 一致，只按槽位值产生正文差异；C# contract、TS 类型、mock bridge 与集成测试已同步。候选集差异审计也已有第一层：同一 source node set 的多份正文候选在返回前会校验 slot replacement 是否属于各自 `slot_values` 映射；若候选把非槽位改动伪装成 slot replacement，会以 `draft_candidate_set_non_slot_difference` 阻断该候选、保持章节正文不变，同时不影响合法候选；若不同 slot 参数最终生成完全相同正文，后续重复候选会以 `draft_candidate_set_duplicate_text` 阻断，避免把无差异结果展示成可选多稿。`transfer_slots` 写作侧消费已有第一层：正文拼装会读取 selected source node 的 active 且未 rejected `reference_technique_specimens.transfer_slots_json`，将对象数组或旧字符串数组里的槽位名归一化到 `character/place/honorific/plot_object`；未声明槽位会以 `slot_replacement_transfer_slot_disallowed` 阻断，人工 rejected specimen 不再约束正文。`transfer_slots` 自动派生已有第一层：请求没有显式 `slot_value_variants` 时，active 且未 rejected 的 `character` transfer slot 会从当前章节人物快照派生 `auto_transfer_slot_1..N` 同源候选，只替换源文开头人称代词，保持 selected primary source nodes、source hash、preserved/locked 源证据稳定；rejected specimen 不参与自动派生。前端 mock workflow 已包含 piece audit blocked、ready transition、transition repair、replace_piece blocked + next_action 四类正文候选，断言候选卡和预览显示阻断/过渡，应用按钮禁用或放行符合 audit，编辑器正文不会写入未审计过渡；正文 diff 预览已消费 `locked_spans`，可见哪些片段被锁定保护；blocked 候选点击“回到蓝图重组”会以 `next_action.feedback` 触发第三轮蓝图候选，第三轮入参、`feedback_applied` 和反馈摘要均被 guardrail 固化。该检查点只解决章节使用侧的拼装审计加深，消费已处理语料、选中蓝图和正文候选，不把素材库导入/分析/授权复核管线或库管理界面混入正文生成流程；它不代表 M5 完成，仍需 `transfer_slots.constraints` 自然语言约束推理、地点/道具/称谓等完整自动槽位变体派生、过渡策略变体差异审计、跨蓝图/跨候选池 replacement 重组策略、重复候选 UI 聚合折叠和专家 UI。
+
+**M5 next_action 契约补充：** `replace_piece` 的分叉必须可验收：replacement 在 selected blueprint 同一 beat 的备选 node 内时，正文候选可生成 `transition_repair` 变体并重新 gate/audit；replacement 超出 selected blueprint 同 beat，或 `transition_repair` 仍未通过 transition/gate/audit 时，候选必须继续 blocked，返回 `next_action.action=regenerate_blueprint` 和可直接传给 `GenerateReferenceCorpusBlueprintCandidates` 的 `next_action.feedback`。前端 mock workflow/guardrail 要从该 blocked 候选一键触发第三轮蓝图调用，断言第三轮入参 feedback 与候选返回的 feedback 字段一致、第三轮结果标记 `feedback_applied=true` 且显示 `feedback_summary`，后续正文候选只能基于第三轮选中蓝图派生。
 
 ---
 
@@ -473,10 +523,11 @@ QueryContext 确认、来源选择、gap 处理、槽位表、过渡清单、锁
 1. **transfer_slots 格式** — 语义槽+约束（方案 B），展示层退化为模板字符串。
 2. **why_it_works 可追溯** — 每 contributing_factor 必须 FK 到真实 observation（走 specimen_evidence），禁止空引用。
 3. **technique_abstract 去内容化** — 输出后做泄露检测（不含原文专有名词）。
-4. **最小化调整边界** — 只替换命名槽位，preserved_spans 逐字保留，hash 校验。
+4. **最小化调整边界** — 只替换命名槽位，`preserved_spans` 逐字保留，`locked_spans` 禁止替换，hash 校验。
 5. **商业层窗口** — 走 text_nodes 章节窗口（当前章/前 3 章/前 20 章）。
 6. **重跑失效** — review_state 与 validity_state 分离；junction 精确定位受影响边。
 7. **授权闸门** — 插入前硬校验，不可绕过。
+8. **blocked 候选闭环** — `next_action.feedback` 是后端生成的结构化蓝图反馈，不是 UI 字符串；必须能原样进入蓝图重组入口，并通过第三轮蓝图调用回归验证。
 
 ---
 

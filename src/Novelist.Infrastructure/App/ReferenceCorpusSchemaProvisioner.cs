@@ -210,6 +210,68 @@ internal static class ReferenceCorpusSchemaProvisioner
               FOREIGN KEY(analysis_run_id) REFERENCES reference_analysis_runs(run_id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS reference_technique_vectors (
+              vector_id TEXT PRIMARY KEY,
+              specimen_id TEXT NOT NULL,
+              source_node_id TEXT NOT NULL,
+              source_anchor_id INTEGER NOT NULL,
+              provider_key TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              technique_hash TEXT NOT NULL,
+              embedding_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(specimen_id) REFERENCES reference_technique_specimens(specimen_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_reference_technique_vectors_generation
+              ON reference_technique_vectors(specimen_id, provider_key, model_id, dimensions);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_vectors_node
+              ON reference_technique_vectors(source_node_id, provider_key, model_id, dimensions);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_vectors_anchor
+              ON reference_technique_vectors(source_anchor_id, provider_key, model_id, dimensions);
+
+            CREATE TABLE IF NOT EXISTS reference_technique_vector_rows (
+              index_scope_key TEXT NOT NULL,
+              row_id INTEGER NOT NULL,
+              vector_id TEXT NOT NULL,
+              specimen_id TEXT NOT NULL,
+              source_node_id TEXT NOT NULL,
+              source_anchor_id INTEGER NOT NULL,
+              provider_key TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              technique_hash TEXT NOT NULL,
+              table_name TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY(index_scope_key, row_id),
+              FOREIGN KEY(vector_id) REFERENCES reference_technique_vectors(vector_id) ON DELETE CASCADE,
+              FOREIGN KEY(specimen_id) REFERENCES reference_technique_specimens(specimen_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
+              FOREIGN KEY(source_anchor_id) REFERENCES reference_anchors(anchor_id) ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_reference_technique_vector_rows_vector
+              ON reference_technique_vector_rows(index_scope_key, vector_id);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_vector_rows_scope_node
+              ON reference_technique_vector_rows(index_scope_key, source_node_id);
+
+            CREATE TABLE IF NOT EXISTS reference_technique_vector_index_state (
+              index_scope_key TEXT PRIMARY KEY,
+              table_name TEXT NOT NULL,
+              provider_key TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              source_hash TEXT NOT NULL,
+              source_count INTEGER NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS reference_specimen_evidence (
               specimen_id TEXT NOT NULL,
               observation_id TEXT NOT NULL,
@@ -234,6 +296,49 @@ internal static class ReferenceCorpusSchemaProvisioner
               PRIMARY KEY(beat_id, node_id),
               FOREIGN KEY(node_id) REFERENCES reference_text_nodes(node_id) ON DELETE CASCADE,
               FOREIGN KEY(observation_id) REFERENCES reference_feature_observations(observation_id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_corpus_blueprints (
+              blueprint_id TEXT PRIMARY KEY,
+              novel_id INTEGER NOT NULL,
+              chapter_number INTEGER NOT NULL,
+              query_context_hash TEXT NOT NULL,
+              assembly_strategy TEXT NOT NULL,
+              coverage_score REAL NOT NULL,
+              gap_reasons_json TEXT NOT NULL,
+              gap_positions_json TEXT NOT NULL,
+              query_context_json TEXT NOT NULL,
+              source_distribution_json TEXT NOT NULL,
+              feedback_reason TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_corpus_blueprint_beats (
+              blueprint_id TEXT NOT NULL,
+              beat_id TEXT NOT NULL,
+              beat_index INTEGER NOT NULL,
+              role_in_beat TEXT NOT NULL,
+              narrative_function TEXT NOT NULL,
+              PRIMARY KEY(blueprint_id, beat_id),
+              FOREIGN KEY(blueprint_id) REFERENCES reference_corpus_blueprints(blueprint_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS reference_user_feedback (
+              feedback_id TEXT PRIMARY KEY,
+              novel_id INTEGER NOT NULL,
+              target_type TEXT NOT NULL,
+              target_id TEXT NOT NULL,
+              decision TEXT NOT NULL,
+              material_id TEXT NOT NULL,
+              candidate_id TEXT NOT NULL,
+              blueprint_id INTEGER NOT NULL,
+              beat_id TEXT NOT NULL,
+              feedback_tags_json TEXT NOT NULL,
+              note TEXT NOT NULL,
+              edited_text_hash TEXT NOT NULL,
+              origin TEXT NOT NULL,
+              created_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS reference_aggregate_provenance (
@@ -265,6 +370,12 @@ internal static class ReferenceCorpusSchemaProvisioner
             CREATE INDEX IF NOT EXISTS idx_reference_observations_node
               ON reference_feature_observations(node_id, run_id, validity_state);
 
+            CREATE INDEX IF NOT EXISTS idx_reference_observations_list
+              ON reference_feature_observations(anchor_id, validity_state, created_at, observation_id);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_observations_node_family_list
+              ON reference_feature_observations(anchor_id, node_id, validity_state, feature_family, created_at, observation_id);
+
             CREATE UNIQUE INDEX IF NOT EXISTS ux_obs_generation_key
               ON reference_feature_observations(
                 run_id,
@@ -283,11 +394,26 @@ internal static class ReferenceCorpusSchemaProvisioner
             CREATE INDEX IF NOT EXISTS idx_reference_technique_specimens_source
               ON reference_technique_specimens(source_anchor_id, source_node_id, validity_state);
 
+            CREATE INDEX IF NOT EXISTS idx_reference_technique_specimens_list
+              ON reference_technique_specimens(source_anchor_id, validity_state, created_at, specimen_id);
+
             CREATE INDEX IF NOT EXISTS idx_reference_specimen_evidence_observation
               ON reference_specimen_evidence(observation_id, specimen_id);
 
             CREATE INDEX IF NOT EXISTS idx_reference_blueprint_beat_pieces_beat
               ON reference_blueprint_beat_pieces(beat_id, sequence_index);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_corpus_blueprints_chapter
+              ON reference_corpus_blueprints(novel_id, chapter_number, updated_at DESC, blueprint_id);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_corpus_blueprints_query
+              ON reference_corpus_blueprints(query_context_hash, assembly_strategy);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_corpus_blueprint_beats_blueprint
+              ON reference_corpus_blueprint_beats(blueprint_id, beat_index);
+
+            CREATE INDEX IF NOT EXISTS idx_reference_feedback_novel_target
+              ON reference_user_feedback(novel_id, target_type, target_id, created_at);
 
             CREATE INDEX IF NOT EXISTS idx_reference_aggregate_provenance_anchor_run
               ON reference_aggregate_provenance(anchor_id, run_id, aggregate_kind);
