@@ -4,13 +4,14 @@ public static class BridgeCompatibilityAppMethods
 {
     public static IReadOnlyList<string> MethodNames { get; } =
     [
-        "ApproveTool",
+"ApproveTool",
+ "AdvanceReferenceCorpusBlueprintSession",
         "AdaptReferenceMaterial",
         "ApproveReferenceChapterBlueprint",
         "ArchiveReferenceStyleProfile",
         "AuditReferenceAnchoredDraft",
         "AuditReferenceReuse",
-        "BackfillReferenceCorpusTechniqueVectorIndex",
+"BackfillReferenceCorpusTechniqueVectorIndex",
         "BindReferenceBlueprintMaterials",
 "BuildReferenceStyleProfile",
  "BuildReferenceCorpusAggregates",
@@ -63,6 +64,7 @@ public static class BridgeCompatibilityAppMethods
  "EnqueueReferenceCorpusAnalysisJob",
 "GenerateReferenceCorpusInsertionDraftCandidates",
 "GetReferenceCorpusGovernance",
+ "GetReferenceCorpusBlueprintSession",
  "GetReferenceCorpusAnalysisJob",
         "GetAppConfig",
         "GetArcNodes",
@@ -167,7 +169,7 @@ public static class BridgeCompatibilityAppMethods
  "ReprioritizeReferenceCorpusAnalysisJob",
  "ResumeReferenceCorpusAnalysisJob",
         "SearchAll",
-        "SearchReferenceCorpusCandidates",
+"SearchReferenceCorpusCandidates",
         "SearchReferenceMaterials",
         "SearchStyleSamples",
         "SearchStoryMemory",

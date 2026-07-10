@@ -12,6 +12,18 @@ ValueTask<ReferenceCorpusTechniqueVectorIndexBackfillPayload> BackfillTechniqueV
 BackfillReferenceCorpusTechniqueVectorIndexPayload input,
 CancellationToken cancellationToken);
 
+ ValueTask<ReferenceCorpusTechniqueVectorMaintenanceJobPayload> ScheduleTechniqueVectorMaintenanceAsync(
+ ScheduleReferenceCorpusTechniqueVectorMaintenancePayload input,
+ CancellationToken cancellationToken) => throw new NotSupportedException();
+
+ ValueTask<ReferenceCorpusTechniqueVectorMaintenancePumpResultPayload> PumpTechniqueVectorMaintenanceAsync(
+ PumpReferenceCorpusTechniqueVectorMaintenancePayload input,
+ CancellationToken cancellationToken) => throw new NotSupportedException();
+
+ ValueTask<ReferenceCorpusTechniqueVectorIndexInspectionPayload> InspectTechniqueVectorIndexesAsync(
+ InspectReferenceCorpusTechniqueVectorIndexesPayload input,
+ CancellationToken cancellationToken) => throw new NotSupportedException();
+
  ValueTask<ReferenceCorpusProjectionRebuildPayload> RebuildSensoryProjectionAsync(
  RebuildReferenceCorpusSensoryProjectionPayload input,
  CancellationToken cancellationToken) => throw new NotSupportedException();

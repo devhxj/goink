@@ -3,6 +3,7 @@ using Novelist.Contracts.App;
 using Novelist.Core.App;
 using Novelist.Infrastructure.App;
 using Novelist.IntegrationTests.TestDoubles;
+using System.Diagnostics;
 
 namespace Novelist.IntegrationTests;
 
@@ -57,7 +58,7 @@ public sealed class ReferenceCorpusRetrievalProductionTests : IAsyncLifetime
  }
 
  [Fact]
- public async Task SearchCandidatesUsesStableOpaqueCursorAndReturnsPerformanceDiagnostics()
+public async Task SearchCandidatesUsesStableOpaqueCursorAndReturnsPerformanceDiagnostics()
  {
  await SeedAsync();
  var service = CreateService();
@@ -89,7 +90,52 @@ public sealed class ReferenceCorpusRetrievalProductionTests : IAsyncLifetime
  };
  var exception = await Assert.ThrowsAsync<PageRequestValidationException>(async () =>
  await service.SearchCandidatesAsync(mismatched, CancellationToken.None));
- Assert.Equal(PageRequestErrorCodes.InvalidCursor, exception.Code);
+Assert.Equal(PageRequestErrorCodes.InvalidCursor, exception.Code);
+}
+
+ [Fact]
+ public async Task WarmRetrievalAcrossOneThousandNodesStaysWithinControlledBudget()
+ {
+ await SeedAsync();
+ await using (var connection = await OpenAsync())
+ await using (var transaction = (SqliteTransaction)await connection.BeginTransactionAsync())
+ {
+ for (var index = 0; index < 1000; index++)
+ {
+ await using var command = connection.CreateCommand();
+ command.Transaction = transaction;
+ command.CommandText = """
+ INSERT INTO reference_text_nodes
+ (node_id,anchor_id,parent_node_id,node_type,sequence_index,depth,chapter_index,start_offset,end_offset,char_len,text_hash,text,created_at)
+ VALUES($node_id,101,'chapter-2','sentence',$sequence,2,2,$start,$end,20,$hash,$text,'2026-07-10T00:00:00Z');
+ """;
+ command.Parameters.AddWithValue("$node_id", $"perf-{index:D4}");
+ command.Parameters.AddWithValue("$sequence", 100 + index);
+ command.Parameters.AddWithValue("$start", 1000 + index * 20);
+ command.Parameters.AddWithValue("$end", 1019 + index * 20);
+ command.Parameters.AddWithValue("$hash", $"perf-hash-{index:D4}");
+ command.Parameters.AddWithValue("$text", (index % 4) switch
+ {
+ 0 => $"雨声贴着门缝，压住第{index}次回答。",
+ 1 => $"她把钥匙扣在掌心，第{index}步停住。",
+ 2 => $"门外脚步逼近，第{index}次保持沉默。",
+ _ => $"灯影掠过走廊，第{index}次没有回头。"
+ });
+ await command.ExecuteNonQueryAsync();
+ }
+ await transaction.CommitAsync();
+ }
+
+ var service = CreateService();
+ await service.SearchCandidatesAsync(SearchRequest(pageSize: 20), CancellationToken.None);
+ var watch = Stopwatch.StartNew();
+ var result = await service.SearchCandidatesAsync(SearchRequest(pageSize: 20), CancellationToken.None);
+ watch.Stop();
+
+ Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"Warm retrieval took {watch.Elapsed}.");
+ Assert.Equal(20, result.Items.Count);
+ Assert.All(result.Items, item => Assert.NotNull(item.RetrievalDiagnostics));
+ Assert.Contains(result.Items.SelectMany(item => item.RouteProvenance ?? []), route => route.Route == "text_semantic" && route.Rank > 0 && route.RouteScore > 0);
  }
 
  private SqliteReferenceCorpusService CreateService() => new(

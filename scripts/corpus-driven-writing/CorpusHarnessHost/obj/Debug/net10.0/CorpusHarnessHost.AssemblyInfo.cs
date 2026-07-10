@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Novelist.IntegrationTests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0-alpha.1.20+0d75b41874a11d936fd6ac0907be85774441314e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0-alpha.1.21+c5da6919f03ef55787be08e39fe304144292eaa1")]
 [assembly: System.Reflection.AssemblyProductAttribute("Novelist.IntegrationTests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Novelist.IntegrationTests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.0.0.0")]

@@ -7,12 +7,28 @@ namespace Novelist.Core.Bridge;
 
 public static class ReferenceCorpusWritingBridgeHandlers
 {
-    public static BridgeDispatcher RegisterReferenceCorpusWritingHandlers(
-        this BridgeDispatcher dispatcher,
-        IReferenceCorpusWritingService service)
+public static BridgeDispatcher RegisterReferenceCorpusWritingHandlers(
+this BridgeDispatcher dispatcher,
+ IReferenceCorpusWritingService service,
+ IReferenceCorpusBlueprintIterationCoordinator? iterationCoordinator = null)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
-        ArgumentNullException.ThrowIfNull(service);
+ArgumentNullException.ThrowIfNull(service);
+
+ if (iterationCoordinator is not null)
+ {
+ dispatcher.Register("GetReferenceCorpusBlueprintSession", async (context, cancellationToken) =>
+ {
+ var input = ReadObjectArg<GetReferenceCorpusBlueprintSessionPayload>(context.Payload, 0, "input");
+ return await iterationCoordinator.GetAsync(input, cancellationToken);
+ });
+
+ dispatcher.Register("AdvanceReferenceCorpusBlueprintSession", async (context, cancellationToken) =>
+ {
+ var input = ReadObjectArg<AdvanceReferenceCorpusBlueprintSessionPayload>(context.Payload, 0, "input");
+ return await iterationCoordinator.AdvanceAsync(input, cancellationToken);
+ });
+ }
 
         dispatcher.Register("GenerateReferenceCorpusBlueprintCandidates", async (context, cancellationToken) =>
         {

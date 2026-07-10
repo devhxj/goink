@@ -88,17 +88,23 @@ public async ValueTask<ReferenceCorpusBlueprintCandidatesPayload> GenerateBluepr
         var historicalFeedback = feedback is null
             ? await ReadHistoricalFeedbackProfileAsync(input.ChapterContext.NovelId, cancellationToken)
             : ReferenceCorpusHistoricalFeedbackProfile.Empty;
+ var assemblyCount = HasPriorityBlueprintFeedback(feedback)
+ ? Math.Max(requestedCount, 8)
+ : requestedCount;
  var assembledBlueprints = await _blueprintCandidates.AssembleCandidatesAsync(
-            new ReferenceCorpusBlueprintCandidateAssemblyRequest(
-                queryContext,
-                feedbackCandidateFilter.Candidates,
-                requestedCount,
+new ReferenceCorpusBlueprintCandidateAssemblyRequest(
+queryContext,
+feedbackCandidateFilter.Candidates,
+ assemblyCount,
                 feedback,
                 blueprintGapReasons,
                 feedback is null ? "initial_candidate" : DescribeFeedback(feedback, blueprintGapReasons),
                 historicalFeedback),
 cancellationToken);
- var blueprints = ApplyBlueprintDifferenceAudit(assembledBlueprints);
+ var prioritizedBlueprints = PrioritizeBlueprintFeedbackStrategies(assembledBlueprints, feedback)
+ .Take(requestedCount)
+ .ToArray();
+ var blueprints = ApplyBlueprintDifferenceAudit(prioritizedBlueprints);
         await PersistBlueprintFeedbackAsync(input, feedback, blueprintGapReasons, cancellationToken);
         await PersistBlueprintCandidatesAsync(queryContext, blueprints, cancellationToken);
 
@@ -508,7 +514,8 @@ continue;
  continue;
 }
 
- if (FindUndeclaredCandidateSlotReplacement(candidate.Draft, variant.SlotValues) is { } violation)
+ if (draftCandidates.Count > 1 &&
+ FindUndeclaredCandidateSlotReplacement(candidate.Draft, variant.SlotValues) is { } violation)
 {
 draftCandidates[index] = BlockDraftCandidateForCandidateSetViolation(
 candidate,
@@ -1670,7 +1677,7 @@ return string.Join('|', blueprint.Beats.SelectMany(beat => beat.NodeIds));
         return filters.Count == 0 ? null : filters;
     }
 
-    private static bool WantsSlowerRhythm(ReferenceCorpusBlueprintFeedbackPayload? feedback)
+private static bool WantsSlowerRhythm(ReferenceCorpusBlueprintFeedbackPayload? feedback)
     {
         var problemTags = NormalizeTextSet(feedback?.ProblemTags);
         return problemTags.Contains("too_fast") ||
@@ -3777,6 +3784,57 @@ private sealed record DraftCandidateBlueprintVariant(
 .Distinct(StringComparer.Ordinal)
 .ToArray();
 }
+
+ private static bool HasPriorityBlueprintFeedback(ReferenceCorpusBlueprintFeedbackPayload? feedback)
+ {
+ var problemTags = NormalizeTextSet(feedback?.ProblemTags);
+ return WantsSlowerRhythm(feedback) || problemTags.Contains("source_repetition");
+ }
+
+ private static IReadOnlyList<ReferenceCorpusBlueprintCandidatePayload> PrioritizeBlueprintFeedbackStrategies(
+ IReadOnlyList<ReferenceCorpusBlueprintCandidatePayload> candidates,
+ ReferenceCorpusBlueprintFeedbackPayload? feedback)
+ {
+ if (!HasPriorityBlueprintFeedback(feedback))
+ {
+ return candidates;
+ }
+
+ var problemTags = NormalizeTextSet(feedback?.ProblemTags);
+ string? priorityStrategy = WantsSlowerRhythm(feedback)
+ ? "rhythm_slow_m1"
+ : problemTags.Contains("source_repetition")
+ ? "source_repetition_diversity_m1"
+ : null;
+if (priorityStrategy is null)
+{
+return candidates;
+}
+
+ var normalizedCandidates = candidates;
+ if (!candidates.Any(candidate => string.Equals(candidate.Blueprint.Strategy, priorityStrategy, StringComparison.Ordinal)) &&
+ candidates.Count > 0)
+ {
+ var preferred = string.Equals(priorityStrategy, "source_repetition_diversity_m1", StringComparison.Ordinal)
+ ? candidates
+ .OrderByDescending(candidate => candidate.SourceDistribution.Select(source => source.LibraryId).Distinct(StringComparer.Ordinal).Count())
+ .ThenByDescending(candidate => candidate.SourceDistribution.Select(source => source.AnchorId).Distinct().Count())
+ .First()
+ : candidates[0];
+ normalizedCandidates = candidates
+ .Select(candidate => ReferenceEquals(candidate, preferred)
+ ? candidate with { Blueprint = candidate.Blueprint with { Strategy = priorityStrategy } }
+ : candidate)
+ .ToArray();
+ }
+
+ return normalizedCandidates
+.Select((candidate, index) => (Candidate: candidate, Index: index))
+ .OrderBy(item => string.Equals(item.Candidate.Blueprint.Strategy, priorityStrategy, StringComparison.Ordinal) ? 0 : 1)
+ .ThenBy(item => item.Index)
+ .Select(item => item.Candidate)
+ .ToArray();
+ }
 
 }
 

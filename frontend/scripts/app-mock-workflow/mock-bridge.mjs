@@ -1222,19 +1222,60 @@ nextReferenceCorpusTechniqueSpecimenAnalysisRunId: 1,
       case 'GetReferenceMaterialTagReviewQueue': return getReferenceMaterialTagReviewQueue(args[0])
       case 'GetReferenceMaterialDetail': return getReferenceMaterialDetail(args[0])
       case 'GetReferenceSourceSegmentDetail': return getReferenceSourceSegmentDetail(args[0])
-      case 'GetReferenceSourceProcessingDetail': return getReferenceSourceProcessingDetail(args[0])
+case 'GetReferenceSourceProcessingDetail': return getReferenceSourceProcessingDetail(args[0])
+ case 'GetReferenceCorpusNodeWindow': {
+ const nodeId = String(args[0]?.node_id ?? 'mock-node-rain-001')
+ const text = '把杯底半圈水痕压进记忆里，没有急着回头。'
+ return {
+ focus_node_id: nodeId,
+ focus_chapter_index: 1,
+ scene_node_id: null,
+ chapter_nodes: [{ node_id: nodeId, parent_node_id: null, node_type: 'sentence', chapter_index: 1, sequence_index: 1, start_offset: 0, end_offset: text.length, text_hash: `hash-${nodeId}`, text }],
+ scene_siblings: [],
+ truncated: false,
+ }
+ }
       case 'StartReferenceCorpusFeatureAnalysis': return startReferenceCorpusFeatureAnalysis(args[0])
       case 'GetReferenceCorpusFeatureAnalysisRun': return getReferenceCorpusFeatureAnalysisRun(args[0])
       case 'StartReferenceCorpusTechniqueSpecimenAnalysis': return startReferenceCorpusTechniqueSpecimenAnalysis(args[0])
       case 'GetReferenceCorpusTechniqueSpecimenAnalysisRun': return getReferenceCorpusTechniqueSpecimenAnalysisRun(args[0])
       case 'ListReferenceCorpusFeatureObservations': return listReferenceCorpusFeatureObservations(args[0])
 case 'ListReferenceCorpusTechniqueSpecimens': return listReferenceCorpusTechniqueSpecimens(args[0])
- case 'ListReferenceCorpusAnalysisJobs': return listReferenceCorpusAnalysisJobs(args[0])
+ case 'ListReferenceCorpusAnalysisJobs': {
+ const input = args[0] ?? {}
+ const pageSize = Math.max(1, Number(input?.page_request?.page_size ?? 20))
+ const novelId = Number(input?.page_request?.filters?.novel_id ?? 0)
+ const matching = state.referenceCorpusAnalysisJobs.filter((job) => !novelId || job.novel_id === novelId)
+ const items = matching.slice(0, pageSize)
+ return { items, total: matching.length, page: 1, size: pageSize, total_pages: 1, next_cursor: null, has_more: false, total_estimate: matching.length }
+ }
  case 'GetReferenceCorpusAnalysisJob': return state.referenceCorpusAnalysisJobs.find((job) => job.job_id === args[0]?.job_id) ?? null
- case 'PauseReferenceCorpusAnalysisJob': return updateReferenceCorpusAnalysisJob(args[0], 'paused')
- case 'ResumeReferenceCorpusAnalysisJob': return updateReferenceCorpusAnalysisJob(args[0], 'queued')
- case 'CancelReferenceCorpusAnalysisJob': return updateReferenceCorpusAnalysisJob(args[0], 'cancelled')
- case 'ReprioritizeReferenceCorpusAnalysisJob': return reprioritizeReferenceCorpusAnalysisJob(args[0])
+ case 'PauseReferenceCorpusAnalysisJob':
+ case 'ResumeReferenceCorpusAnalysisJob':
+ case 'CancelReferenceCorpusAnalysisJob':
+ case 'ReprioritizeReferenceCorpusAnalysisJob': {
+ const input = args[0] ?? {}
+ const job = state.referenceCorpusAnalysisJobs.find((item) => item.job_id === input?.job_id)
+ if (!job) throw new Error('Reference corpus analysis job was not found.')
+ if (Number(input?.expected_version) !== job.version) throw new Error('Reference corpus analysis job version conflict.')
+ const status = method === 'PauseReferenceCorpusAnalysisJob' ? 'paused'
+ : method === 'ResumeReferenceCorpusAnalysisJob' ? 'queued'
+ : method === 'CancelReferenceCorpusAnalysisJob' ? 'cancelled' : job.status
+ const allowedActions = status === 'running' || status === 'queued' ? ['pause', 'cancel', 'reprioritize']
+ : status === 'paused' || status === 'retry_wait' ? ['resume', 'cancel', 'reprioritize']
+ : status === 'budget_exhausted' ? ['resume', 'cancel'] : []
+ Object.assign(job, {
+ status,
+ version: job.version + 1,
+ updated_at: now,
+ allowed_actions: allowedActions,
+ ...(method === 'ReprioritizeReferenceCorpusAnalysisJob' ? {
+ priority_class: input?.priority_class,
+ priority_value: Number(input?.priority_value ?? 0),
+ } : {}),
+ })
+ return { ...job }
+ }
       case 'GenerateReferenceCorpusBlueprintCandidates': return generateReferenceCorpusBlueprintCandidates(args[0])
       case 'GenerateReferenceCorpusInsertionDraft': return generateReferenceCorpusInsertionDraft(args[0])
       case 'GenerateReferenceCorpusInsertionDraftCandidates': return generateReferenceCorpusInsertionDraftCandidates(args[0])
@@ -3511,7 +3552,7 @@ case 'ListReferenceCorpusTechniqueSpecimens': return listReferenceCorpusTechniqu
     return ids
   }
 
-  function referenceAnchors() {
+function referenceAnchors() {
     return [
       ...state.referenceAnchors,
       ...state.createdReferenceAnchors,

@@ -371,7 +371,18 @@ async function verifyCorpusLibraryAnalysisResultsTab(page, corpusTabs) {
     .locator('[data-testid="reference-corpus-feature-observation-card"], [data-testid="reference-corpus-analysis-observation-card"], [data-testid*="observation"][data-testid*="card"], article')
     .filter({ hasText: /emotion_state|restrained|动作压住外显情绪/ })
     .first()
-  await expectVisible(observationCard, 'corpus library analysis observation card')
+await expectVisible(observationCard, 'corpus library analysis observation card')
+ const nodeWindowCalls = await bridgeCallCount(page, 'GetReferenceCorpusNodeWindow')
+ await observationCard.getByRole('button', { name: '定位原文' }).click()
+ await waitForBridgeCallCountAfter(page, 'GetReferenceCorpusNodeWindow', nodeWindowCalls)
+const locatedEvidence = page.getByTestId('located-corpus-evidence')
+await expectVisible(locatedEvidence, 'located corpus evidence')
+ await page.waitForFunction(() => !document.querySelector('[data-testid=located-corpus-evidence]')?.textContent?.includes('正在定位原文节点'), null, { timeout: 12_000 })
+ const evidenceHighlight = locatedEvidence.locator('[data-corpus-evidence-selection]')
+ if (await evidenceHighlight.count() === 0) throw new Error(`Located corpus evidence did not render a highlight: ${await locatedEvidence.innerText()}`)
+ await expectVisible(evidenceHighlight, 'located corpus evidence highlight')
+
+ await corpusTabs.getByRole('tab', { name: '分析结果' }).click()
 
   const specimenCard = analysisTab
     .locator('[data-testid="reference-corpus-technique-specimen-card"], [data-testid="reference-corpus-analysis-specimen-card"], [data-testid*="specimen"][data-testid*="card"], article')
@@ -380,7 +391,41 @@ async function verifyCorpusLibraryAnalysisResultsTab(page, corpusTabs) {
   await expectVisible(specimenCard, 'corpus library analysis specimen card')
 
   await assertCorpusLibraryLegacyWritingEntrypointsHidden(page, 'corpus library analysis results tab')
-  await assertCorpusLibraryNoChapterWritingBridgeCalls(page, 'corpus library analysis results tab')
+await assertCorpusLibraryNoChapterWritingBridgeCalls(page, 'corpus library analysis results tab')
+}
+
+async function verifyCorpusAnalysisJobsWorkflow(page, corpusTabs) {
+ const statuses = [
+ ['queued', '排队中'], ['running', '运行中'], ['pause_requested', '等待暂停'], ['paused', '已暂停'],
+ ['cancel_requested', '等待取消'], ['retry_wait', '等待重试'], ['budget_exhausted', '预算耗尽'],
+ ['completed', '已完成'], ['failed', '失败'], ['cancelled', '已取消'],
+ ]
+ await page.evaluate((statuses) => {
+ const base = window.__appMockState.referenceCorpusAnalysisJobs[0]
+ window.__appMockState.referenceCorpusAnalysisJobs = statuses.map(([status], index) => ({
+ ...base,
+ job_id: `mock-corpus-job-${index}`,
+ status,
+ version: 1,
+ allowed_actions: status === 'running' ? ['pause', 'cancel', 'reprioritize'] : [],
+ }))
+ }, statuses)
+ await corpusTabs.getByRole('tab', { name: '后台任务' }).click()
+const panel = page.getByTestId('corpus-analysis-jobs-panel')
+await expectVisible(panel, 'corpus analysis jobs panel')
+ const panelText = await panel.innerText()
+ for (const [, label] of statuses) {
+ if (!panelText.includes(label)) throw new Error(`Analysis job status ${label} missing from panel: ${panelText}`)
+ }
+
+ await page.evaluate(() => { window.__appMockState.referenceCorpusAnalysisJobs[1].version = 2 })
+ const listCalls = await bridgeCallCount(page, 'ListReferenceCorpusAnalysisJobs')
+ await panel.getByRole('button', { name: '暂停' }).click()
+ await waitForBridgeCallCountAfter(page, 'ListReferenceCorpusAnalysisJobs', listCalls)
+ await expectVisible(panel.getByText('运行中', { exact: true }), 'analysis job refreshed after CAS conflict')
+
+ await panel.getByRole('button', { name: '暂停' }).click()
+ await expectVisible(panel.getByText('已暂停', { exact: true }), 'analysis job paused after refreshed CAS version')
 }
 
 async function verifyTechniqueSpecimenBudgetResumeWorkflow(page) {
@@ -447,7 +492,8 @@ async function verifyCorpusLibraryWorkflow(page) {
   await assertCorpusLibraryNoChapterWritingBridgeCalls(page, 'corpus library default source tab')
   await verifyCorpusLibraryPartialImportFailure(page)
 
-  await verifyCorpusLibraryAnalysisResultsTab(page, corpusTabs)
+await verifyCorpusLibraryAnalysisResultsTab(page, corpusTabs)
+ await verifyCorpusAnalysisJobsWorkflow(page, corpusTabs)
 
   await corpusTabs.getByRole('tab', { name: '高级' }).click()
   await expectVisible(page.getByTestId('reference-corpus-advanced-tab'), 'corpus library advanced tab')

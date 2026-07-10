@@ -35,7 +35,7 @@ internal sealed partial class SqliteReferenceCorpusAnalysisJobStore
  WHERE dependency.job_id = job.dependency_job_id
  AND dependency.status = 'completed'))
  ORDER BY
- job.priority_value + CAST(MAX(0, (julianday($now) - julianday(job.queued_at)) * 288) AS INTEGER) DESC,
+ job.priority_value + (100 * CAST(MAX(0, (julianday($now) - julianday(job.queued_at)) * 288) AS INTEGER)) DESC,
  job.queued_at ASC,
  job.job_id ASC
  LIMIT 1;

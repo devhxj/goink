@@ -4106,11 +4106,11 @@ public sealed class ReferenceAnchorServiceTests : IDisposable
         Assert.Equal("unknown", unknownDetail.Source.LicenseStatus);
         Assert.True(unknownDetail.Material.TextPreview.Length <= 51);
         Assert.True(unknownDetail.Material.TextTruncated);
-        Assert.All(unknownDetail.Segments, segment =>
-        {
-            Assert.True(segment.TextPreview.Length <= 51);
-            Assert.True(segment.TextTruncated);
-        });
+Assert.All(unknownDetail.Segments, segment =>
+{
+Assert.True(segment.TextPreview.Length <= 51);
+ Assert.Equal(segment.TextPreview.EndsWith("...", StringComparison.Ordinal), segment.TextTruncated);
+});
         var unknownSegmentDetail = await service.GetSourceSegmentDetailAsync(
             new GetReferenceSourceSegmentDetailPayload(novel.Id, unknownAnchor.AnchorId, unknownMaterial.SourceSegmentId),
             CancellationToken.None);

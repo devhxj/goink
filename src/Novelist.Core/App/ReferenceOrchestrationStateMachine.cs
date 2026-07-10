@@ -37,7 +37,9 @@ public static class ReferenceOrchestrationStateMachine
     {
         return decisionType switch
         {
- ReferenceOrchestrationDecisionTypes.ConfirmSourceAndFacts => ReferenceOrchestrationStages.GoalParsing,
+ // The persisted execution service still consumes the legacy entry stage and
+ // normalizes it to goal_parsing for state-machine checks.
+ ReferenceOrchestrationDecisionTypes.ConfirmSourceAndFacts => ReferenceOrchestrationStages.BlueprintGeneration,
             ReferenceOrchestrationDecisionTypes.ApplyBlueprintRevision => ReferenceOrchestrationStages.BlueprintReview,
             ReferenceOrchestrationDecisionTypes.ApproveBlueprint => ReferenceOrchestrationStages.MaterialBinding,
             ReferenceOrchestrationDecisionTypes.ResolveHighRiskStop => currentStage,

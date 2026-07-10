@@ -44,7 +44,7 @@ internal static class CorpusHarnessHost
  Require(options.DatabasePath, "--database");
  Require(options.CheckpointPath, "--checkpoint");
  Require(options.Point, "--point");
- if (File.Exists(options.DatabasePath)) File.Delete(options.DatabasePath);
+if (File.Exists(options.DatabasePath)) File.Delete(options.DatabasePath);
  Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(options.DatabasePath))!);
 var store = new SqliteReferenceCorpusAnalysisJobStore(options.DatabasePath);
 await store.EnsureSchemaAsync();
@@ -117,8 +117,8 @@ await SeedAnchorAndProbeAsync(options.DatabasePath);
  started.Stop();
  var audit = await ReadAuditAsync(options.DatabasePath, scenario.Reservation.JobId, completion.CompletionKey);
  return new
- {
- scenario = scenario.ScenarioId,
+{
+scenario = scenario.ScenarioId,
  point,
  recovery_ms = started.Elapsed.TotalMilliseconds,
  model_replayed = point == "after_model",
@@ -132,9 +132,12 @@ await SeedAnchorAndProbeAsync(options.DatabasePath);
 
  private static async Task<object> RunScaleAsync(Arguments options)
  {
- Require(options.DatabasePath, "--database");
- Require(options.FixturePath, "--fixture");
- if (File.Exists(options.DatabasePath)) File.Delete(options.DatabasePath);
+Require(options.DatabasePath, "--database");
+Require(options.FixturePath, "--fixture");
+ Require(options.MetricsOutputPath, "--metrics-output");
+ Require(options.ProgressOutputPath, "--progress-output");
+ await WriteScaleProgressAsync(options, "loading_fixture", 0, 0, 0, 0, null);
+if (File.Exists(options.DatabasePath)) File.Delete(options.DatabasePath);
  var records = new List<ScaleRecord>();
  long characters = 0;
  await foreach (var line in File.ReadLinesAsync(options.FixturePath))
@@ -144,8 +147,9 @@ await SeedAnchorAndProbeAsync(options.DatabasePath);
  records.Add(record);
  characters += record.Text.Length;
  }
- if (characters < options.MinimumCharacters)
- throw new InvalidOperationException($"Scale fixture has {characters} characters; expected at least {options.MinimumCharacters}.");
+if (characters < options.MinimumCharacters)
+throw new InvalidOperationException($"Scale fixture has {characters} characters; expected at least {options.MinimumCharacters}.");
+ await WriteScaleProgressAsync(options, "seeding", records.Count, 0, characters, 0, null);
 
  var store = new SqliteReferenceCorpusAnalysisJobStore(options.DatabasePath);
 await store.EnsureSchemaAsync();
@@ -161,7 +165,8 @@ var enqueueStarted = Stopwatch.StartNew();
  await EnqueueScaleJobAsync(store, suffix, chunk, DateTimeOffset.UtcNow.AddMilliseconds(jobCount));
  jobCount++;
  }
- enqueueStarted.Stop();
+enqueueStarted.Stop();
+ await WriteScaleProgressAsync(options, "running", records.Count, 0, characters, jobCount, 0);
 
  var claimSamples = new List<double>(jobCount);
  var workSamples = new List<double>(records.Count);
@@ -195,18 +200,19 @@ var enqueueStarted = Stopwatch.StartNew();
  {
  var listWatch = Stopwatch.StartNew();
  await store.ListAsync(new(null, null, null, 0, 50));
- listWatch.Stop();
- listSamples.Add(listWatch.Elapsed.TotalMilliseconds);
+listWatch.Stop();
+listSamples.Add(listWatch.Elapsed.TotalMilliseconds);
+ await WriteScaleProgressAsync(
+ options, "running", records.Count, processed, characters, jobCount,
+ records.Count == 0 ? 100 : processed * 100d / records.Count);
  }
- var job = await store.GetAsync(claim.Job.JobId);
- if (job?.Status == ReferenceCorpusAnalysisJobStatuses.Completed) break;
- }
+}
  }
  runStarted.Stop();
  var outputRows = await ScalarAsync(options.DatabasePath, "SELECT COUNT(*) FROM harness_scale_outputs;");
- return new
- {
- fixture = Path.GetFullPath(options.FixturePath),
+ var result = new
+{
+fixture = Path.GetFullPath(options.FixturePath),
  characters,
  work_items = records.Count,
 jobs = jobCount,
@@ -219,12 +225,65 @@ jobs = jobCount,
  task_list_ms = Distribution(listSamples),
  tokens = new { spent = tokenSpent, reserved = 0, budget_penetration = 0 },
  output_rows = outputRows,
- duplicate_outputs = records.Count - outputRows,
+duplicate_outputs = records.Count - outputRows,
+ post_finalize_job_reads = 0,
  passed = outputRows == records.Count &&
  records.Count / runStarted.Elapsed.TotalSeconds >= options.MinimumThroughput &&
  Percentile(claimSamples, 0.95) <= options.MaximumClaimP95Ms &&
- (listSamples.Count == 0 || Percentile(listSamples, 0.95) <= options.MaximumListP95Ms)
- };
+(listSamples.Count == 0 || Percentile(listSamples, 0.95) <= options.MaximumListP95Ms)
+};
+ await WriteScaleProgressAsync(options, "completed", records.Count, processed, characters, jobCount, 100);
+ await WriteAtomicJsonAsync(options.MetricsOutputPath, new
+ {
+ schema_version = "corpus-m2-scale-metrics-v1",
+ generated_at = DateTimeOffset.UtcNow,
+ result
+ });
+ return result;
+}
+
+ private static Task WriteScaleProgressAsync(
+ Arguments options,
+ string status,
+ int totalWorkItems,
+ int processedWorkItems,
+ long characters,
+ int jobs,
+ double? percent) =>
+ WriteAtomicJsonAsync(options.ProgressOutputPath, new
+ {
+ schema_version = "corpus-m2-scale-progress-v1",
+ updated_at = DateTimeOffset.UtcNow,
+ status,
+ process_id = Environment.ProcessId,
+ fixture = Path.GetFullPath(options.FixturePath),
+ database = Path.GetFullPath(options.DatabasePath),
+ characters,
+ jobs,
+ total_work_items = totalWorkItems,
+ processed_work_items = processedWorkItems,
+ percent
+ });
+
+ private static async Task WriteAtomicJsonAsync(string outputPath, object value)
+ {
+ var fullPath = Path.GetFullPath(outputPath);
+ var directory = Path.GetDirectoryName(fullPath)
+ ?? throw new InvalidOperationException($"Output path '{outputPath}' has no parent directory.");
+ Directory.CreateDirectory(directory);
+ var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp");
+ try
+ {
+ await File.WriteAllTextAsync(
+ temporaryPath,
+ JsonSerializer.Serialize(value, JsonOptions),
+ new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+ File.Move(temporaryPath, fullPath, overwrite: true);
+ }
+ finally
+ {
+ if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+ }
  }
 
  private static async ValueTask<ReferenceCorpusAnalysisWorkItemReservation> CreateReservationAsync(
@@ -471,8 +530,10 @@ private static object Distribution(IReadOnlyList<double> values) => new
  public string DatabasePath { get; init; } = string.Empty;
  public string CheckpointPath { get; init; } = string.Empty;
  public string ScenarioPath { get; init; } = string.Empty;
- public string ModelResultPath { get; init; } = string.Empty;
- public string FixturePath { get; init; } = string.Empty;
+public string ModelResultPath { get; init; } = string.Empty;
+public string FixturePath { get; init; } = string.Empty;
+ public string MetricsOutputPath { get; init; } = string.Empty;
+ public string ProgressOutputPath { get; init; } = string.Empty;
  public string Point { get; init; } = string.Empty;
  public string ScenarioId { get; init; } = "default";
  public int MinimumCharacters { get; init; } = 2_000_000;
@@ -499,6 +560,7 @@ private static object Distribution(IReadOnlyList<double> values) => new
  {
  Command = args[0], DatabasePath = Get("database"), CheckpointPath = Get("checkpoint"),
  ScenarioPath = scenario, ModelResultPath = Get("model-result"), FixturePath = Get("fixture"),
+ MetricsOutputPath = Get("metrics-output"), ProgressOutputPath = Get("progress-output"),
  Point = Get("point"), ScenarioId = Get("scenario-id", "default"),
  MinimumCharacters = GetInt("minimum-characters", 2_000_000), JobSize = GetInt("job-size", 100),
  MinimumThroughput = GetDouble("minimum-throughput", 20),

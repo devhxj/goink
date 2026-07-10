@@ -1,7 +1,9 @@
 param(
- [int]$GoldenSentenceCount = 500,
- [int]$ScaleCharacterCount = 2000000,
- [string]$ScaleOutput = "build/tmp/corpus-driven-writing/scale-2m.jsonl"
+[int]$GoldenSentenceCount = 500,
+[int]$ScaleCharacterCount = 2000000,
+ [string]$ScaleOutput = "build/tmp/corpus-driven-writing/scale-2m.jsonl",
+ [switch]$SkipGolden,
+ [switch]$SkipScale
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +11,13 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $fixtureDir = Join-Path $repoRoot "tests/Novelist.IntegrationTests/Fixtures/corpus-driven-writing"
 $goldenPath = Join-Path $fixtureDir "m0-500-sentence-golden.json"
 $scalePath = Join-Path $repoRoot $ScaleOutput
-New-Item -ItemType Directory -Force -Path $fixtureDir, (Split-Path $scalePath) | Out-Null
+if ($GoldenSentenceCount -lt 1) { throw "GoldenSentenceCount must be positive." }
+if ($ScaleCharacterCount -lt 1) { throw "ScaleCharacterCount must be positive." }
+if (-not $SkipScale -and -not $scalePath.StartsWith((Join-Path $repoRoot "build/tmp/"), [StringComparison]::OrdinalIgnoreCase)) {
+ throw "ScaleOutput must stay under build/tmp/."
+}
+New-Item -ItemType Directory -Force -Path $fixtureDir | Out-Null
+if (-not $SkipScale) { New-Item -ItemType Directory -Force -Path (Split-Path $scalePath) | Out-Null }
 
 $families = @("syntactic", "rhythm", "sensory", "emotion", "rhetoric", "narrative_function", "perspective", "character_dynamics", "action_chain", "commercial_mechanics")
 $templates = @(
@@ -53,10 +61,13 @@ $golden = [ordered]@{
  )
  sentences = $sentences
 }
-$golden | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $goldenPath -Encoding utf8
+if (-not $SkipGolden) {
+ $golden | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $goldenPath -Encoding utf8
+}
 
-$writer = [IO.StreamWriter]::new($scalePath, $false, [Text.UTF8Encoding]::new($false))
-try {
+if (-not $SkipScale) {
+ $writer = [IO.StreamWriter]::new($scalePath, $false, [Text.UTF8Encoding]::new($false))
+ try {
  $characters = 0
  $ordinal = 0
  while ($characters -lt $ScaleCharacterCount) {
@@ -74,10 +85,11 @@ try {
  $characters += $text.Length
  $ordinal++
  }
-}
-finally {
+ }
+ finally {
  $writer.Dispose()
 }
+}
 
-Write-Output "golden=$goldenPath sentences=$GoldenSentenceCount"
-Write-Output "scale=$scalePath characters>=$ScaleCharacterCount"
+if (-not $SkipGolden) { Write-Output "golden=$goldenPath sentences=$GoldenSentenceCount" }
+if (-not $SkipScale) { Write-Output "scale=$scalePath characters>=$ScaleCharacterCount" }

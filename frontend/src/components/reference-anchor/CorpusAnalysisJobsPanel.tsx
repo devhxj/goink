@@ -7,7 +7,7 @@ interface Props { novelId: number }
 
 const statusLabels: Record<string, string> = {
  queued: "排队中", running: "运行中", pause_requested: "等待暂停", paused: "已暂停",
- retry_wait: "等待重试", budget_exhausted: "预算耗尽", partial_completed: "部分完成",
+ cancel_requested: "等待取消", retry_wait: "等待重试", budget_exhausted: "预算耗尽",
  completed: "已完成", failed: "失败", cancelled: "已取消",
 }
 

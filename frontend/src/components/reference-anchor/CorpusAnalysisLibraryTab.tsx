@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { FileSearch, Layers3, Loader2, RefreshCcw, Search } from 'lucide-react'
+import { ExternalLink, FileSearch, Layers3, Loader2, RefreshCcw, Search } from 'lucide-react'
 import ErrorCallout from '@/components/shared/ErrorCallout'
 import { useApp } from '@/hooks/useApp'
 import { buildCopyableDiagnostic, diagnosticMessage } from '@/lib/diagnostics'
@@ -541,7 +541,13 @@ function AnalysisPanel({
 }
 
 function ObservationCard({ observation }: { observation: reference.CorpusFeatureObservation }) {
-  return (
+ const locateEvidence = () => dispatchEvidenceLocation(
+ observation.anchor_id,
+ observation.node_id,
+ observation.evidence_start,
+ observation.evidence_end,
+ )
+return (
     <article data-testid="reference-corpus-observation-card" className="space-y-2 px-2.5 py-2 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="min-w-0 break-all font-medium text-foreground">
@@ -558,11 +564,16 @@ function ObservationCard({ observation }: { observation: reference.CorpusFeature
       {observation.value_preview && (
         <p className="break-words leading-relaxed text-foreground">{boundedText(observation.value_preview, 180)}</p>
       )}
-      {(observation.evidence_preview || observation.explanation) && (
+{(observation.evidence_preview || observation.explanation) && (
         <p className="break-words rounded bg-secondary/60 px-2 py-1.5 leading-relaxed text-muted-foreground">
           {[boundedText(observation.evidence_preview ?? '', 120), boundedText(observation.explanation ?? '', 160)].filter(Boolean).join(' · ')}
         </p>
-      )}
+)}
+ {observation.evidence_start != null && (
+ <button type='button' className='inline-flex items-center gap-1 text-[11px] text-primary' onClick={locateEvidence}>
+ <ExternalLink className='h-3.5 w-3.5' />定位原文
+ </button>
+ )}
       <p className="break-all text-[11px] text-muted-foreground">
         {observation.node_id} · {observation.text_hash} · {observation.run_id}
       </p>
@@ -603,9 +614,14 @@ function SpecimenCard({ specimen }: { specimen: reference.CorpusTechniqueSpecime
         <div className="space-y-1">
           <p className="text-[11px] font-medium text-muted-foreground">evidence</p>
           {specimen.evidence.slice(0, 2).map(item => (
-            <p key={`${specimen.specimen_id}:${item.observation_id}`} className="break-words rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
-              {item.feature_family}.{item.feature_key} · {boundedText(item.evidence_preview ?? item.value_preview ?? '', 120)}
-            </p>
+ <div key={`${specimen.specimen_id}:${item.observation_id}`} className='flex items-start justify-between gap-2 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground'>
+ <span className='break-words'>{item.feature_family}.{item.feature_key} · {boundedText(item.evidence_preview ?? item.value_preview ?? '', 120)}</span>
+ {item.evidence_start != null && (
+ <button type='button' className='inline-flex shrink-0 items-center gap-1 text-primary' onClick={() => dispatchEvidenceLocation(specimen.source_anchor_id, item.node_id, item.evidence_start, item.evidence_end)}>
+ <ExternalLink className='h-3.5 w-3.5' />定位
+ </button>
+ )}
+ </div>
           ))}
         </div>
       )}
@@ -614,6 +630,15 @@ function SpecimenCard({ specimen }: { specimen: reference.CorpusTechniqueSpecime
       </p>
     </article>
   )
+}
+
+function dispatchEvidenceLocation(anchorId: number, nodeId: string, evidenceStart?: number | null, evidenceEnd?: number | null) {
+ window.dispatchEvent(new CustomEvent('novelist:locate-corpus-evidence', { detail: {
+ anchorId,
+ nodeId,
+ evidenceStart,
+ evidenceEnd,
+ } }))
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

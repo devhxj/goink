@@ -41,7 +41,81 @@ public sealed record ReferenceCorpusBlueprintFeedbackPayload(
     [property: JsonPropertyName("avoid_library_ids")] IReadOnlyList<string> AvoidLibraryIds,
     [property: JsonPropertyName("avoid_anchor_ids")] IReadOnlyList<long> AvoidAnchorIds,
     [property: JsonPropertyName("problem_tags")] IReadOnlyList<string> ProblemTags,
-    [property: JsonPropertyName("notes")] string? Notes);
+[property: JsonPropertyName("notes")] string? Notes);
+
+public static class ReferenceCorpusBlueprintSessionActions
+{
+ public const string Generate = "generate";
+ public const string Revise = "revise";
+ public const string Accept = "accept";
+
+ public static IReadOnlyList<string> All { get; } = [Generate, Revise, Accept];
+}
+
+public static class ReferenceCorpusBlueprintChecklistDimensions
+{
+ public const string EmotionArc = "emotion_arc";
+ public const string Rhythm = "rhythm";
+ public const string TechniqueDiversity = "technique_diversity";
+ public const string SceneTemplate = "scene_template";
+ public const string SourceDistribution = "source_distribution";
+
+ public static IReadOnlyList<string> All { get; } =
+ [
+ EmotionArc,
+ Rhythm,
+ TechniqueDiversity,
+ SceneTemplate,
+ SourceDistribution
+ ];
+}
+
+public static class ReferenceCorpusBlueprintChecklistDecisions
+{
+ public const string Accepted = "accepted";
+ public const string Revise = "revise";
+
+ public static IReadOnlyList<string> All { get; } = [Accepted, Revise];
+}
+
+public static class ReferenceCorpusBlueprintSessionStatuses
+{
+ public const string AwaitingFeedback = "awaiting_feedback";
+ public const string Accepted = "accepted";
+}
+
+public sealed record ReferenceCorpusBlueprintChecklistItemPayload(
+ [property: JsonPropertyName("dimension")] string Dimension,
+ [property: JsonPropertyName("decision")] string Decision,
+ [property: JsonPropertyName("problem_tags")] IReadOnlyList<string> ProblemTags,
+ [property: JsonPropertyName("notes")] string? Notes = null);
+
+public sealed record AdvanceReferenceCorpusBlueprintSessionPayload(
+ [property: JsonPropertyName("session_id")] string SessionId,
+ [property: JsonPropertyName("request_id")] string RequestId,
+ [property: JsonPropertyName("action")] string Action,
+ [property: JsonPropertyName("generation_input")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GenerateReferenceCorpusBlueprintCandidatesPayload? GenerationInput = null,
+ [property: JsonPropertyName("selected_blueprint_id")] string? SelectedBlueprintId = null,
+ [property: JsonPropertyName("checklist")] IReadOnlyList<ReferenceCorpusBlueprintChecklistItemPayload>? Checklist = null);
+
+public sealed record GetReferenceCorpusBlueprintSessionPayload(
+ [property: JsonPropertyName("novel_id")] long NovelId,
+ [property: JsonPropertyName("chapter_number")] int ChapterNumber,
+ [property: JsonPropertyName("session_id")] string SessionId);
+
+public sealed record ReferenceCorpusBlueprintSessionPayload(
+ [property: JsonPropertyName("session_id")] string SessionId,
+ [property: JsonPropertyName("novel_id")] long NovelId,
+ [property: JsonPropertyName("chapter_number")] int ChapterNumber,
+ [property: JsonPropertyName("status")] string Status,
+ [property: JsonPropertyName("iteration")] int Iteration,
+ [property: JsonPropertyName("selected_blueprint_id")] string SelectedBlueprintId,
+ [property: JsonPropertyName("accepted_blueprint_id")] string AcceptedBlueprintId,
+ [property: JsonPropertyName("checklist")] IReadOnlyList<ReferenceCorpusBlueprintChecklistItemPayload> Checklist,
+ [property: JsonPropertyName("strategy_coverage")] IReadOnlyList<string> StrategyCoverage,
+ [property: JsonPropertyName("candidates")] ReferenceCorpusBlueprintCandidatesPayload Candidates,
+ [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
 
 public sealed record ReferenceCorpusInsertionBlueprintPayload(
     [property: JsonPropertyName("blueprint_id")] string BlueprintId,

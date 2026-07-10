@@ -11,7 +11,7 @@ public sealed class ReferenceCorpusTextNodeImportTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "novelist-tests", Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public async Task CreateAnchorPopulatesStableTextNodesAndLinksSegmentsAndMaterials()
+public async Task CreateAnchorPopulatesStableTextNodesAndLinksSegmentsAndMaterials()
     {
         var options = CreateOptions();
         await InitializeAsync(options);
@@ -87,18 +87,107 @@ Assert.True(await ObservationExistsAsync(options, firstSentence.NodeId, "sensory
             CancellationToken.None);
 
         var candidate = Assert.Single(search.Items, item => item.NodeId == firstSentence.NodeId);
-        Assert.Contains(candidate.Evidence, item => item.FeatureFamily == "sensory" && item.FeatureKey == "senses");
-    }
+Assert.Contains(candidate.Evidence, item => item.FeatureFamily == "sensory" && item.FeatureKey == "senses");
+}
+
+ [Fact]
+ public async Task NodeWindowReturnsAdjacentChaptersAndSceneSiblingsWithoutRetrieval()
+ {
+ var (options, novelId, anchorId) = await CreateWindowFixtureAsync();
+ var nodes = await ReadTextNodesAsync(options, anchorId);
+ var focus = Assert.Single(nodes, node => node.NodeType == ReferenceCorpusNodeTypes.Sentence && node.Text.Contains("第二章焦点", StringComparison.Ordinal));
+ var corpus = new SqliteReferenceCorpusService(options);
+
+ var window = await corpus.GetNodeWindowAsync(
+ new GetReferenceCorpusNodeWindowPayload(anchorId, focus.NodeId, 1, 1, true, 200),
+ CancellationToken.None);
+
+ Assert.NotNull(window);
+ Assert.Equal(focus.NodeId, window.FocusNodeId);
+ Assert.Equal(2, window.FocusChapterIndex);
+ Assert.Contains(window.ChapterNodes, node => node.ChapterIndex == 1);
+ Assert.Contains(window.ChapterNodes, node => node.ChapterIndex == 2);
+ Assert.Contains(window.ChapterNodes, node => node.ChapterIndex == 3);
+ Assert.NotNull(window.SceneNodeId);
+ Assert.NotEmpty(window.SceneSiblings);
+ Assert.All(window.SceneSiblings, node => Assert.Equal(window.SceneNodeId, node.ParentNodeId));
+ Assert.False(window.Truncated);
+ Assert.True(novelId > 0);
+ }
+
+ [Fact]
+ public async Task SensoryProjectionRebuildRestoresActiveRowsAndIsIdempotent()
+ {
+ var (options, _, anchorId) = await CreateWindowFixtureAsync();
+ await using (var connection = await OpenReferenceConnectionAsync(options))
+ {
+ await using var delete = connection.CreateCommand();
+ delete.CommandText = "DELETE FROM reference_obs_sensory WHERE anchor_id=$anchor_id;";
+ delete.Parameters.AddWithValue("$anchor_id", anchorId);
+ await delete.ExecuteNonQueryAsync();
+ }
+
+ var corpus = new SqliteReferenceCorpusService(options);
+ var first = await corpus.RebuildSensoryProjectionAsync(new(anchorId), CancellationToken.None);
+ var second = await corpus.RebuildSensoryProjectionAsync(new(anchorId), CancellationToken.None);
+
+ Assert.True(first.ObservationCount > 0);
+ Assert.True(first.ProjectionRowCount > 0);
+ Assert.Equal(0, first.InvalidObservationCount);
+ Assert.Equal(first, second);
+ Assert.Equal(first.ProjectionRowCount, await CountSensoryProjectionRowsAsync(options, anchorId));
+ }
+
+ [Fact]
+ public async Task SchemaUpgradeBackfillsLegacyTextNodeProjectionAndIsIdempotent()
+ {
+ var (options, novelId, anchorId) = await CreateWindowFixtureAsync();
+ var before = await ReadTextNodesAsync(options, anchorId);
+Assert.NotEmpty(before);
+await using (var connection = await OpenReferenceConnectionAsync(options))
+{
+ await using (var disableForeignKeys = connection.CreateCommand())
+ {
+ disableForeignKeys.CommandText = "PRAGMA foreign_keys = OFF;";
+ await disableForeignKeys.ExecuteNonQueryAsync();
+ }
+
+await using var command = connection.CreateCommand();
+command.CommandText = """
+UPDATE reference_source_segments SET node_id = NULL WHERE anchor_id=$anchor_id;
+UPDATE reference_materials SET node_id = NULL WHERE anchor_id=$anchor_id;
+DELETE FROM reference_text_nodes WHERE anchor_id=$anchor_id;
+""";
+command.Parameters.AddWithValue("$anchor_id", anchorId);
+await command.ExecuteNonQueryAsync();
+
+ await using var enableForeignKeys = connection.CreateCommand();
+ enableForeignKeys.CommandText = "PRAGMA foreign_keys = ON;";
+ await enableForeignKeys.ExecuteNonQueryAsync();
+}
+
+ var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+ var service = new SqliteReferenceAnchorService(options, novels);
+ _ = await service.GetAnchorsAsync(novelId, CancellationToken.None);
+ var migrated = await ReadTextNodesAsync(options, anchorId);
+ _ = await service.GetAnchorsAsync(novelId, CancellationToken.None);
+ var migratedAgain = await ReadTextNodesAsync(options, anchorId);
+
+ Assert.Equal(before.Select(node => node.NodeId), migrated.Select(node => node.NodeId));
+ Assert.Equal(migrated.Select(node => node.NodeId), migratedAgain.Select(node => node.NodeId));
+ Assert.All(migrated, node => Assert.Equal(node.Text, before.Single(original => original.NodeId == node.NodeId).Text));
+ Assert.Equal(0, await CountMissingNodeLinksAsync(options, anchorId));
+ }
 
     public void Dispose()
     {
         if (Directory.Exists(_root))
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-    }
+{
+Directory.Delete(_root, recursive: true);
+ }
+ }
 
-    private AppInitializationOptions CreateOptions()
+private AppInitializationOptions CreateOptions()
     {
         return new AppInitializationOptions
         {
@@ -323,6 +412,59 @@ string TextHash,
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult<EmbeddingRequestOptions?>(_options);
-        }
-    }
+ }
+}
+
+ private async ValueTask<(AppInitializationOptions Options, long NovelId, long AnchorId)> CreateWindowFixtureAsync()
+ {
+ var options = CreateOptions();
+ await InitializeAsync(options);
+ var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+ var novel = await novels.CreateNovelAsync(new CreateNovelPayload("窗口与迁移测试", "", ""), CancellationToken.None);
+ var sourcePath = CreateSourceFile(
+ "window.md",
+ """
+ # 第一章
+
+ 第一章雨声贴着门缝。
+
+ # 第二章
+
+ 第二章焦点停在门边，手指压住锁扣。
+
+ 第二章同场景的另一拍。
+
+ # 第三章
+
+ 第三章灯火从长街尽头亮起。
+ """);
+ var service = new SqliteReferenceAnchorService(options, novels);
+ var anchor = await service.CreateAnchorAsync(
+ new CreateReferenceAnchorPayload(novel.Id, "窗口参考", null, sourcePath, "markdown", "user_provided"),
+ CancellationToken.None);
+ return (options, novel.Id, anchor.AnchorId);
+ }
+
+ private static async ValueTask<int> CountSensoryProjectionRowsAsync(AppInitializationOptions options, long anchorId)
+ {
+ await using var connection = await OpenReferenceConnectionAsync(options);
+ await using var command = connection.CreateCommand();
+ command.CommandText = "SELECT COUNT(*) FROM reference_obs_sensory WHERE anchor_id=$anchor_id;";
+ command.Parameters.AddWithValue("$anchor_id", anchorId);
+ return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+ }
+
+ private static async ValueTask<int> CountMissingNodeLinksAsync(AppInitializationOptions options, long anchorId)
+ {
+ await using var connection = await OpenReferenceConnectionAsync(options);
+ await using var command = connection.CreateCommand();
+ command.CommandText = """
+ SELECT
+ (SELECT COUNT(*) FROM reference_source_segments WHERE anchor_id=$anchor_id AND node_id IS NULL) +
+ (SELECT COUNT(*) FROM reference_materials WHERE anchor_id=$anchor_id AND node_id IS NULL);
+ """;
+ command.Parameters.AddWithValue("$anchor_id", anchorId);
+return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+}
+
 }

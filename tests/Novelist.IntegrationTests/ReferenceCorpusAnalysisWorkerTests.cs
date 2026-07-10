@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Novelist.Contracts.App;
 using Novelist.Core.App;
+using Novelist.Core.Bridge;
 using Novelist.Infrastructure.App;
 
 namespace Novelist.IntegrationTests;
@@ -97,7 +98,7 @@ Assert.Equal(ReferenceCorpusFeatureFamilies.SentenceFamilies.Count, analyzer.Cal
 }
 
  [Fact]
- public async Task StopDuringModelCallAbandonsReservationWithoutWaitingForLeaseExpiry()
+public async Task StopDuringModelCallAbandonsReservationWithoutWaitingForLeaseExpiry()
  {
  await SeedAsync();
  var path = new FixedPathResolver(DatabasePath);
@@ -120,11 +121,41 @@ Assert.Equal(ReferenceCorpusFeatureFamilies.SentenceFamilies.Count, analyzer.Cal
  Assert.Equal(4096, abandoned.TokensSpent);
  Assert.Null(abandoned.LeaseExpiresAt);
  Assert.Equal(0, abandoned.ProcessedWorkItems);
- Assert.Equal(("pending", 0), await ReadFirstWorkItemReservationAsync(queued.JobId));
- }
+Assert.Equal(("pending", 0), await ReadFirstWorkItemReservationAsync(queued.JobId));
+}
 
  [Fact]
- public async Task PumpOnceStopsAtBudgetBoundaryWithoutLeavingRunningLease()
+ public async Task DisposeWaitsForInFlightManualPumpBeforeReleasingDatabase()
+ {
+ await SeedAsync();
+ var path = new FixedPathResolver(DatabasePath);
+ var scheduler = new SqliteReferenceCorpusAnalysisScheduler(path, new FixedSettingsService());
+ var analyzer = new BlockingFeatureAnalyzer(10);
+ var worker = new ReferenceCorpusAnalysisWorker(
+ path, analyzer, new UnexpectedTechniqueAnalyzer(), "worker-dispose-pump");
+ await scheduler.EnqueueAsync(new(
+ "worker-run-dispose-pump", 1, 101, ReferenceCorpusAnalysisJobKinds.FeatureAnalysis,
+ ReferenceCorpusNodeTypes.Sentence, ReferenceCorpusAnalysisPriorityClasses.Normal, 100, 1000),
+ CancellationToken.None);
+
+ var pump = worker.PumpOnceAsync(CancellationToken.None).AsTask();
+ await analyzer.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+ var dispose = worker.DisposeAsync().AsTask();
+
+ await Task.Delay(50);
+ Assert.False(dispose.IsCompleted);
+ analyzer.Release.TrySetResult();
+ Assert.True(await pump.WaitAsync(TimeSpan.FromSeconds(10)));
+await dispose.WaitAsync(TimeSpan.FromSeconds(10));
+
+File.Delete(DatabasePath);
+Assert.False(File.Exists(DatabasePath));
+ await Assert.ThrowsAsync<ObjectDisposedException>(async () =>
+ await worker.PumpOnceAsync(CancellationToken.None));
+}
+
+ [Fact]
+public async Task PumpOnceStopsAtBudgetBoundaryWithoutLeavingRunningLease()
  {
  await SeedAsync();
  var path = new FixedPathResolver(DatabasePath);
@@ -143,6 +174,30 @@ Assert.Equal(ReferenceCorpusFeatureFamilies.SentenceFamilies.Count, analyzer.Cal
  Assert.Equal(1, exhausted.ProcessedWorkItems);
  Assert.Equal(10, exhausted.TokensSpent);
 Assert.Null(exhausted.LeaseExpiresAt);
+}
+
+ [Fact]
+public async Task PumpOncePersistsProviderRetryAfterFromBridgeDetails()
+ {
+ await SeedAsync();
+ var path = new FixedPathResolver(DatabasePath);
+ var scheduler = new SqliteReferenceCorpusAnalysisScheduler(path, new FixedSettingsService());
+ var queued = await scheduler.EnqueueAsync(new(
+ "worker-run-retry-after", 1, 101, ReferenceCorpusAnalysisJobKinds.FeatureAnalysis,
+ ReferenceCorpusNodeTypes.Sentence, ReferenceCorpusAnalysisPriorityClasses.Normal, 100, 1000,
+ MaxAttempts: 5), CancellationToken.None);
+ var worker = new ReferenceCorpusAnalysisWorker(
+ path, new RetryAfterFeatureAnalyzer(), new UnexpectedTechniqueAnalyzer(), "worker-retry-after");
+ var before = DateTimeOffset.UtcNow;
+
+ Assert.True(await worker.PumpOnceAsync(CancellationToken.None));
+
+ var retrying = await scheduler.GetAsync(new(queued.JobId), CancellationToken.None);
+ Assert.NotNull(retrying);
+ Assert.Equal(ReferenceCorpusAnalysisJobStatuses.RetryWait, retrying.Status);
+ Assert.NotNull(retrying.NextAttemptAt);
+ Assert.InRange(retrying.NextAttemptAt.Value, before.AddSeconds(17), DateTimeOffset.UtcNow.AddSeconds(18));
+Assert.Equal(1, retrying.FailureAttemptCount);
 }
 
  [Theory]
@@ -285,7 +340,7 @@ private sealed class BlockingFeatureAnalyzer(int tokensPerCall) : IReferenceCorp
  }
  }
 
- private sealed class CancellationBlockingFeatureAnalyzer : IReferenceCorpusFeatureFamilyAnalyzer
+private sealed class CancellationBlockingFeatureAnalyzer : IReferenceCorpusFeatureFamilyAnalyzer
  {
  public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -309,6 +364,18 @@ private sealed class BlockingFeatureAnalyzer(int tokensPerCall) : IReferenceCorp
  {
  public ValueTask<string> ResolveAsync(CancellationToken cancellationToken) => ValueTask.FromResult(path);
  }
+
+private sealed class RetryAfterFeatureAnalyzer : IReferenceCorpusFeatureFamilyAnalyzer
+ {
+ public ValueTask<ReferenceCorpusFeatureFamilyAnalysisOutput> AnalyzeAsync(
+ ReferenceCorpusFeatureFamilyAnalysisInput input,
+ CancellationToken cancellationToken) =>
+ throw new BridgeRequestException(
+ "provider_rate_limited",
+ "Rate limited.",
+ new { retry_after_seconds = 17 },
+retryable: true);
+}
 
  private sealed class FixedSettingsService : IAppSettingsService
  {

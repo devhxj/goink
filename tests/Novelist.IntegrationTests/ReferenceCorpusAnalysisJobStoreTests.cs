@@ -149,6 +149,28 @@ Assert.Equal(claim.LeaseToken, lease.LeaseToken);
 }
 
  [Fact]
+ public async Task ClaimNextAgesNormalPriorityAcrossClassBoundariesWithinFifteenMinutes()
+ {
+ await using var fixture = await JobStoreFixture.CreateAsync();
+ var normalQueuedAt = DateTimeOffset.Parse("2026-07-10T08:00:00Z");
+ var claimAt = normalQueuedAt.AddMinutes(15);
+ await fixture.Store.EnqueueAsync(
+ CreateSnapshot("snapshot-aged-normal", 2, normalQueuedAt), CreateWorkItems(),
+ CreateEnqueue("job-aged-normal", "run-aged-normal", "snapshot-aged-normal", 2, normalQueuedAt,
+ ReferenceCorpusAnalysisPriorityClasses.Normal, 100));
+ await fixture.Store.EnqueueAsync(
+ CreateSnapshot("snapshot-new-current", 2, claimAt), CreateWorkItems(),
+ CreateEnqueue("job-new-current", "run-new-current", "snapshot-new-current", 2, claimAt,
+ ReferenceCorpusAnalysisPriorityClasses.CurrentChapter, 300));
+
+ var claimed = await fixture.Store.ClaimNextAsync(
+ "worker-aging", claimAt, TimeSpan.FromSeconds(45));
+
+ Assert.NotNull(claimed);
+ Assert.Equal("job-aged-normal", claimed.Job.JobId);
+ }
+
+ [Fact]
  public async Task ReclaimExpiredRunningLeaseSchedulesRetry()
  {
  await using var fixture = await JobStoreFixture.CreateAsync();
@@ -403,6 +425,9 @@ await fixture.ReadCanonicalRunProgressAsync("run-commit"));
 Assert.Equal(2, await fixture.CountRowsAsync("commit_probe"));
  Assert.Equal((ReferenceCorpusAnalysisRunStatuses.Completed, 500, "2", (DateTimeOffset?)now.AddSeconds(4)),
  await fixture.ReadCanonicalRunProgressAsync("run-commit"));
+ var noMoreWork = await fixture.Store.ReserveNextWorkItemAsync(
+ "job-commit", "worker-1", claim.LeaseToken, 300, now.AddSeconds(5));
+ Assert.Null(noMoreWork);
 }
 
  [Fact]
@@ -692,10 +717,12 @@ public async Task SettleWorkItemRejectsStaleInvocationWithZeroWrites()
  }
 
  private static ReferenceCorpusAnalysisJobEnqueue CreateEnqueue(
- string jobId, string runId, string snapshotId, int workCount, DateTimeOffset at) =>
+ string jobId, string runId, string snapshotId, int workCount, DateTimeOffset at,
+ string priorityClass = ReferenceCorpusAnalysisPriorityClasses.Normal,
+ int priorityValue = 100) =>
  new(jobId, runId, snapshotId, 7, 101, ReferenceCorpusAnalysisJobKinds.FeatureAnalysis,
  "{\"node_type\":\"sentence\"}", "input-hash", null,
- ReferenceCorpusAnalysisPriorityClasses.Normal, 100, 2, workCount, 2500,
+ priorityClass, priorityValue, 2, workCount, 2500,
  "stage_2", null, 3, at);
 
 private sealed class JobStoreFixture : IAsyncDisposable

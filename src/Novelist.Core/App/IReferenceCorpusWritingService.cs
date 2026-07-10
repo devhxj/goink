@@ -21,6 +21,17 @@ public interface IReferenceCorpusWritingService
         CancellationToken cancellationToken);
 }
 
+public interface IReferenceCorpusBlueprintIterationCoordinator
+{
+ ValueTask<ReferenceCorpusBlueprintSessionPayload?> GetAsync(
+ GetReferenceCorpusBlueprintSessionPayload input,
+ CancellationToken cancellationToken);
+
+ ValueTask<ReferenceCorpusBlueprintSessionPayload> AdvanceAsync(
+ AdvanceReferenceCorpusBlueprintSessionPayload input,
+ CancellationToken cancellationToken);
+}
+
 public interface IReferenceCorpusQueryContextParser
 {
     ValueTask<ReferenceCorpusQueryContextPayload> ParseAsync(

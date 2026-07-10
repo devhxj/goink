@@ -23,6 +23,13 @@ public async ValueTask<ReferenceCorpusAnalysisWorkItemReservation?> ReserveNextW
  await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
  var job = await ReadJobAsync(connection, transaction, jobId, cancellationToken)
  ?? throw new KeyNotFoundException($"Analysis job '{jobId}' was not found.");
+ if (job.Status == ReferenceCorpusAnalysisJobStatuses.Completed &&
+ job.ProcessedWorkItems == job.TotalWorkItems &&
+ job.TokensReserved == 0)
+ {
+ await transaction.CommitAsync(cancellationToken);
+ return null;
+ }
  ValidateActiveLease(job, workerId, leaseToken, now);
  if (job.TokenBudget is { } budget && budget - job.TokensSpent < tokenReservation)
  {

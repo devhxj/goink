@@ -16,11 +16,13 @@ public sealed class ReferenceCorpusAnalysisWorker : IAsyncDisposable
  private readonly ReferenceCorpusTechniqueSpecimenPersistence _techniquePersistence = new();
  private readonly ReferenceCorpusAnalysisRetryPolicy _retryPolicy = new();
 private readonly string _workerId;
- private readonly TimeSpan _idleDelay;
- private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+private readonly TimeSpan _idleDelay;
+private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+ private readonly SemaphoreSlim _manualPumpGate = new(1, 1);
 private CancellationTokenSource? _loopCancellation;
 private Task? _loopTask;
- private string? _boundDatabasePath;
+private string? _boundDatabasePath;
+ private bool _disposed;
 
  public ReferenceCorpusAnalysisWorker(
  IReferenceCorpusDatabasePathResolver databasePathResolver,
@@ -39,9 +41,10 @@ _workerId = string.IsNullOrWhiteSpace(workerId) ? $"analysis-worker:{Environment
 
  public async ValueTask StartAsync(CancellationToken cancellationToken = default)
  {
- await _lifecycleGate.WaitAsync(cancellationToken);
+await _lifecycleGate.WaitAsync(cancellationToken);
 try
 {
+ ObjectDisposedException.ThrowIf(_disposed, this);
 if (_loopTask is { IsCompleted: false }) return;
  var databasePath = Path.GetFullPath(await _databasePathResolver.ResolveAsync(cancellationToken));
  var store = new SqliteReferenceCorpusAnalysisJobStore(databasePath);
@@ -111,18 +114,39 @@ _loopCancellation = null;
  }
  }
 
- public async ValueTask DisposeAsync()
+public async ValueTask DisposeAsync()
+{
+await StopAsync();
+ await _lifecycleGate.WaitAsync();
+ try
  {
- await StopAsync();
- _lifecycleGate.Dispose();
+ if (_disposed) return;
+ _disposed = true;
  }
+ finally
+ {
+ _lifecycleGate.Release();
+ }
+
+await _manualPumpGate.WaitAsync();
+_manualPumpGate.Release();
+}
 
 public async ValueTask<bool> PumpOnceAsync(CancellationToken cancellationToken)
 {
+await _manualPumpGate.WaitAsync(cancellationToken);
+try
+{
+ ObjectDisposedException.ThrowIf(_disposed, this);
 var store = new SqliteReferenceCorpusAnalysisJobStore(await _databasePathResolver.ResolveAsync(cancellationToken));
  await ReconcileAsync(store, cancellationToken);
  return await PumpOnceCoreAsync(store, cancellationToken);
  }
+ finally
+ {
+ _manualPumpGate.Release();
+ }
+}
 
  private async ValueTask ReconcileAsync(
 SqliteReferenceCorpusAnalysisJobStore store,
@@ -282,9 +306,9 @@ using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
  {
  var failedAt = DateTimeOffset.UtcNow;
  var decision = _retryPolicy.Decide(new(
- ReferenceCorpusAnalysisRetryCategories.ProviderTransient,
- reservation.AttemptNumber,
- failedAt,
+ReferenceCorpusAnalysisRetryCategories.ProviderTransient,
+reservation.AttemptNumber,
+failedAt,
  RetryAfter: null));
  var shouldRetry = decision.ShouldRetry && reservation.AttemptNumber < current.MaxAttempts;
  await store.SettleWorkItemAsync(new(
@@ -304,7 +328,7 @@ using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
  ReferenceCorpusAnalysisRetryCategories.ProviderTransient,
  reservation.AttemptNumber,
  failedAt,
- RetryAfter: null));
+ RetryAfter: ReadRetryAfter(exception.Details)));
  var shouldRetry = decision.ShouldRetry && reservation.AttemptNumber < current.MaxAttempts;
  await store.SettleWorkItemAsync(new(
  reservation,
@@ -315,9 +339,9 @@ using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
  shouldRetry ? decision.NextAttemptAt : null,
  failedAt), cancellationToken);
  return true;
- }
- }
- finally
+}
+}
+finally
  {
  heartbeatCancellation.Cancel();
  try { await heartbeat; } catch (OperationCanceledException) when (heartbeatCancellation.IsCancellationRequested) { }
@@ -325,7 +349,29 @@ using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 }
 }
 
- private async ValueTask<ReferenceCorpusAnalysisJob> FinalizeRecordedCompletionAsync(
+ private static TimeSpan? ReadRetryAfter(object? details)
+ {
+ if (details is null) return null;
+ try
+ {
+ var element = details is JsonElement json
+ ? json
+ : JsonSerializer.SerializeToElement(details);
+ if (element.ValueKind != JsonValueKind.Object) return null;
+ if (element.TryGetProperty("retry_after_ms", out var milliseconds) &&
+ milliseconds.TryGetDouble(out var millisecondsValue) && millisecondsValue >= 0)
+ return TimeSpan.FromMilliseconds(millisecondsValue);
+ if (element.TryGetProperty("retry_after_seconds", out var seconds) &&
+ seconds.TryGetDouble(out var secondsValue) && secondsValue >= 0)
+ return TimeSpan.FromSeconds(secondsValue);
+ }
+ catch (Exception exception) when (exception is JsonException or NotSupportedException or ArgumentException)
+ {
+ }
+ return null;
+ }
+
+private async ValueTask<ReferenceCorpusAnalysisJob> FinalizeRecordedCompletionAsync(
  SqliteReferenceCorpusAnalysisJobStore store,
  ReferenceCorpusAnalysisCompletionEnvelope completion,
  CancellationToken cancellationToken)

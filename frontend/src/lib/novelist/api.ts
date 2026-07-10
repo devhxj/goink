@@ -78,6 +78,7 @@ export interface SearchStoryMemoryResult {
 }
 
 export interface NovelistAppApi {
+ AdvanceReferenceCorpusBlueprintSession: AppMethod<[reference.AdvanceCorpusBlueprintSessionInput], reference.CorpusBlueprintSession>
   ApproveTool: AppMethod<[string, boolean, string], void>
   AdaptReferenceMaterial: AppMethod<[reference.AdaptMaterialInput], reference.AdaptMaterialResult>
   ApproveReferenceChapterBlueprint: AppMethod<[reference.ApproveChapterBlueprintInput], reference.ChapterBlueprint>
@@ -134,7 +135,9 @@ export interface NovelistAppApi {
   GenerateReferenceCorpusBlueprintCandidates: AppMethod<[reference.GenerateCorpusBlueprintCandidatesInput], reference.CorpusBlueprintCandidates>
   GenerateReferenceCorpusInsertionDraft: AppMethod<[reference.GenerateCorpusInsertionDraftInput], reference.CorpusInsertionDraft>
  GenerateReferenceCorpusInsertionDraftCandidates: AppMethod<[reference.GenerateCorpusInsertionDraftCandidatesInput], reference.CorpusInsertionDraftCandidates>
-GetReferenceCorpusGovernance: AppMethod<[{ session_id?: string | null }], reference.CorpusGovernance>
+ GetReferenceCorpusBlueprintSession: AppMethod<[reference.GetCorpusBlueprintSessionInput], reference.CorpusBlueprintSession | null>
+ GetReferenceCorpusCascadeImpact: AppMethod<[reference.GetCorpusCascadeImpactInput], reference.CorpusCascadeImpact>
+ GetReferenceCorpusGovernance: AppMethod<[{ session_id?: string | null }], reference.CorpusGovernance>
  GetReferenceCorpusNodeWindow: AppMethod<[{ anchor_id: number; node_id: string; previous_chapter_count?: number; next_chapter_count?: number; include_scene_siblings?: boolean; max_nodes?: number }], reference.CorpusNodeWindow | null>
  SetReferenceCorpusSessionLibraryBinding: AppMethod<[{ session_id: string; library_id: string; enabled: boolean }], reference.CorpusGovernance>
  UpdateReferenceCorpusLibraryMember: AppMethod<[{ library_id: string; anchor_id: number; enabled: boolean; source_quality?: string | null; disabled_reason?: string | null }], reference.CorpusGovernance>
@@ -305,6 +308,7 @@ export function toArgsPayload(args: AppMethodArgs): unknown {
 }
 
 export const appApi: NovelistAppApi = {
+ AdvanceReferenceCorpusBlueprintSession: appMethod<NovelistAppApi['AdvanceReferenceCorpusBlueprintSession']>('AdvanceReferenceCorpusBlueprintSession'),
   ApproveTool: appMethod<NovelistAppApi['ApproveTool']>('ApproveTool'),
   AdaptReferenceMaterial: appMethod<NovelistAppApi['AdaptReferenceMaterial']>('AdaptReferenceMaterial'),
   ApproveReferenceChapterBlueprint: appMethod<NovelistAppApi['ApproveReferenceChapterBlueprint']>('ApproveReferenceChapterBlueprint'),
@@ -361,7 +365,9 @@ CancelReferenceOrchestrationRun: appMethod<NovelistAppApi['CancelReferenceOrches
   GenerateReferenceCorpusBlueprintCandidates: appMethod<NovelistAppApi['GenerateReferenceCorpusBlueprintCandidates']>('GenerateReferenceCorpusBlueprintCandidates'),
   GenerateReferenceCorpusInsertionDraft: appMethod<NovelistAppApi['GenerateReferenceCorpusInsertionDraft']>('GenerateReferenceCorpusInsertionDraft'),
 GenerateReferenceCorpusInsertionDraftCandidates: appMethod<NovelistAppApi['GenerateReferenceCorpusInsertionDraftCandidates']>('GenerateReferenceCorpusInsertionDraftCandidates'),
-GetReferenceCorpusGovernance: appMethod<NovelistAppApi['GetReferenceCorpusGovernance']>('GetReferenceCorpusGovernance'),
+ GetReferenceCorpusBlueprintSession: appMethod<NovelistAppApi['GetReferenceCorpusBlueprintSession']>('GetReferenceCorpusBlueprintSession'),
+ GetReferenceCorpusCascadeImpact: appMethod<NovelistAppApi['GetReferenceCorpusCascadeImpact']>('GetReferenceCorpusCascadeImpact'),
+ GetReferenceCorpusGovernance: appMethod<NovelistAppApi['GetReferenceCorpusGovernance']>('GetReferenceCorpusGovernance'),
  GetReferenceCorpusNodeWindow: appMethod<NovelistAppApi['GetReferenceCorpusNodeWindow']>('GetReferenceCorpusNodeWindow'),
  SetReferenceCorpusSessionLibraryBinding: appMethod<NovelistAppApi['SetReferenceCorpusSessionLibraryBinding']>('SetReferenceCorpusSessionLibraryBinding'),
  UpdateReferenceCorpusLibraryMember: appMethod<NovelistAppApi['UpdateReferenceCorpusLibraryMember']>('UpdateReferenceCorpusLibraryMember'),

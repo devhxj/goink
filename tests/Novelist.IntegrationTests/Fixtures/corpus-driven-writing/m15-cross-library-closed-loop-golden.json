@@ -5,12 +5,12 @@
       "fixture_id": "m1-cross-library-blueprints-and-drafts",
       "description": "M1 golden fixture for the intended chapter workflow: two enabled corpus libraries, cross-library blueprint candidates, feedback iteration, disabled-library change, and selected-blueprint-locked insertion draft candidates.",
       "novel": {
-        "title": "跨库语料闭环 golden",
+        "title": "\u8DE8\u5E93\u8BED\u6599\u95ED\u73AF golden",
         "description": "M1 corpus-driven-writing cross-library closed-loop fixture"
       },
       "current_chapter": {
-        "title": "第一章",
-        "current_draft_text": "秦砚停在旧市集边缘。",
+        "title": "\u7B2C\u4E00\u7AE0",
+        "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
         "insertion_offset": 10
       },
       "corpus": {
@@ -43,7 +43,7 @@
             "anchor_id": 201,
             "library_id": "project:{novel_id}:default",
             "novel_id_scope": "project",
-            "title": "项目门口 golden 语料",
+            "title": "\u9879\u76EE\u95E8\u53E3 golden \u8BED\u6599",
             "source_path": "project-doorway-golden.md",
             "source_kind": "markdown",
             "license_status": "public_domain",
@@ -64,7 +64,7 @@
                 "start_offset": 0,
                 "end_offset": 18,
                 "text_hash": "sha256-project-doorway-s1",
-                "text": "她没有立刻开口，只把钥匙扣在掌心。"
+                "text": "\u5979\u6CA1\u6709\u7ACB\u523B\u5F00\u53E3\uFF0C\u53EA\u628A\u94A5\u5319\u6263\u5728\u638C\u5FC3\u3002"
               },
               {
                 "node_id": "node-project-doorway-s2",
@@ -73,7 +73,7 @@
                 "start_offset": 19,
                 "end_offset": 34,
                 "text_hash": "sha256-project-doorway-s2",
-                "text": "她把门栓慢慢推回去。"
+                "text": "\u5979\u628A\u95E8\u6813\u6162\u6162\u63A8\u56DE\u53BB\u3002"
               },
               {
                 "node_id": "node-project-doorway-s3",
@@ -82,7 +82,7 @@
                 "start_offset": 35,
                 "end_offset": 51,
                 "text_hash": "sha256-project-doorway-s3",
-                "text": "她的影子贴在门槛内侧。"
+                "text": "\u5979\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002"
               },
               {
                 "node_id": "node-project-doorway-s4",
@@ -91,7 +91,7 @@
                 "start_offset": 52,
                 "end_offset": 69,
                 "text_hash": "sha256-project-doorway-s4",
-                "text": "她只垂眼看着掌心旧痕。"
+                "text": "\u5979\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002"
               }
             ]
           },
@@ -99,7 +99,7 @@
             "anchor_id": 202,
             "library_id": "global:workspace",
             "novel_id_scope": "none",
-            "title": "工作区火市 golden 语料",
+            "title": "\u5DE5\u4F5C\u533A\u706B\u5E02 golden \u8BED\u6599",
             "source_path": "workspace-market-golden.md",
             "source_kind": "markdown",
             "license_status": "public_domain",
@@ -120,7 +120,7 @@
                 "start_offset": 0,
                 "end_offset": 21,
                 "text_hash": "sha256-workspace-market-s1",
-                "text": "火光在旧市集尽头一压，他没有立刻回头。"
+                "text": "\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u4ED6\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002"
               },
               {
                 "node_id": "node-workspace-market-s2",
@@ -129,15 +129,15 @@
                 "start_offset": 22,
                 "end_offset": 39,
                 "text_hash": "sha256-workspace-market-s2",
-                "text": "摊棚的灰烬沿着鞋边滚。"
+                "text": "\u644A\u68DA\u7684\u7070\u70EC\u6CBF\u7740\u978B\u8FB9\u6EDA\u3002"
               }
             ]
           }
         ]
       },
       "request": {
-        "natural_language_goal": "写旧市集门口对峙，秦砚压住怒意，不立刻开口。",
-        "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+        "natural_language_goal": "\u5199\u65E7\u5E02\u96C6\u95E8\u53E3\u5BF9\u5CD9\uFF0C\u79E6\u781A\u538B\u4F4F\u6012\u610F\uFF0C\u4E0D\u7ACB\u523B\u5F00\u53E3\u3002",
+        "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
         "reuse_policies": [
           "verbatim_ok"
         ],
@@ -145,19 +145,19 @@
         "requested_draft_count": 3,
         "character_snapshots": [
           {
-            "character": "秦砚",
+            "character": "\u79E6\u781A",
             "state": "guarded",
             "allowed_knowledge": [
-              "市集起火"
+              "\u5E02\u96C6\u8D77\u706B"
             ],
             "forbidden_knowledge": [
-              "对方真实目的"
+              "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
             ]
           }
         ],
         "slot_values": {
-          "她": "秦砚",
-          "他": "秦砚"
+          "\u5979": "\u79E6\u781A",
+          "\u4ED6": "\u79E6\u781A"
         }
       },
       "feedback": {
@@ -182,7 +182,7 @@
             "narrative_position": "current_insertion",
             "commercial_mechanic": "withheld-answer-hook",
             "character_states": [
-              "秦砚 guarded"
+              "\u79E6\u781A guarded"
             ],
             "required_narrative_functions": [
               "support_current_chapter",
@@ -191,18 +191,18 @@
             ],
             "chapter_context": {
               "chapter_number": 1,
-              "current_draft_text": "秦砚停在旧市集边缘。",
+              "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
               "insertion_offset": 10,
-              "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+              "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
               "character_snapshots": [
                 {
-                  "character": "秦砚",
+                  "character": "\u79E6\u781A",
                   "state": "guarded",
                   "allowed_knowledge": [
-                    "市集起火"
+                    "\u5E02\u96C6\u8D77\u706B"
                   ],
                   "forbidden_knowledge": [
-                    "对方真实目的"
+                    "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                   ]
                 }
               ]
@@ -221,7 +221,7 @@
           "candidates": [
             {
               "blueprint_alias": "item-1",
-              "strategy": "score_focus_m1",
+              "strategy": "emotion_priority_m4",
               "beats": [
                 {
                   "beat_alias": "item-1",
@@ -263,13 +263,13 @@
                   "node_count": 2
                 }
               ],
-              "coverage_score": 0.65329,
+              "coverage_score": 0.640039,
               "gap_reasons": [],
               "feedback_reason": "initial_candidate"
             },
             {
               "blueprint_alias": "item-2",
-              "strategy": "source_diversity_m1",
+              "strategy": "rhythm_priority_m4",
               "beats": [
                 {
                   "beat_alias": "item-4",
@@ -282,6 +282,54 @@
                 },
                 {
                   "beat_alias": "item-5",
+                  "beat_index": 1,
+                  "role_in_beat": "supporting_source_sentence",
+                  "narrative_function": "raise_pressure",
+                  "node_aliases": [
+                    "item-4"
+                  ]
+                },
+                {
+                  "beat_alias": "item-6",
+                  "beat_index": 2,
+                  "role_in_beat": "supporting_source_sentence",
+                  "narrative_function": "withhold_answer",
+                  "node_aliases": [
+                    "item-2"
+                  ]
+                }
+              ],
+              "source_distribution": [
+                {
+                  "library_alias": "item-1",
+                  "anchor_id": 202,
+                  "node_count": 1
+                },
+                {
+                  "library_alias": "item-2",
+                  "anchor_id": 201,
+                  "node_count": 2
+                }
+              ],
+              "coverage_score": 0.639964,
+              "gap_reasons": [],
+              "feedback_reason": "initial_candidate"
+            },
+            {
+              "blueprint_alias": "item-3",
+              "strategy": "source_diversity_m1",
+              "beats": [
+                {
+                  "beat_alias": "item-7",
+                  "beat_index": 0,
+                  "role_in_beat": "opening_source_sentence",
+                  "narrative_function": "support_current_chapter",
+                  "node_aliases": [
+                    "item-1"
+                  ]
+                },
+                {
+                  "beat_alias": "item-8",
                   "beat_index": 1,
                   "role_in_beat": "supporting_source_sentence",
                   "narrative_function": "raise_pressure",
@@ -302,46 +350,7 @@
                   "node_count": 1
                 }
               ],
-              "coverage_score": 0.649481,
-              "gap_reasons": [],
-              "feedback_reason": "initial_candidate"
-            },
-            {
-              "blueprint_alias": "item-3",
-              "strategy": "withheld_hook_m1",
-              "beats": [
-                {
-                  "beat_alias": "item-6",
-                  "beat_index": 0,
-                  "role_in_beat": "opening_source_sentence",
-                  "narrative_function": "support_current_chapter",
-                  "node_aliases": [
-                    "item-1"
-                  ]
-                },
-                {
-                  "beat_alias": "item-7",
-                  "beat_index": 1,
-                  "role_in_beat": "supporting_source_sentence",
-                  "narrative_function": "raise_pressure",
-                  "node_aliases": [
-                    "item-4"
-                  ]
-                }
-              ],
-              "source_distribution": [
-                {
-                  "library_alias": "item-1",
-                  "anchor_id": 202,
-                  "node_count": 1
-                },
-                {
-                  "library_alias": "item-2",
-                  "anchor_id": 201,
-                  "node_count": 1
-                }
-              ],
-              "coverage_score": 0.64935,
+              "coverage_score": 0.63374,
               "gap_reasons": [],
               "feedback_reason": "initial_candidate"
             }
@@ -355,7 +364,7 @@
             "narrative_position": "current_insertion",
             "commercial_mechanic": "withheld-answer-hook",
             "character_states": [
-              "秦砚 guarded"
+              "\u79E6\u781A guarded"
             ],
             "required_narrative_functions": [
               "support_current_chapter",
@@ -364,18 +373,18 @@
             ],
             "chapter_context": {
               "chapter_number": 1,
-              "current_draft_text": "秦砚停在旧市集边缘。",
+              "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
               "insertion_offset": 10,
-              "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+              "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
               "character_snapshots": [
                 {
-                  "character": "秦砚",
+                  "character": "\u79E6\u781A",
                   "state": "guarded",
                   "allowed_knowledge": [
-                    "市集起火"
+                    "\u5E02\u96C6\u8D77\u706B"
                   ],
                   "forbidden_knowledge": [
-                    "对方真实目的"
+                    "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                   ]
                 }
               ]
@@ -422,7 +431,7 @@
                   "node_count": 2
                 }
               ],
-              "coverage_score": 0.358774,
+              "coverage_score": 0.350806,
               "gap_reasons": [
                 "feedback_filters_no_matches",
                 "fallback_to_base_filters",
@@ -452,7 +461,7 @@
                   "node_count": 1
                 }
               ],
-              "coverage_score": 0.310647,
+              "coverage_score": 0.302412,
               "gap_reasons": [
                 "feedback_filters_no_matches",
                 "fallback_to_base_filters",
@@ -483,7 +492,7 @@
                   "node_count": 1
                 }
               ],
-              "coverage_score": 0.3069,
+              "coverage_score": 0.2992,
               "gap_reasons": [
                 "feedback_filters_no_matches",
                 "fallback_to_base_filters",
@@ -503,7 +512,7 @@
             "narrative_position": "current_insertion",
             "commercial_mechanic": "withheld-answer-hook",
             "character_states": [
-              "秦砚 guarded"
+              "\u79E6\u781A guarded"
             ],
             "required_narrative_functions": [
               "support_current_chapter",
@@ -512,18 +521,18 @@
             ],
             "chapter_context": {
               "chapter_number": 1,
-              "current_draft_text": "秦砚停在旧市集边缘。",
+              "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
               "insertion_offset": 10,
-              "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+              "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
               "character_snapshots": [
                 {
-                  "character": "秦砚",
+                  "character": "\u79E6\u781A",
                   "state": "guarded",
                   "allowed_knowledge": [
-                    "市集起火"
+                    "\u5E02\u96C6\u8D77\u706B"
                   ],
                   "forbidden_knowledge": [
-                    "对方真实目的"
+                    "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                   ]
                 }
               ]
@@ -538,7 +547,7 @@
             }
           },
           "blueprint": {
-            "strategy": "score_focus_m1",
+            "strategy": "emotion_priority_m4",
             "beats": [
               {
                 "beat_alias": "item-1",
@@ -579,7 +588,7 @@
               "text_hash": "sha256-workspace-market-s1",
               "reuse_policy": "verbatim_ok",
               "license_state": "public_domain",
-              "output_text": "火光在旧市集尽头一压，秦砚没有立刻回头。",
+              "output_text": "\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002",
               "preserved_text_hash": "bf6bc14c737d3c6e84f99f7a4f40b23cafe5a1834c714686f1883931d381a69e",
               "preserved_hash_matches": true,
               "preserved_spans": [
@@ -607,8 +616,8 @@
               "slot_replacements": [
                 {
                   "slot_name": "character",
-                  "source_value": "他",
-                  "replacement_value": "秦砚",
+                  "source_value": "\u4ED6",
+                  "replacement_value": "\u79E6\u781A",
                   "source_start": 11,
                   "source_end": 12,
                   "output_start": 11,
@@ -625,7 +634,7 @@
               "text_hash": "sha256-project-doorway-s3",
               "reuse_policy": "verbatim_ok",
               "license_state": "public_domain",
-              "output_text": "秦砚的影子贴在门槛内侧。",
+              "output_text": "\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002",
               "preserved_text_hash": "f4099924c155542706a2a5ddb63af97e015768ab40fab029ee104b4f0b31a29f",
               "preserved_hash_matches": true,
               "preserved_spans": [
@@ -643,8 +652,8 @@
               "slot_replacements": [
                 {
                   "slot_name": "character",
-                  "source_value": "她",
-                  "replacement_value": "秦砚",
+                  "source_value": "\u5979",
+                  "replacement_value": "\u79E6\u781A",
                   "source_start": 0,
                   "source_end": 1,
                   "output_start": 0,
@@ -661,7 +670,7 @@
               "text_hash": "sha256-project-doorway-s4",
               "reuse_policy": "verbatim_ok",
               "license_state": "public_domain",
-              "output_text": "秦砚只垂眼看着掌心旧痕。",
+              "output_text": "\u79E6\u781A\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002",
               "preserved_text_hash": "6a312094077af129fb07434677f1aad1f4f91484822867a540c640d67f9fa23f",
               "preserved_hash_matches": true,
               "preserved_spans": [
@@ -679,8 +688,8 @@
               "slot_replacements": [
                 {
                   "slot_name": "character",
-                  "source_value": "她",
-                  "replacement_value": "秦砚",
+                  "source_value": "\u5979",
+                  "replacement_value": "\u79E6\u781A",
                   "source_start": 0,
                   "source_end": 1,
                   "output_start": 0,
@@ -692,8 +701,8 @@
           "slot_replacements": [
             {
               "slot_name": "character",
-              "source_value": "他",
-              "replacement_value": "秦砚",
+              "source_value": "\u4ED6",
+              "replacement_value": "\u79E6\u781A",
               "source_start": 11,
               "source_end": 12,
               "output_start": 11,
@@ -701,8 +710,8 @@
             },
             {
               "slot_name": "character",
-              "source_value": "她",
-              "replacement_value": "秦砚",
+              "source_value": "\u5979",
+              "replacement_value": "\u79E6\u781A",
               "source_start": 0,
               "source_end": 1,
               "output_start": 0,
@@ -710,8 +719,8 @@
             },
             {
               "slot_name": "character",
-              "source_value": "她",
-              "replacement_value": "秦砚",
+              "source_value": "\u5979",
+              "replacement_value": "\u79E6\u781A",
               "source_start": 0,
               "source_end": 1,
               "output_start": 0,
@@ -742,7 +751,7 @@
               "before_piece_alias": "item-3",
               "decision": "insert_transition",
               "strategy": "heuristic_bridge_sentence",
-              "text": "沉默在两人之间又压低了一寸。",
+              "text": "\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002",
               "text_hash": "5ce95beaf0ab0d042b0becb4e2493ccf0e0a3c6935505c4336799fc70c52f894",
               "output_start": 36,
               "output_end": 50,
@@ -752,8 +761,8 @@
               "replacement_node_alias": null
             }
           ],
-          "assembled_text": "火光在旧市集尽头一压，秦砚没有立刻回头。\n秦砚的影子贴在门槛内侧。\n沉默在两人之间又压低了一寸。\n秦砚只垂眼看着掌心旧痕。",
-          "chapter_text_after_insertion": "秦砚停在旧市集边缘。\n火光在旧市集尽头一压，秦砚没有立刻回头。\n秦砚的影子贴在门槛内侧。\n沉默在两人之间又压低了一寸。\n秦砚只垂眼看着掌心旧痕。",
+          "assembled_text": "\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002\n\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002\n\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002\n\u79E6\u781A\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002",
+          "chapter_text_after_insertion": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002\n\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002\n\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002\n\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002\n\u79E6\u781A\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002",
           "ready_for_insertion": true,
           "gate": {
             "passed": true,
@@ -846,7 +855,7 @@
             "narrative_position": "current_insertion",
             "commercial_mechanic": "withheld-answer-hook",
             "character_states": [
-              "秦砚 guarded"
+              "\u79E6\u781A guarded"
             ],
             "required_narrative_functions": [
               "support_current_chapter",
@@ -855,18 +864,18 @@
             ],
             "chapter_context": {
               "chapter_number": 1,
-              "current_draft_text": "秦砚停在旧市集边缘。",
+              "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
               "insertion_offset": 10,
-              "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+              "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
               "character_snapshots": [
                 {
-                  "character": "秦砚",
+                  "character": "\u79E6\u781A",
                   "state": "guarded",
                   "allowed_knowledge": [
-                    "市集起火"
+                    "\u5E02\u96C6\u8D77\u706B"
                   ],
                   "forbidden_knowledge": [
-                    "对方真实目的"
+                    "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                   ]
                 }
               ]
@@ -885,7 +894,7 @@
           "candidates": [
             {
               "blueprint_alias": "item-1",
-              "strategy": "score_focus_m1",
+              "strategy": "emotion_priority_m4",
               "beats": [
                 {
                   "beat_alias": "item-1",
@@ -922,7 +931,7 @@
                   "node_count": 3
                 }
               ],
-              "coverage_score": 0.409485,
+              "coverage_score": 0.401416,
               "gap_reasons": [
                 "single_library_source",
                 "single_anchor_source"
@@ -950,7 +959,7 @@
                   "node_count": 1
                 }
               ],
-              "coverage_score": 0.310647,
+              "coverage_score": 0.302412,
               "gap_reasons": [
                 "insufficient_beats",
                 "single_library_source",
@@ -979,7 +988,7 @@
                   "node_count": 1
                 }
               ],
-              "coverage_score": 0.3069,
+              "coverage_score": 0.2992,
               "gap_reasons": [
                 "insufficient_beats",
                 "single_library_source",
@@ -997,7 +1006,7 @@
             "narrative_position": "current_insertion",
             "commercial_mechanic": "withheld-answer-hook",
             "character_states": [
-              "秦砚 guarded"
+              "\u79E6\u781A guarded"
             ],
             "required_narrative_functions": [
               "support_current_chapter",
@@ -1006,18 +1015,18 @@
             ],
             "chapter_context": {
               "chapter_number": 1,
-              "current_draft_text": "秦砚停在旧市集边缘。",
+              "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
               "insertion_offset": 10,
-              "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+              "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
               "character_snapshots": [
                 {
-                  "character": "秦砚",
+                  "character": "\u79E6\u781A",
                   "state": "guarded",
                   "allowed_knowledge": [
-                    "市集起火"
+                    "\u5E02\u96C6\u8D77\u706B"
                   ],
                   "forbidden_knowledge": [
-                    "对方真实目的"
+                    "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                   ]
                 }
               ]
@@ -1032,7 +1041,7 @@
             }
           },
           "blueprint": {
-            "strategy": "score_focus_m1",
+            "strategy": "emotion_priority_m4",
             "beats": [
               {
                 "beat_alias": "item-1",
@@ -1073,7 +1082,7 @@
               "text_hash": "sha256-project-doorway-s1",
               "reuse_policy": "verbatim_ok",
               "license_state": "public_domain",
-              "output_text": "秦砚没有立刻开口，只把钥匙扣在掌心。",
+              "output_text": "\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u5F00\u53E3\uFF0C\u53EA\u628A\u94A5\u5319\u6263\u5728\u638C\u5FC3\u3002",
               "preserved_text_hash": "527d2653fce533c62273c76f1725d1c986d29906732d277e83669b5f322c7dce",
               "preserved_hash_matches": true,
               "preserved_spans": [
@@ -1091,8 +1100,8 @@
               "slot_replacements": [
                 {
                   "slot_name": "character",
-                  "source_value": "她",
-                  "replacement_value": "秦砚",
+                  "source_value": "\u5979",
+                  "replacement_value": "\u79E6\u781A",
                   "source_start": 0,
                   "source_end": 1,
                   "output_start": 0,
@@ -1109,7 +1118,7 @@
               "text_hash": "sha256-project-doorway-s2",
               "reuse_policy": "verbatim_ok",
               "license_state": "public_domain",
-              "output_text": "秦砚把门栓慢慢推回去。",
+              "output_text": "\u79E6\u781A\u628A\u95E8\u6813\u6162\u6162\u63A8\u56DE\u53BB\u3002",
               "preserved_text_hash": "9adb11e14b87f054644a1806bd5e595b14046e8017053c956e170047f777b221",
               "preserved_hash_matches": true,
               "preserved_spans": [
@@ -1127,8 +1136,8 @@
               "slot_replacements": [
                 {
                   "slot_name": "character",
-                  "source_value": "她",
-                  "replacement_value": "秦砚",
+                  "source_value": "\u5979",
+                  "replacement_value": "\u79E6\u781A",
                   "source_start": 0,
                   "source_end": 1,
                   "output_start": 0,
@@ -1145,7 +1154,7 @@
               "text_hash": "sha256-project-doorway-s3",
               "reuse_policy": "verbatim_ok",
               "license_state": "public_domain",
-              "output_text": "秦砚的影子贴在门槛内侧。",
+              "output_text": "\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002",
               "preserved_text_hash": "f4099924c155542706a2a5ddb63af97e015768ab40fab029ee104b4f0b31a29f",
               "preserved_hash_matches": true,
               "preserved_spans": [
@@ -1163,8 +1172,8 @@
               "slot_replacements": [
                 {
                   "slot_name": "character",
-                  "source_value": "她",
-                  "replacement_value": "秦砚",
+                  "source_value": "\u5979",
+                  "replacement_value": "\u79E6\u781A",
                   "source_start": 0,
                   "source_end": 1,
                   "output_start": 0,
@@ -1176,8 +1185,8 @@
           "slot_replacements": [
             {
               "slot_name": "character",
-              "source_value": "她",
-              "replacement_value": "秦砚",
+              "source_value": "\u5979",
+              "replacement_value": "\u79E6\u781A",
               "source_start": 0,
               "source_end": 1,
               "output_start": 0,
@@ -1185,8 +1194,8 @@
             },
             {
               "slot_name": "character",
-              "source_value": "她",
-              "replacement_value": "秦砚",
+              "source_value": "\u5979",
+              "replacement_value": "\u79E6\u781A",
               "source_start": 0,
               "source_end": 1,
               "output_start": 0,
@@ -1194,8 +1203,8 @@
             },
             {
               "slot_name": "character",
-              "source_value": "她",
-              "replacement_value": "秦砚",
+              "source_value": "\u5979",
+              "replacement_value": "\u79E6\u781A",
               "source_start": 0,
               "source_end": 1,
               "output_start": 0,
@@ -1226,7 +1235,7 @@
               "before_piece_alias": "item-3",
               "decision": "insert_transition",
               "strategy": "heuristic_bridge_sentence",
-              "text": "沉默在两人之间又压低了一寸。",
+              "text": "\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002",
               "text_hash": "5ce95beaf0ab0d042b0becb4e2493ccf0e0a3c6935505c4336799fc70c52f894",
               "output_start": 33,
               "output_end": 47,
@@ -1236,8 +1245,8 @@
               "replacement_node_alias": null
             }
           ],
-          "assembled_text": "秦砚没有立刻开口，只把钥匙扣在掌心。\n秦砚把门栓慢慢推回去。\n沉默在两人之间又压低了一寸。\n秦砚的影子贴在门槛内侧。",
-          "chapter_text_after_insertion": "秦砚停在旧市集边缘。\n秦砚没有立刻开口，只把钥匙扣在掌心。\n秦砚把门栓慢慢推回去。\n沉默在两人之间又压低了一寸。\n秦砚的影子贴在门槛内侧。",
+          "assembled_text": "\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u5F00\u53E3\uFF0C\u53EA\u628A\u94A5\u5319\u6263\u5728\u638C\u5FC3\u3002\n\u79E6\u781A\u628A\u95E8\u6813\u6162\u6162\u63A8\u56DE\u53BB\u3002\n\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002\n\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002",
+          "chapter_text_after_insertion": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002\n\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u5F00\u53E3\uFF0C\u53EA\u628A\u94A5\u5319\u6263\u5728\u638C\u5FC3\u3002\n\u79E6\u781A\u628A\u95E8\u6813\u6162\u6162\u63A8\u56DE\u53BB\u3002\n\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002\n\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002",
           "ready_for_insertion": true,
           "gate": {
             "passed": true,
@@ -1330,7 +1339,7 @@
             "narrative_position": "current_insertion",
             "commercial_mechanic": "withheld-answer-hook",
             "character_states": [
-              "秦砚 guarded"
+              "\u79E6\u781A guarded"
             ],
             "required_narrative_functions": [
               "support_current_chapter",
@@ -1339,18 +1348,18 @@
             ],
             "chapter_context": {
               "chapter_number": 1,
-              "current_draft_text": "秦砚停在旧市集边缘。",
+              "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
               "insertion_offset": 10,
-              "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+              "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
               "character_snapshots": [
                 {
-                  "character": "秦砚",
+                  "character": "\u79E6\u781A",
                   "state": "guarded",
                   "allowed_knowledge": [
-                    "市集起火"
+                    "\u5E02\u96C6\u8D77\u706B"
                   ],
                   "forbidden_knowledge": [
-                    "对方真实目的"
+                    "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                   ]
                 }
               ]
@@ -1365,7 +1374,7 @@
             }
           },
           "selected_blueprint": {
-            "strategy": "score_focus_m1",
+            "strategy": "emotion_priority_m4",
             "beats": [
               {
                 "beat_alias": "item-1",
@@ -1399,8 +1408,8 @@
           "candidates": [
             {
               "candidate_alias": "item-1",
-              "strategy": "source_variant_1",
-              "explanation": "Uses the selected blueprint's primary source nodes with slot-only transfer.",
+              "strategy": "selected_blueprint_primary",
+              "explanation": "Uses the accepted selected blueprint primary source nodes; additional drafts require slot or transition variants.",
               "draft": {
                 "query_context": {
                   "scene_type": "doorway_confrontation",
@@ -1409,7 +1418,7 @@
                   "narrative_position": "current_insertion",
                   "commercial_mechanic": "withheld-answer-hook",
                   "character_states": [
-                    "秦砚 guarded"
+                    "\u79E6\u781A guarded"
                   ],
                   "required_narrative_functions": [
                     "support_current_chapter",
@@ -1418,18 +1427,18 @@
                   ],
                   "chapter_context": {
                     "chapter_number": 1,
-                    "current_draft_text": "秦砚停在旧市集边缘。",
+                    "current_draft_text": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002",
                     "insertion_offset": 10,
-                    "previous_chapter_summary": "旧市集起火，有人在火光里靠近。",
+                    "previous_chapter_summary": "\u65E7\u5E02\u96C6\u8D77\u706B\uFF0C\u6709\u4EBA\u5728\u706B\u5149\u91CC\u9760\u8FD1\u3002",
                     "character_snapshots": [
                       {
-                        "character": "秦砚",
+                        "character": "\u79E6\u781A",
                         "state": "guarded",
                         "allowed_knowledge": [
-                          "市集起火"
+                          "\u5E02\u96C6\u8D77\u706B"
                         ],
                         "forbidden_knowledge": [
-                          "对方真实目的"
+                          "\u5BF9\u65B9\u771F\u5B9E\u76EE\u7684"
                         ]
                       }
                     ]
@@ -1444,7 +1453,7 @@
                   }
                 },
                 "blueprint": {
-                  "strategy": "score_focus_m1:source_variant_1",
+                  "strategy": "emotion_priority_m4:selected_blueprint_primary",
                   "beats": [
                     {
                       "beat_alias": "item-1",
@@ -1485,7 +1494,7 @@
                     "text_hash": "sha256-workspace-market-s1",
                     "reuse_policy": "verbatim_ok",
                     "license_state": "public_domain",
-                    "output_text": "火光在旧市集尽头一压，秦砚没有立刻回头。",
+                    "output_text": "\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002",
                     "preserved_text_hash": "bf6bc14c737d3c6e84f99f7a4f40b23cafe5a1834c714686f1883931d381a69e",
                     "preserved_hash_matches": true,
                     "preserved_spans": [
@@ -1513,8 +1522,8 @@
                     "slot_replacements": [
                       {
                         "slot_name": "character",
-                        "source_value": "他",
-                        "replacement_value": "秦砚",
+                        "source_value": "\u4ED6",
+                        "replacement_value": "\u79E6\u781A",
                         "source_start": 11,
                         "source_end": 12,
                         "output_start": 11,
@@ -1531,7 +1540,7 @@
                     "text_hash": "sha256-project-doorway-s3",
                     "reuse_policy": "verbatim_ok",
                     "license_state": "public_domain",
-                    "output_text": "秦砚的影子贴在门槛内侧。",
+                    "output_text": "\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002",
                     "preserved_text_hash": "f4099924c155542706a2a5ddb63af97e015768ab40fab029ee104b4f0b31a29f",
                     "preserved_hash_matches": true,
                     "preserved_spans": [
@@ -1549,8 +1558,8 @@
                     "slot_replacements": [
                       {
                         "slot_name": "character",
-                        "source_value": "她",
-                        "replacement_value": "秦砚",
+                        "source_value": "\u5979",
+                        "replacement_value": "\u79E6\u781A",
                         "source_start": 0,
                         "source_end": 1,
                         "output_start": 0,
@@ -1567,7 +1576,7 @@
                     "text_hash": "sha256-project-doorway-s4",
                     "reuse_policy": "verbatim_ok",
                     "license_state": "public_domain",
-                    "output_text": "秦砚只垂眼看着掌心旧痕。",
+                    "output_text": "\u79E6\u781A\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002",
                     "preserved_text_hash": "6a312094077af129fb07434677f1aad1f4f91484822867a540c640d67f9fa23f",
                     "preserved_hash_matches": true,
                     "preserved_spans": [
@@ -1585,8 +1594,8 @@
                     "slot_replacements": [
                       {
                         "slot_name": "character",
-                        "source_value": "她",
-                        "replacement_value": "秦砚",
+                        "source_value": "\u5979",
+                        "replacement_value": "\u79E6\u781A",
                         "source_start": 0,
                         "source_end": 1,
                         "output_start": 0,
@@ -1598,8 +1607,8 @@
                 "slot_replacements": [
                   {
                     "slot_name": "character",
-                    "source_value": "他",
-                    "replacement_value": "秦砚",
+                    "source_value": "\u4ED6",
+                    "replacement_value": "\u79E6\u781A",
                     "source_start": 11,
                     "source_end": 12,
                     "output_start": 11,
@@ -1607,8 +1616,8 @@
                   },
                   {
                     "slot_name": "character",
-                    "source_value": "她",
-                    "replacement_value": "秦砚",
+                    "source_value": "\u5979",
+                    "replacement_value": "\u79E6\u781A",
                     "source_start": 0,
                     "source_end": 1,
                     "output_start": 0,
@@ -1616,8 +1625,8 @@
                   },
                   {
                     "slot_name": "character",
-                    "source_value": "她",
-                    "replacement_value": "秦砚",
+                    "source_value": "\u5979",
+                    "replacement_value": "\u79E6\u781A",
                     "source_start": 0,
                     "source_end": 1,
                     "output_start": 0,
@@ -1648,7 +1657,7 @@
                     "before_piece_alias": "item-3",
                     "decision": "insert_transition",
                     "strategy": "heuristic_bridge_sentence",
-                    "text": "沉默在两人之间又压低了一寸。",
+                    "text": "\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002",
                     "text_hash": "5ce95beaf0ab0d042b0becb4e2493ccf0e0a3c6935505c4336799fc70c52f894",
                     "output_start": 36,
                     "output_end": 50,
@@ -1658,8 +1667,8 @@
                     "replacement_node_alias": null
                   }
                 ],
-                "assembled_text": "火光在旧市集尽头一压，秦砚没有立刻回头。\n秦砚的影子贴在门槛内侧。\n沉默在两人之间又压低了一寸。\n秦砚只垂眼看着掌心旧痕。",
-                "chapter_text_after_insertion": "秦砚停在旧市集边缘。\n火光在旧市集尽头一压，秦砚没有立刻回头。\n秦砚的影子贴在门槛内侧。\n沉默在两人之间又压低了一寸。\n秦砚只垂眼看着掌心旧痕。",
+                "assembled_text": "\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002\n\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002\n\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002\n\u79E6\u781A\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002",
+                "chapter_text_after_insertion": "\u79E6\u781A\u505C\u5728\u65E7\u5E02\u96C6\u8FB9\u7F18\u3002\n\u706B\u5149\u5728\u65E7\u5E02\u96C6\u5C3D\u5934\u4E00\u538B\uFF0C\u79E6\u781A\u6CA1\u6709\u7ACB\u523B\u56DE\u5934\u3002\n\u79E6\u781A\u7684\u5F71\u5B50\u8D34\u5728\u95E8\u69DB\u5185\u4FA7\u3002\n\u6C89\u9ED8\u5728\u4E24\u4EBA\u4E4B\u95F4\u53C8\u538B\u4F4E\u4E86\u4E00\u5BF8\u3002\n\u79E6\u781A\u53EA\u5782\u773C\u770B\u7740\u638C\u5FC3\u65E7\u75D5\u3002",
                 "ready_for_insertion": true,
                 "gate": {
                   "passed": true,

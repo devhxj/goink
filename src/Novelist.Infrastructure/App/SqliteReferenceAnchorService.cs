@@ -5802,10 +5802,11 @@ CancellationToken cancellationToken)
             "build_version",
             "ALTER TABLE reference_anchor_processing_events ADD COLUMN build_version TEXT NOT NULL DEFAULT '';",
             cancellationToken);
-        await EnsureNullableAnchorNovelIdAsync(connection, cancellationToken);
-        await PromoteLegacyOwnedWorkspaceCorpusRowsAsync(connection, cancellationToken);
-        await EnsureImportIdentityUniqueIndexAsync(connection, cancellationToken);
-        await BackfillReferenceProcessingAttemptsAsync(connection, cancellationToken);
+await EnsureNullableAnchorNovelIdAsync(connection, cancellationToken);
+await PromoteLegacyOwnedWorkspaceCorpusRowsAsync(connection, cancellationToken);
+await EnsureImportIdentityUniqueIndexAsync(connection, cancellationToken);
+ await BackfillLegacyTextNodesAsync(connection, cancellationToken);
+await BackfillReferenceProcessingAttemptsAsync(connection, cancellationToken);
         await using var indexCommand = connection.CreateCommand();
         indexCommand.CommandText = """
             CREATE INDEX IF NOT EXISTS idx_reference_anchors_corpus_visibility
@@ -5817,7 +5818,111 @@ CancellationToken cancellationToken)
         await indexCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async ValueTask BackfillReferenceProcessingAttemptsAsync(
+ private static async ValueTask BackfillLegacyTextNodesAsync(
+ SqliteConnection connection,
+ CancellationToken cancellationToken)
+ {
+ var anchorIds = new List<long>();
+ await using (var read = connection.CreateCommand())
+ {
+ read.CommandText = """
+ SELECT DISTINCT anchor_id
+ FROM reference_source_segments
+ WHERE node_id IS NULL
+ OR node_id = ''
+ OR NOT EXISTS (
+ SELECT 1 FROM reference_text_nodes node
+ WHERE node.node_id = reference_source_segments.node_id
+ )
+ ORDER BY anchor_id;
+ """;
+ await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+ while (await reader.ReadAsync(cancellationToken))
+ {
+ anchorIds.Add(reader.GetInt64(0));
+ }
+ }
+
+ foreach (var anchorId in anchorIds)
+ {
+ var segments = await ReadLegacySegmentsAsync(connection, anchorId, cancellationToken);
+ var segmentIds = segments.Select(segment => segment.SegmentId).ToHashSet(StringComparer.Ordinal);
+ var depths = BuildSegmentDepths(segments);
+ await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+ foreach (var segment in segments
+ .OrderBy(segment => depths.GetValueOrDefault(segment.SegmentId))
+ .ThenBy(segment => segment.ChapterIndex)
+ .ThenBy(segment => segment.SegmentIndex)
+ .ThenBy(segment => segment.SegmentId, StringComparer.Ordinal))
+ {
+ await UpsertTextNodeAsync(
+ connection,
+ transaction,
+ anchorId,
+ segment,
+ depths.GetValueOrDefault(segment.SegmentId),
+ segmentIds,
+ cancellationToken);
+
+ await using var update = connection.CreateCommand();
+ update.Transaction = transaction;
+ update.CommandText = "UPDATE reference_source_segments SET node_id=$node_id WHERE segment_id=$segment_id;";
+ update.Parameters.AddWithValue("$node_id", BuildTextNodeId(segment.SegmentId));
+ update.Parameters.AddWithValue("$segment_id", segment.SegmentId);
+ await update.ExecuteNonQueryAsync(cancellationToken);
+ }
+
+ await using (var updateMaterials = connection.CreateCommand())
+ {
+ updateMaterials.Transaction = transaction;
+ updateMaterials.CommandText = """
+ UPDATE reference_materials
+ SET node_id = (
+ SELECT segment.node_id
+ FROM reference_source_segments segment
+ WHERE segment.segment_id = reference_materials.source_segment_id
+ )
+ WHERE anchor_id = $anchor_id
+ AND EXISTS (
+ SELECT 1 FROM reference_source_segments segment
+ WHERE segment.segment_id = reference_materials.source_segment_id
+ );
+ """;
+ updateMaterials.Parameters.AddWithValue("$anchor_id", anchorId);
+ await updateMaterials.ExecuteNonQueryAsync(cancellationToken);
+ }
+
+ await transaction.CommitAsync(cancellationToken);
+ }
+ }
+
+ private static async ValueTask<IReadOnlyList<ReferenceSourceSegment>> ReadLegacySegmentsAsync(
+ SqliteConnection connection,
+ long anchorId,
+ CancellationToken cancellationToken)
+ {
+ var segments = new List<ReferenceSourceSegment>();
+ await using var command = connection.CreateCommand();
+ command.CommandText = """
+ SELECT segment_id,chapter_index,chapter_title,segment_type,segment_index,parent_segment_id,
+ start_offset,end_offset,text,text_hash
+ FROM reference_source_segments
+ WHERE anchor_id=$anchor_id
+ ORDER BY chapter_index,segment_index,segment_id;
+ """;
+ command.Parameters.AddWithValue("$anchor_id", anchorId);
+ await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+ while (await reader.ReadAsync(cancellationToken))
+ {
+ segments.Add(new ReferenceSourceSegment(
+ reader.GetString(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4),
+ reader.GetString(5), reader.GetInt32(6), reader.GetInt32(7), reader.GetString(8), reader.GetString(9)));
+ }
+
+ return segments;
+ }
+
+ private static async ValueTask BackfillReferenceProcessingAttemptsAsync(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
@@ -6394,6 +6499,7 @@ sentenceHash));
  clauseHash));
  }
 }
+
             }
         }
 

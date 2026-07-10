@@ -1386,14 +1386,61 @@ slot_value_variants?: CorpusDraftSlotValueVariant[] | null
     feedback?: CorpusBlueprintFeedback | null
   }
 
-  export interface CorpusBlueprintFeedback {
+export interface CorpusBlueprintFeedback {
     rejected_blueprint_ids: string[]
     rejected_node_ids: string[]
     avoid_library_ids: string[]
     avoid_anchor_ids: number[]
     problem_tags: string[]
-    notes: string
-  }
+notes: string
+}
+
+ export interface CorpusBlueprintChecklistItem {
+ dimension: 'emotion_arc' | 'rhythm' | 'technique_diversity' | 'scene_template' | 'source_distribution'
+ decision: 'accepted' | 'revise'
+ problem_tags: string[]
+ notes?: string | null
+ }
+
+ export interface AdvanceCorpusBlueprintSessionInput {
+ session_id: string
+ request_id: string
+ action: 'generate' | 'revise' | 'accept'
+ generation_input?: GenerateCorpusBlueprintCandidatesInput | null
+ selected_blueprint_id?: string | null
+ checklist?: CorpusBlueprintChecklistItem[] | null
+ }
+
+ export interface GetCorpusBlueprintSessionInput {
+ novel_id: number
+ chapter_number: number
+ session_id: string
+ }
+
+ export interface CorpusBlueprintSession {
+ session_id: string
+ novel_id: number
+ chapter_number: number
+ status: 'awaiting_feedback' | 'accepted'
+ iteration: number
+ selected_blueprint_id: string
+ accepted_blueprint_id: string
+ checklist: CorpusBlueprintChecklistItem[]
+ strategy_coverage: string[]
+ candidates: CorpusBlueprintCandidates
+ updated_at: string
+ }
+
+ export interface GetCorpusCascadeImpactInput {
+ observation_ids: string[]
+ }
+
+ export interface CorpusCascadeImpact {
+ observation_ids: string[]
+ specimen_ids: string[]
+ beat_ids: string[]
+ blueprint_ids: string[]
+ }
 
   export interface CorpusBlueprintSourceDistributionItem {
     library_id: string
@@ -1408,8 +1455,18 @@ slot_value_variants?: CorpusDraftSlotValueVariant[] | null
     gap_reasons: string[]
 feedback_reason: string
 gap_positions?: CorpusBlueprintGapPosition[] | null
- difference_audit?: CorpusBlueprintDifferenceAudit | null
+difference_audit?: CorpusBlueprintDifferenceAudit | null
+ emotion_arc?: CorpusBlueprintEmotionArcPoint[] | null
 }
+
+ export interface CorpusBlueprintEmotionArcPoint {
+ beat_id: string
+ beat_index: number
+ emotion_state: string
+ intensity: number
+ direction: string
+ evidence_node_ids: string[]
+ }
 
  export interface CorpusBlueprintDifferenceAudit {
  passed: boolean
@@ -1449,8 +1506,9 @@ gap_positions?: CorpusBlueprintGapPosition[] | null
     candidates: CorpusBlueprintCandidate[]
 feedback_applied: boolean
 feedback_summary: string
- iteration?: CorpusBlueprintIteration | null
-  }
+iteration?: CorpusBlueprintIteration | null
+ orchestration_stages?: string[] | null
+}
 
   export interface CorpusInsertionBlueprint {
     blueprint_id: string

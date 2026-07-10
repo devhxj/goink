@@ -495,7 +495,7 @@ Assert.Single(result.Items.Select(item => item.AnchorId).Distinct());
     }
 
     [Fact]
-    public async Task BackfillTechniqueVectorIndexPrewarmsNativeRowsAndSearchDoesNotReprovision()
+public async Task BackfillTechniqueVectorIndexPrewarmsNativeRowsAndSearchDoesNotReprovision()
     {
         var options = CreateOptions();
         await InitializeAsync(options);
@@ -546,8 +546,97 @@ Assert.Single(result.Items.Select(item => item.AnchorId).Distinct());
         Assert.True(top.ScoreComponents.TryGetValue("recall_technique_semantic", out var recallRoute));
         Assert.Equal(1, recallRoute);
         Assert.Equal(1, await ReadTechniqueVectorRowCountAsync(options));
-        Assert.Equal(1, await ReadTechniqueVectorIndexStateCountAsync(options));
-    }
+Assert.Equal(1, await ReadTechniqueVectorIndexStateCountAsync(options));
+}
+
+ [Fact]
+ public async Task TechniqueVectorMaintenanceSupportsIncrementalDedupAndFullRebuildInspection()
+ {
+ var options = CreateOptions();
+ await InitializeAsync(options);
+ await SeedCorpusFixtureAsync(options);
+ await SeedFarTechniqueSpecimenFixtureAsync(options);
+ var nativeProvider = new FakeSqliteVecTechniqueProvider(_ => true);
+ var service = new SqliteReferenceCorpusService(
+ options,
+ new StaticEmbeddingConfigurationService(CreateEmbeddingOptions()),
+ new TechniqueIntentEmbeddingClient(defaultDimensions: 8),
+ nativeProvider,
+ nativeProvider);
+ var schedule = new ScheduleReferenceCorpusTechniqueVectorMaintenancePayload(
+ BuildTechniqueSearchPayload().QueryContext,
+ ReferenceCorpusNodeTypes.Sentence,
+ ReferenceCorpusTechniqueVectorMaintenanceModes.Incremental,
+ 3);
+
+ var firstJob = await service.ScheduleTechniqueVectorMaintenanceAsync(schedule, CancellationToken.None);
+ var duplicateJob = await service.ScheduleTechniqueVectorMaintenanceAsync(schedule, CancellationToken.None);
+ Assert.Equal(firstJob.JobId, duplicateJob.JobId);
+ var first = await service.PumpTechniqueVectorMaintenanceAsync(new("m3-test", 60), CancellationToken.None);
+ Assert.True(first.Processed);
+ Assert.Equal(ReferenceCorpusTechniqueVectorMaintenanceStatuses.Completed, first.Job!.Status);
+ Assert.Single(nativeProvider.ProvisionCalls);
+
+ await service.ScheduleTechniqueVectorMaintenanceAsync(schedule, CancellationToken.None);
+ var incremental = await service.PumpTechniqueVectorMaintenanceAsync(new("m3-test", 60), CancellationToken.None);
+ Assert.False(incremental.Backfill!.Rebuilt);
+ Assert.Single(nativeProvider.ProvisionCalls);
+
+ await service.ScheduleTechniqueVectorMaintenanceAsync(
+ schedule with { Mode = ReferenceCorpusTechniqueVectorMaintenanceModes.Full },
+ CancellationToken.None);
+ var full = await service.PumpTechniqueVectorMaintenanceAsync(new("m3-test", 60), CancellationToken.None);
+ Assert.True(full.Backfill!.Rebuilt);
+ Assert.Equal(2, nativeProvider.ProvisionCalls.Count);
+
+ var healthy = await service.InspectTechniqueVectorIndexesAsync(new(true), CancellationToken.None);
+ Assert.Equal(1, healthy.HealthyCount);
+ Assert.Equal(0, healthy.StaleCount);
+ var changedService = new SqliteReferenceCorpusService(
+ options,
+ new StaticEmbeddingConfigurationService(CreateEmbeddingOptions() with { ModelId = "hash-model-v2", Dimensions = 16 }),
+ new TechniqueIntentEmbeddingClient(defaultDimensions: 16),
+ nativeProvider,
+ nativeProvider);
+ var stale = await changedService.InspectTechniqueVectorIndexesAsync(new(true), CancellationToken.None);
+ Assert.Equal(1, stale.StaleCount);
+ Assert.Contains(stale.Indexes.Single().Diagnostics, item => item is "stale_model" or "stale_dimensions");
+ }
+
+ [Fact]
+ public async Task TechniqueVectorMaintenanceRetriesAndEndsFailedAtAttemptLimit()
+ {
+ var options = CreateOptions();
+ await InitializeAsync(options);
+ await SeedCorpusFixtureAsync(options);
+ await SeedFarTechniqueSpecimenFixtureAsync(options);
+ var nativeProvider = new ThrowingSqliteVecTechniqueProvider();
+ var service = new SqliteReferenceCorpusService(
+ options,
+ new StaticEmbeddingConfigurationService(CreateEmbeddingOptions()),
+ new TechniqueIntentEmbeddingClient(defaultDimensions: 8),
+ nativeProvider,
+ nativeProvider);
+ await service.ScheduleTechniqueVectorMaintenanceAsync(new(
+ BuildTechniqueSearchPayload().QueryContext,
+ ReferenceCorpusNodeTypes.Sentence,
+ ReferenceCorpusTechniqueVectorMaintenanceModes.Incremental,
+ 2), CancellationToken.None);
+
+ var first = await service.PumpTechniqueVectorMaintenanceAsync(new("m3-retry", 60), CancellationToken.None);
+ Assert.Equal(ReferenceCorpusTechniqueVectorMaintenanceStatuses.RetryWait, first.Job!.Status);
+ await using (var connection = await OpenReferenceConnectionAsync(options))
+ await using (var command = connection.CreateCommand())
+ {
+ command.CommandText = "UPDATE reference_technique_vector_maintenance_jobs SET next_attempt_at='2000-01-01T00:00:00Z';";
+ await command.ExecuteNonQueryAsync();
+ }
+ var second = await service.PumpTechniqueVectorMaintenanceAsync(new("m3-retry", 60), CancellationToken.None);
+ Assert.Equal(ReferenceCorpusTechniqueVectorMaintenanceStatuses.Failed, second.Job!.Status);
+ Assert.Equal(2, second.Job.AttemptCount);
+ var inspection = await service.InspectTechniqueVectorIndexesAsync(new(false), CancellationToken.None);
+ Assert.Equal(1, inspection.FailedJobCount);
+ }
 
     [Fact]
     public async Task BackfillTechniqueVectorIndexFailureReturnsDiagnosticsAndSearchStillFallsBack()
@@ -974,11 +1063,21 @@ public async Task SearchCandidatesMergesFourRecallRoutesWithDiagnostics()
             item.NodeId == "node-fourway-observation" &&
             item.ScoreComponents.TryGetValue("recall_structured_observation", out var route) &&
             route == 1);
-        Assert.Contains(result.Items, item =>
-            item.NodeId == "node-fourway-context" &&
-            item.ScoreComponents.TryGetValue("recall_chapter_context", out var route) &&
-            route == 1);
-    }
+Assert.Contains(result.Items, item =>
+item.NodeId == "node-fourway-context" &&
+item.ScoreComponents.TryGetValue("recall_chapter_context", out var route) &&
+route == 1);
+Assert.All(result.Items, item =>
+ {
+ Assert.NotNull(item.RouteProvenance);
+ Assert.NotEmpty(item.RouteProvenance);
+ Assert.All(item.RouteProvenance, provenance =>
+ {
+ Assert.True(provenance.Rank > 0);
+ Assert.True(provenance.RouteScore > 0);
+ });
+ });
+}
 
     [Fact]
     public async Task SearchCandidatesStructuredObservationRecallDoesNotDependOnBasePrefetchWindow()
@@ -2178,13 +2277,18 @@ public async Task SearchCandidatesMergesFourRecallRoutesWithDiagnostics()
             Assert.DoesNotContain(result.Items, item => item.NodeId == excludedNodeId);
         }
 
-        var actual = NormalizeRetrievalForGolden(
-            result,
-            expectedExcludedNodeIds,
-            nodeEmbeddingCount,
-            currentChapterEmbeddingCacheCount,
-            techniqueVectorCount);
-        Assert.True(
+var actual = NormalizeRetrievalForGolden(
+result,
+expectedExcludedNodeIds,
+nodeEmbeddingCount,
+currentChapterEmbeddingCacheCount,
+techniqueVectorCount);
+ if (Environment.GetEnvironmentVariable("NOVELIST_UPDATE_M3_GOLDEN") == "1")
+ {
+ UpdateM3RetrievalGolden(fixtureId, actual);
+ expected = actual.DeepClone();
+ }
+Assert.True(
             JsonNode.DeepEquals(expected, actual),
             "M3 corpus-driven-writing retrieval golden mismatch." +
             Environment.NewLine +
@@ -2248,11 +2352,51 @@ public async Task SearchCandidatesMergesFourRecallRoutesWithDiagnostics()
             ["license_state"] = item.LicenseState,
             ["reuse_policy"] = item.ReusePolicy,
             ["fit_explanation"] = item.FitExplanation,
-            ["score_component_keys"] = new JsonArray(scoreComponentKeys),
-            ["route_components"] = routeComponents,
-            ["evidence"] = new JsonArray(item.Evidence.Select(NormalizeEvidenceForGolden).ToArray<JsonNode?>())
-        };
-    }
+["score_component_keys"] = new JsonArray(scoreComponentKeys),
+["route_components"] = routeComponents,
+ ["route_provenance"] = new JsonArray((item.RouteProvenance ?? [])
+ .OrderBy(provenance => provenance.Route, StringComparer.Ordinal)
+ .Select(provenance => (JsonNode?)new JsonObject
+ {
+ ["route"] = provenance.Route,
+ ["rank"] = provenance.Rank,
+ ["route_score"] = Math.Round(provenance.RouteScore, 6)
+ })
+ .ToArray()),
+["evidence"] = new JsonArray(item.Evidence.Select(NormalizeEvidenceForGolden).ToArray<JsonNode?>())
+};
+}
+
+ private static void UpdateM3RetrievalGolden(string fixtureId, JsonObject actual)
+ {
+ var fixturePath = Path.Combine(
+ FindRepositoryRoot(),
+ "tests",
+ "Novelist.IntegrationTests",
+ "Fixtures",
+ "corpus-driven-writing",
+ "m3-retrieval-golden.json");
+ var root = JsonNode.Parse(File.ReadAllText(fixturePath))?.AsObject()
+ ?? throw new InvalidOperationException("M3 retrieval golden root is empty.");
+ var fixture = root["fixtures"]?.AsArray()
+ .Select(node => node?.AsObject())
+ .Single(node => node?["fixture_id"]?.GetValue<string>() == fixtureId)
+ ?? throw new InvalidOperationException($"M3 retrieval fixture '{fixtureId}' was not found.");
+ fixture["expected_retrieval"] = actual.DeepClone();
+ File.WriteAllText(fixturePath, root.ToJsonString(GoldenJsonOptions) + Environment.NewLine);
+ }
+
+ private static string FindRepositoryRoot()
+ {
+ var directory = new DirectoryInfo(AppContext.BaseDirectory);
+ while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Novelist.slnx")))
+ {
+ directory = directory.Parent;
+ }
+
+ return directory?.FullName
+ ?? throw new DirectoryNotFoundException("Could not locate the repository root.");
+ }
 
     private static JsonObject NormalizeEvidenceForGolden(ReferenceCorpusCandidateEvidencePayload item)
     {

@@ -13,6 +13,7 @@ public sealed class SqliteReferenceCorpusService : IReferenceCorpusService
  private const int PerSourceCandidateLimit = MaxCandidatePoolSize;
 private const int RecallRouteLimit = 128;
 private const int MaxCandidatePoolSize = 512;
+private const int TextSemanticRouteScanLimit = 2048;
  private const string TextSemanticRoute = "text_semantic";
  private const string TechniqueSemanticRoute = "technique_semantic";
  private const string StructuredObservationRoute = "structured_observation";
@@ -78,14 +79,22 @@ cancellationToken.ThrowIfCancellationRequested();
                 BuildQueryEmbeddingText(input.QueryContext),
                 embeddingOptions with { InputKind = BuiltinOnnxEmbeddingModel.QueryInputKind },
                 cancellationToken);
-            var nativeTechniqueRecall = await TryRecallNativeTechniqueNodesAsync(
+var nativeTechniqueRecall = await TryRecallNativeTechniqueNodesAsync(
                 databasePath,
                 connection,
                 input.QueryContext,
                 embeddingOptions,
                 queryEmbedding,
-                page,
-                cancellationToken);
+page,
+cancellationToken);
+ var textSemanticRecall = await ReadCachedTextSemanticRecallAsync(
+ connection,
+ input.QueryContext,
+ requestedNodeType,
+ page.Filters,
+ embeddingOptions,
+ queryEmbedding ?? [],
+ cancellationToken);
             var structuredObservationRecall = await ReadStructuredObservationRecallNodeIdsAsync(
                 connection,
                 input.QueryContext,
@@ -100,10 +109,11 @@ cancellationToken.ThrowIfCancellationRequested();
                 page.Filters,
  RecallRouteLimit,
                 cancellationToken);
- var candidates = SelectCandidatePool(await ReadScopedCandidateNodesAsync(
+var candidates = SelectCandidatePool(await ReadScopedCandidateNodesAsync(
 connection,
 input,
 page,
+ textSemanticRecall,
 nativeTechniqueRecall,
 structuredObservationRecall,
 chapterContextRecall,
@@ -391,10 +401,163 @@ public async ValueTask<ReferenceCorpusTechniqueVectorIndexBackfillPayload> Backf
         finally
         {
             _mutex.Release();
-        }
-    }
+}
+}
 
- private static IReadOnlyList<ScoredCorpusCandidate> BuildRecallMergedOrder(
+ public async ValueTask<ReferenceCorpusTechniqueVectorMaintenanceJobPayload> ScheduleTechniqueVectorMaintenanceAsync(
+ ScheduleReferenceCorpusTechniqueVectorMaintenancePayload input,
+ CancellationToken cancellationToken)
+ {
+ ArgumentNullException.ThrowIfNull(input);
+ ValidateQueryContext(input.QueryContext);
+ if (input.Mode is not (ReferenceCorpusTechniqueVectorMaintenanceModes.Full or ReferenceCorpusTechniqueVectorMaintenanceModes.Incremental))
+ {
+ throw new ArgumentException("Maintenance mode must be 'full' or 'incremental'.", nameof(input));
+ }
+ if (input.MaxAttempts is < 1 or > 10)
+ {
+ throw new ArgumentOutOfRangeException(nameof(input), "Max attempts must be between 1 and 10.");
+ }
+
+ var embeddingOptions = await _embeddingConfiguration.GetActiveEmbeddingOptionsAsync(cancellationToken)
+ ?? throw new InvalidOperationException("Embedding configuration is required for technique vector maintenance.");
+ var databasePath = await DatabasePathAsync(cancellationToken);
+ await EnsureSchemaAsync(databasePath, cancellationToken);
+ var scheduler = new SqliteReferenceCorpusTechniqueVectorMaintenanceScheduler(databasePath);
+ return await scheduler.EnqueueAsync(
+ input,
+ embeddingOptions.ProviderKey,
+ embeddingOptions.ModelId,
+ embeddingOptions.Dimensions ?? BuiltinOnnxEmbeddingModel.Dimensions,
+ DateTimeOffset.UtcNow,
+ cancellationToken);
+ }
+
+ public async ValueTask<ReferenceCorpusTechniqueVectorMaintenancePumpResultPayload> PumpTechniqueVectorMaintenanceAsync(
+ PumpReferenceCorpusTechniqueVectorMaintenancePayload input,
+ CancellationToken cancellationToken)
+ {
+ ArgumentNullException.ThrowIfNull(input);
+ if (string.IsNullOrWhiteSpace(input.WorkerId)) throw new ArgumentException("Worker id is required.", nameof(input));
+ if (input.LeaseSeconds is < 30 or > 3600) throw new ArgumentOutOfRangeException(nameof(input), "Lease seconds must be between 30 and 3600.");
+ var databasePath = await DatabasePathAsync(cancellationToken);
+ await EnsureSchemaAsync(databasePath, cancellationToken);
+ var scheduler = new SqliteReferenceCorpusTechniqueVectorMaintenanceScheduler(databasePath);
+ var claimed = await scheduler.ClaimAsync(
+ input.WorkerId.Trim(),
+ TimeSpan.FromSeconds(input.LeaseSeconds),
+ DateTimeOffset.UtcNow,
+ cancellationToken);
+ if (claimed is null) return new(false, null, null);
+
+ if (claimed.Job.Mode == ReferenceCorpusTechniqueVectorMaintenanceModes.Full)
+ {
+ await ResetNativeTechniqueIndexMetadataAsync(
+ databasePath,
+ claimed.Job.ProviderKey,
+ claimed.Job.ModelId,
+ claimed.Job.Dimensions,
+ cancellationToken);
+ }
+
+ var backfill = await BackfillTechniqueVectorIndexAsync(
+ new(claimed.QueryContext, claimed.NodeType),
+ cancellationToken);
+ var settled = await scheduler.CompleteAsync(claimed, backfill, DateTimeOffset.UtcNow, cancellationToken);
+ return new(true, settled, backfill);
+ }
+
+ public async ValueTask<ReferenceCorpusTechniqueVectorIndexInspectionPayload> InspectTechniqueVectorIndexesAsync(
+ InspectReferenceCorpusTechniqueVectorIndexesPayload input,
+ CancellationToken cancellationToken)
+ {
+ ArgumentNullException.ThrowIfNull(input);
+ var embeddingOptions = await _embeddingConfiguration.GetActiveEmbeddingOptionsAsync(cancellationToken);
+ var databasePath = await DatabasePathAsync(cancellationToken);
+ await EnsureSchemaAsync(databasePath, cancellationToken);
+ var scheduler = new SqliteReferenceCorpusTechniqueVectorMaintenanceScheduler(databasePath);
+ var jobs = await scheduler.ListAsync(input.IncludeCompletedJobs, cancellationToken);
+ await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+ await using var command = connection.CreateCommand();
+ command.CommandText = """
+ SELECT state.index_scope_key,state.table_name,state.provider_key,state.model_id,state.dimensions,
+ state.source_count,COUNT(rows.row_id),state.updated_at
+ FROM reference_technique_vector_index_state state
+ LEFT JOIN reference_technique_vector_rows rows ON rows.index_scope_key=state.index_scope_key
+ GROUP BY state.index_scope_key,state.table_name,state.provider_key,state.model_id,state.dimensions,
+ state.source_count,state.updated_at
+ ORDER BY state.updated_at DESC,state.index_scope_key;
+ """;
+ var indexes = new List<ReferenceCorpusTechniqueVectorIndexInspectionItemPayload>();
+ await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+ while (await reader.ReadAsync(cancellationToken))
+ {
+ var providerKey = reader.GetString(2);
+ var modelId = reader.GetString(3);
+ var dimensions = reader.GetInt32(4);
+ var sourceCount = reader.GetInt32(5);
+ var rowCount = reader.GetInt32(6);
+ var diagnostics = new List<string>();
+ if (embeddingOptions is not null && !string.Equals(providerKey, embeddingOptions.ProviderKey, StringComparison.Ordinal)) diagnostics.Add("stale_provider");
+ if (embeddingOptions is not null && !string.Equals(modelId, embeddingOptions.ModelId, StringComparison.Ordinal)) diagnostics.Add("stale_model");
+ if (embeddingOptions is not null && dimensions != embeddingOptions.Dimensions) diagnostics.Add("stale_dimensions");
+ if (sourceCount != rowCount) diagnostics.Add("row_count_mismatch");
+ indexes.Add(new(
+ reader.GetString(0), reader.GetString(1), providerKey, modelId, dimensions,
+ sourceCount, rowCount, diagnostics.Count == 0 ? "healthy" : "stale",
+ diagnostics, DateTimeOffset.Parse(reader.GetString(7))));
+ }
+
+ return new(
+ embeddingOptions?.ProviderKey,
+ embeddingOptions?.ModelId,
+ embeddingOptions?.Dimensions ?? 0,
+ indexes,
+ jobs,
+ indexes.Count(item => item.Health == "healthy"),
+ indexes.Count(item => item.Health != "healthy"),
+ jobs.Count(job => job.Status == ReferenceCorpusTechniqueVectorMaintenanceStatuses.Failed));
+ }
+
+ private static async ValueTask ResetNativeTechniqueIndexMetadataAsync(
+ string databasePath,
+ string providerKey,
+ string modelId,
+ int dimensions,
+ CancellationToken cancellationToken)
+ {
+ await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+ await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+ await using (var rows = connection.CreateCommand())
+ {
+ rows.Transaction = transaction;
+ rows.CommandText = """
+ DELETE FROM reference_technique_vector_rows
+ WHERE index_scope_key IN (
+ SELECT index_scope_key FROM reference_technique_vector_index_state
+ WHERE provider_key=$provider_key AND model_id=$model_id AND dimensions=$dimensions);
+ """;
+ rows.Parameters.AddWithValue("$provider_key", providerKey);
+ rows.Parameters.AddWithValue("$model_id", modelId);
+ rows.Parameters.AddWithValue("$dimensions", dimensions);
+ await rows.ExecuteNonQueryAsync(cancellationToken);
+ }
+ await using (var state = connection.CreateCommand())
+ {
+ state.Transaction = transaction;
+ state.CommandText = """
+ DELETE FROM reference_technique_vector_index_state
+ WHERE provider_key=$provider_key AND model_id=$model_id AND dimensions=$dimensions;
+ """;
+ state.Parameters.AddWithValue("$provider_key", providerKey);
+ state.Parameters.AddWithValue("$model_id", modelId);
+ state.Parameters.AddWithValue("$dimensions", dimensions);
+ await state.ExecuteNonQueryAsync(cancellationToken);
+ }
+ await transaction.CommitAsync(cancellationToken);
+ }
+
+private static IReadOnlyList<ScoredCorpusCandidate> BuildRecallMergedOrder(
  IReadOnlyList<ScoredCorpusCandidate> scored,
  ReferenceCorpusRetrievalFeedbackPayload? feedback)
 {
@@ -412,17 +575,17 @@ return [];
  var selected = new List<ScoredCorpusCandidate>(scored.Count);
  var selectedNodeIds = new HashSet<string>(StringComparer.Ordinal);
  var preferredRoutes = NormalizeRouteSet(feedback?.PreferredRoutes);
-foreach (var route in routeOrders
+ foreach (var route in routeOrders
  .OrderByDescending(order => preferredRoutes.Contains(order.Route)))
- {
+{
  foreach (var candidate in route.Items)
- {
- if (selectedNodeIds.Add(candidate.Candidate.NodeId))
- {
- selected.Add(candidate);
- }
- }
- }
+{
+if (selectedNodeIds.Add(candidate.Candidate.NodeId))
+{
+selected.Add(candidate);
+}
+}
+}
 
         foreach (var candidate in scored)
         {
@@ -435,7 +598,7 @@ if (selectedNodeIds.Add(candidate.Candidate.NodeId))
 return selected;
 }
 
- private static RouteOrder BuildRouteTopK(
+private static RouteOrder BuildRouteTopK(
  IReadOnlyList<ScoredCorpusCandidate> scored,
  string route,
  string scoreComponent,
@@ -453,9 +616,12 @@ return selected;
  .Take(limit)
  .ToArray();
  for (var index = 0; index < items.Length; index++)
+{
+MarkRecallComponent(items[index], routeMarker);
+ if (!items[index].Candidate.RouteProvenance.ContainsKey(route))
  {
- MarkRecallComponent(items[index], routeMarker);
  items[index].Candidate.RouteProvenance[route] = new(index + 1, ScoreComponent(items[index], scoreComponent));
+ }
  }
  return new(route, items);
  }
@@ -754,9 +920,21 @@ page.SortDir,
     private static async ValueTask EnsureSchemaAsync(string databasePath, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-        await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
-        await ReferenceCorpusSchemaProvisioner.EnsureCoreTablesAsync(connection, cancellationToken);
-    }
+await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+await ReferenceCorpusSchemaProvisioner.EnsureCoreTablesAsync(connection, cancellationToken);
+ await using var indexes = connection.CreateCommand();
+ indexes.CommandText = """
+ CREATE INDEX IF NOT EXISTS idx_reference_observations_retrieval_hot
+ ON reference_feature_observations(validity_state,node_type,feature_family,feature_key,value_text,confidence,node_id);
+ CREATE INDEX IF NOT EXISTS idx_reference_obs_sensory_retrieval_hot
+ ON reference_obs_sensory(sense,intensity,node_id,observation_id);
+ CREATE INDEX IF NOT EXISTS idx_reference_text_nodes_context_hot
+ ON reference_text_nodes(node_type,anchor_id,chapter_index,sequence_index,node_id);
+ CREATE INDEX IF NOT EXISTS idx_reference_text_embeddings_generation_hot
+ ON reference_text_node_embeddings(provider_key,model_id,dimensions,anchor_id,node_id,text_hash);
+ """;
+ await indexes.ExecuteNonQueryAsync(cancellationToken);
+}
 
     private static async ValueTask<SqliteConnection> OpenConnectionAsync(
         string databasePath,
@@ -771,11 +949,12 @@ page.SortDir,
         return connection;
     }
 
-    private static async ValueTask<IReadOnlyList<CorpusCandidateNode>> ReadScopedCandidateNodesAsync(
+private static async ValueTask<IReadOnlyList<CorpusCandidateNode>> ReadScopedCandidateNodesAsync(
         SqliteConnection connection,
-        SearchReferenceCorpusCandidatesPayload input,
-        NormalizedPageRequest page,
-        NativeTechniqueRecallResult? nativeTechniqueRecall,
+SearchReferenceCorpusCandidatesPayload input,
+NormalizedPageRequest page,
+ TextSemanticRecallResult textSemanticRecall,
+NativeTechniqueRecallResult? nativeTechniqueRecall,
         StructuredObservationRecallResult? structuredObservationRecall,
         ChapterContextRecallResult? chapterContextRecall,
         CancellationToken cancellationToken)
@@ -827,7 +1006,8 @@ var parameters = new List<(string Name, object Value)>
                    )
             """
             : string.Empty;
-        var nativeTechniqueRouteSql = BuildNativeTechniqueRouteSql(parameters, nativeTechniqueRecall);
+var nativeTechniqueRouteSql = BuildNativeTechniqueRouteSql(parameters, nativeTechniqueRecall);
+ var textSemanticRouteSql = BuildTextSemanticRouteSql(parameters, textSemanticRecall);
         var structuredObservationRouteSql = BuildStructuredObservationRouteSql(parameters, structuredObservationRecall);
         var chapterContextRouteSql = BuildChapterContextRouteSql(parameters, chapterContextRecall);
         var commandText = $$"""
@@ -931,7 +1111,8 @@ AND r.dedup_group_key = e.dedup_group_key
                 FROM scoped_nodes
                 WHERE source_rank <= $per_source_limit
                    {{techniqueSpecimenFallbackSql}}
-                   {{nativeTechniqueRouteSql}}
+{{nativeTechniqueRouteSql}}
+ {{textSemanticRouteSql}}
                    {{structuredObservationRouteSql}}
                    {{chapterContextRouteSql}}
                    {{recallRouteSql}}
@@ -980,20 +1161,25 @@ AppendStructuredObservationFilters(builder, parameters, page.Filters);
             var nodeId = reader.GetString(0);
             if (!map.TryGetValue(nodeId, out var candidate))
             {
-                var recallRouteComponents = new HashSet<string>(StringComparer.Ordinal);
-                if (nativeTechniqueRecall?.NodeIds.Contains(nodeId) == true)
-                {
-                    recallRouteComponents.Add("recall_technique_semantic");
-                }
+var recallRouteComponents = new HashSet<string>(StringComparer.Ordinal);
+ var routeProvenance = new Dictionary<string, RouteProvenance>(StringComparer.Ordinal);
+ AddRouteHit(textSemanticRecall.Scores, nodeId, TextSemanticRoute, recallRouteComponents, routeProvenance);
+if (nativeTechniqueRecall?.NodeIds.Contains(nodeId) == true)
+{
+recallRouteComponents.Add("recall_technique_semantic");
+ AddRouteHit(nativeTechniqueRecall.Scores, nodeId, TechniqueSemanticRoute, recallRouteComponents, routeProvenance);
+}
 
                 if (structuredObservationRecall?.NodeIds.Contains(nodeId) == true)
                 {
-                    recallRouteComponents.Add("recall_structured_observation");
+recallRouteComponents.Add("recall_structured_observation");
+ AddRouteHit(structuredObservationRecall.Scores, nodeId, StructuredObservationRoute, recallRouteComponents, routeProvenance);
                 }
 
                 if (chapterContextRecall?.NodeIds.Contains(nodeId) == true)
                 {
-                    recallRouteComponents.Add("recall_chapter_context");
+recallRouteComponents.Add("recall_chapter_context");
+ AddRouteHit(chapterContextRecall.Scores, nodeId, ChapterContextRoute, recallRouteComponents, routeProvenance);
                 }
 
                 candidate = new CorpusCandidateNode(
@@ -1012,7 +1198,7 @@ ReusePolicy: reader.GetString(11),
  DedupGroupKey: reader.GetString(12),
  SourceCoverage: ParseSourceCoverage(reader.GetString(13)),
 RecallRouteComponents: recallRouteComponents,
- RouteProvenance: new Dictionary<string, RouteProvenance>(StringComparer.Ordinal),
+ RouteProvenance: routeProvenance,
 Observations: []);
                 map.Add(nodeId, candidate);
             }
@@ -1031,7 +1217,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
         return map.Values.ToArray();
     }
 
-    private static string BuildRecallRouteSql(
+private static string BuildRecallRouteSql(
         List<(string Name, object Value)> parameters,
         ReferenceCorpusQueryContextPayload queryContext)
     {
@@ -1051,10 +1237,84 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             builder.AppendLine("OR (" + queryTextExpression + ")");
         }
 
-        return builder.ToString();
-    }
+return builder.ToString();
+}
 
-    private static async ValueTask<ChapterContextRecallResult> ReadChapterContextRecallNodeIdsAsync(
+ private static async ValueTask<TextSemanticRecallResult> ReadCachedTextSemanticRecallAsync(
+ SqliteConnection connection,
+ ReferenceCorpusQueryContextPayload queryContext,
+ string requestedNodeType,
+ IReadOnlyDictionary<string, string> filters,
+ EmbeddingRequestOptions embeddingOptions,
+ IReadOnlyList<float> queryEmbedding,
+ CancellationToken cancellationToken)
+ {
+ if (queryEmbedding.Count == 0) return new(new Dictionary<string, double>(StringComparer.Ordinal));
+ var libraryIds = await ResolveEffectiveLibraryIdsAsync(
+ connection, queryContext.Scope, queryContext.ChapterContext.NovelId, cancellationToken);
+ if (libraryIds.Count == 0) return new(new Dictionary<string, double>(StringComparer.Ordinal));
+ var reusePolicies = NormalizeTextSet(queryContext.Scope.ReusePolicies);
+ if (reusePolicies.Count == 0) reusePolicies = [ReferenceCorpusReusePolicies.VerbatimOk, ReferenceCorpusReusePolicies.AdaptedOnly];
+ var includeAnchorIds = NormalizePositiveLongSet(queryContext.Scope.IncludeAnchorIds);
+ var excludeAnchorIds = NormalizePositiveLongSet(queryContext.Scope.ExcludeAnchorIds);
+ var dimensions = embeddingOptions.Dimensions ?? BuiltinOnnxEmbeddingModel.Dimensions;
+ var parameters = new List<(string Name, object Value)>
+ {
+ ("$node_type", requestedNodeType),
+ ("$novel_id", queryContext.ChapterContext.NovelId),
+ ("$provider_key", embeddingOptions.ProviderKey),
+ ("$model_id", embeddingOptions.ModelId),
+ ("$dimensions", dimensions),
+ ("$scan_limit", TextSemanticRouteScanLimit)
+ };
+ var builder = new StringBuilder("""
+ WITH eligible AS (
+ SELECT n.node_id,n.anchor_id,n.sequence_index,e.embedding_json,
+ COALESCE(NULLIF(TRIM(lm.dedup_group_id), ''), 'anchor:' || n.anchor_id) AS dedup_group_key,
+ CASE COALESCE(lm.source_quality, '') WHEN 'trusted' THEN 3 WHEN 'normal' THEN 2 WHEN 'low' THEN 1 ELSE 0 END AS quality_rank,
+ lm.library_id
+ FROM reference_text_node_embeddings e
+ JOIN reference_text_nodes n ON n.node_id=e.node_id AND n.anchor_id=e.anchor_id AND n.text_hash=e.text_hash
+ JOIN reference_anchors a ON a.anchor_id=n.anchor_id
+ JOIN reference_library_members lm ON lm.anchor_id=n.anchor_id
+ JOIN reference_corpus_libraries lib ON lib.library_id=lm.library_id
+ JOIN reference_source_license lic ON lic.anchor_id=n.anchor_id
+ WHERE n.node_type=$node_type AND a.status='ready' AND lm.enabled=1
+ AND (lib.scope='global' OR (lib.scope='project' AND lib.novel_id=$novel_id))
+ AND lic.license_state IN ('public_domain','cc','authorized')
+ AND lic.reuse_policy IN ('verbatim_ok','adapted_only')
+ AND (a.novel_id=$novel_id OR ((a.novel_id IS NULL OR a.novel_id=0) AND a.corpus_visibility='workspace'))
+ AND e.provider_key=$provider_key AND e.model_id=$model_id AND e.dimensions=$dimensions
+ """);
+ AppendInClause(builder, parameters, "lm.library_id", libraryIds, "text_semantic_library_id");
+ AppendInClause(builder, parameters, "lic.reuse_policy", reusePolicies, "text_semantic_reuse_policy");
+ if (includeAnchorIds.Count > 0) AppendInClause(builder, parameters, "n.anchor_id", includeAnchorIds, "text_semantic_include_anchor_id");
+ if (excludeAnchorIds.Count > 0) AppendNotInClause(builder, parameters, "n.anchor_id", excludeAnchorIds, "text_semantic_exclude_anchor_id");
+ builder.AppendLine("), representatives AS (");
+ builder.AppendLine("SELECT * FROM (SELECT eligible.*,ROW_NUMBER() OVER(PARTITION BY dedup_group_key ORDER BY quality_rank DESC,library_id,anchor_id,sequence_index,node_id) AS dedup_rank FROM eligible) WHERE dedup_rank=1),");
+ builder.AppendLine("filtered AS (SELECT n.* FROM representatives n WHERE 1=1");
+AppendStructuredObservationFilters(builder, parameters, filters);
+ builder.AppendLine(") SELECT node_id,embedding_json FROM filtered ORDER BY quality_rank DESC,sequence_index,node_id LIMIT $scan_limit;");
+ await using var command = connection.CreateCommand();
+ command.CommandText = builder.ToString();
+ foreach (var parameter in parameters) command.Parameters.AddWithValue(parameter.Name, parameter.Value);
+ var scored = new List<(string NodeId, double Score)>();
+ await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+ while (await reader.ReadAsync(cancellationToken))
+ {
+ var vector = DeserializeVector(reader.GetString(1));
+ if (vector.Count != queryEmbedding.Count) continue;
+ scored.Add((reader.GetString(0), Math.Round(CosineSimilarity(queryEmbedding, vector), 6)));
+ }
+ var result = scored
+ .OrderByDescending(item => item.Score)
+ .ThenBy(item => item.NodeId, StringComparer.Ordinal)
+ .Take(RecallRouteLimit)
+ .ToDictionary(item => item.NodeId, item => item.Score, StringComparer.Ordinal);
+ return new(result);
+ }
+
+private static async ValueTask<ChapterContextRecallResult> ReadChapterContextRecallNodeIdsAsync(
         SqliteConnection connection,
         ReferenceCorpusQueryContextPayload queryContext,
         string requestedNodeType,
@@ -1069,7 +1329,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             .ToArray();
         if (contextTerms.Length == 0)
         {
-            return new ChapterContextRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new ChapterContextRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
         }
 
         var libraryIds = await ResolveEffectiveLibraryIdsAsync(
@@ -1079,7 +1339,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             cancellationToken);
         if (libraryIds.Count == 0)
         {
-            return new ChapterContextRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new ChapterContextRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
         }
 
         var reusePolicies = NormalizeTextSet(queryContext.Scope.ReusePolicies);
@@ -1104,7 +1364,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             "chapter_context_route_term");
         if (contextExpression.Length == 0)
         {
-            return new ChapterContextRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new ChapterContextRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
         }
 
         var scoreExpression = BuildWeightedLikeScoreExpression(
@@ -1152,43 +1412,19 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             AppendNotInClause(builder, parameters, "n.anchor_id", excludeAnchorIds, "chapter_context_exclude_anchor_id");
         }
 
-        builder.AppendLine($"""
-            ),
-            source_representatives AS (
-                SELECT library_id,
-                       anchor_id,
-                       dedup_group_key
-                FROM (
-                    SELECT library_id,
-                           anchor_id,
-                           dedup_group_key,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY dedup_group_key
-                               ORDER BY source_quality_rank DESC, library_id, anchor_id
-                           ) AS dedup_rank
-                    FROM (
-                        SELECT DISTINCT library_id,
-                               anchor_id,
-                               dedup_group_key,
-                               source_quality_rank
-                        FROM eligible_nodes
-                    )
-                )
-                WHERE dedup_rank = 1
-            ),
-            scoped_nodes AS (
-                SELECT e.*
-                FROM eligible_nodes e
-                JOIN source_representatives r
-                  ON r.library_id = e.library_id
-                 AND r.anchor_id = e.anchor_id
-                 AND r.dedup_group_key = e.dedup_group_key
-            )
-            SELECT n.node_id
-            FROM scoped_nodes n
-            WHERE ({contextExpression})
-              AND ({scoreExpression}) >= $min_chapter_context_route_score
-            """);
+ builder.AppendLine("),");
+ builder.AppendLine("source_representatives AS (");
+ builder.AppendLine("SELECT library_id,anchor_id,dedup_group_key FROM (");
+ builder.AppendLine("SELECT library_id,anchor_id,dedup_group_key,ROW_NUMBER() OVER (");
+ builder.AppendLine("PARTITION BY dedup_group_key ORDER BY source_quality_rank DESC,library_id,anchor_id) AS dedup_rank");
+ builder.AppendLine("FROM (SELECT DISTINCT library_id,anchor_id,dedup_group_key,source_quality_rank FROM eligible_nodes))");
+ builder.AppendLine("WHERE dedup_rank=1),");
+ builder.AppendLine("scoped_nodes AS (");
+ builder.AppendLine("SELECT e.* FROM eligible_nodes e JOIN source_representatives r");
+ builder.AppendLine("ON r.library_id=e.library_id AND r.anchor_id=e.anchor_id AND r.dedup_group_key=e.dedup_group_key)");
+ builder.AppendLine($"SELECT n.node_id, ({scoreExpression}) AS route_score");
+ builder.AppendLine("FROM scoped_nodes n");
+ builder.AppendLine($"WHERE ({contextExpression}) AND ({scoreExpression}) >= $min_chapter_context_route_score");
         AppendStructuredObservationFilters(builder, parameters, filters);
         builder.AppendLine($"""
             ORDER BY ({scoreExpression}) DESC,
@@ -1205,14 +1441,14 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             command.Parameters.AddWithValue(parameter.Name, parameter.Value);
         }
 
-        var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+ var scores = new Dictionary<string, double>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            nodeIds.Add(reader.GetString(0));
+ scores[reader.GetString(0)] = Math.Round(reader.GetDouble(1), 6);
         }
 
-        return new ChapterContextRecallResult(nodeIds);
+ return new ChapterContextRecallResult(scores);
     }
 
     private static async ValueTask<StructuredObservationRecallResult> ReadStructuredObservationRecallNodeIdsAsync(
@@ -1231,7 +1467,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
         var hasFilterRoute = HasStructuredObservationRouteFilters(filters);
         if (queryTerms.Length == 0 && !hasFilterRoute)
         {
-            return new StructuredObservationRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new StructuredObservationRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
         }
 
         var libraryIds = await ResolveEffectiveLibraryIdsAsync(
@@ -1241,7 +1477,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             cancellationToken);
         if (libraryIds.Count == 0)
         {
-            return new StructuredObservationRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new StructuredObservationRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
         }
 
         var reusePolicies = NormalizeTextSet(queryContext.Scope.ReusePolicies);
@@ -1298,7 +1534,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
 
         if (routeSelects.Count == 0)
         {
-            return new StructuredObservationRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new StructuredObservationRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
         }
 
         var builder = new StringBuilder("""
@@ -1373,7 +1609,7 @@ candidate.Observations.Add(new CorpusCandidateObservation(
                  AND r.dedup_group_key = e.dedup_group_key
             )
             """);
-        builder.AppendLine("SELECT node_id");
+ builder.AppendLine("SELECT node_id, MAX(route_confidence) AS route_score");
         builder.AppendLine("FROM (");
         builder.AppendLine(string.Join(
             Environment.NewLine + "UNION ALL" + Environment.NewLine,
@@ -1395,17 +1631,17 @@ candidate.Observations.Add(new CorpusCandidateObservation(
             command.Parameters.AddWithValue(parameter.Name, parameter.Value);
         }
 
-        var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+ var scores = new Dictionary<string, double>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            nodeIds.Add(reader.GetString(0));
+ scores[reader.GetString(0)] = Math.Round(reader.GetDouble(1), 6);
         }
 
-        return new StructuredObservationRecallResult(nodeIds);
+ return new StructuredObservationRecallResult(scores);
     }
 
-    private static string BuildNativeTechniqueRouteSql(
+private static string BuildNativeTechniqueRouteSql(
         List<(string Name, object Value)> parameters,
         NativeTechniqueRecallResult? nativeTechniqueRecall)
     {
@@ -1863,6 +2099,40 @@ private static async ValueTask<HashSet<string>> ReadSessionLibraryIdsAsync(
 return await ReadLibraryIdSetAsync(command, cancellationToken);
 }
 
+ private static string BuildTextSemanticRouteSql(
+ List<(string Name, object Value)> parameters,
+ TextSemanticRecallResult recall)
+ {
+ if (recall.NodeIds.Count == 0) return string.Empty;
+ var names = new List<string>(recall.NodeIds.Count);
+ var index = 0;
+ foreach (var nodeId in recall.NodeIds.Order(StringComparer.Ordinal))
+ {
+ var name = "$text_semantic_node_id_" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+ parameters.Add((name, nodeId));
+ names.Add(name);
+ index++;
+ }
+ return "OR scoped_nodes.node_id IN (" + string.Join(", ", names) + ")";
+ }
+
+ private static void AddRouteHit(
+ IReadOnlyDictionary<string, double> scores,
+ string nodeId,
+ string route,
+ HashSet<string> components,
+ Dictionary<string, RouteProvenance> provenance)
+ {
+ if (!scores.TryGetValue(nodeId, out var score)) return;
+ components.Add("recall_" + route);
+ var rank = scores
+ .OrderByDescending(item => item.Value)
+ .ThenBy(item => item.Key, StringComparer.Ordinal)
+ .Select((item, index) => (item.Key, Rank: index + 1))
+ .First(item => item.Key == nodeId).Rank;
+ provenance[route] = new(rank, score);
+ }
+
  public async ValueTask<ReferenceCorpusProjectionRebuildPayload> RebuildSensoryProjectionAsync(
  RebuildReferenceCorpusSensoryProjectionPayload input,
  CancellationToken cancellationToken)
@@ -1968,18 +2238,22 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
  await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
 
  int? chapterIndex;
- await using (var focus = connection.CreateCommand())
- {
- focus.CommandText = "SELECT chapter_index FROM reference_text_nodes WHERE anchor_id=$anchor_id AND node_id=$node_id;";
- focus.Parameters.AddWithValue("$anchor_id", input.AnchorId);
- focus.Parameters.AddWithValue("$node_id", input.NodeId.Trim());
- var value = await focus.ExecuteScalarAsync(cancellationToken);
- if (value is null)
- {
- return null;
- }
+ int focusStartOffset;
+ int focusEndOffset;
+await using (var focus = connection.CreateCommand())
+{
+ focus.CommandText = "SELECT chapter_index,start_offset,end_offset FROM reference_text_nodes WHERE anchor_id=$anchor_id AND node_id=$node_id;";
+focus.Parameters.AddWithValue("$anchor_id", input.AnchorId);
+focus.Parameters.AddWithValue("$node_id", input.NodeId.Trim());
+ await using var reader = await focus.ExecuteReaderAsync(cancellationToken);
+ if (!await reader.ReadAsync(cancellationToken))
+{
+return null;
+}
 
- chapterIndex = value is DBNull ? null : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+ chapterIndex = reader.IsDBNull(0) ? null : reader.GetInt32(0);
+ focusStartOffset = reader.GetInt32(1);
+ focusEndOffset = reader.GetInt32(2);
  }
 
  string? sceneNodeId = null;
@@ -2001,8 +2275,28 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
  """;
  scene.Parameters.AddWithValue("$anchor_id", input.AnchorId);
  scene.Parameters.AddWithValue("$node_id", input.NodeId.Trim());
- sceneNodeId = await scene.ExecuteScalarAsync(cancellationToken) as string;
+sceneNodeId = await scene.ExecuteScalarAsync(cancellationToken) as string;
+ if (sceneNodeId is null && chapterIndex is not null)
+ {
+ await using var containingScene = connection.CreateCommand();
+ containingScene.CommandText = """
+ SELECT node_id
+ FROM reference_text_nodes
+ WHERE anchor_id=$anchor_id
+ AND chapter_index=$chapter_index
+ AND node_type='scene'
+ AND start_offset <= $focus_start_offset
+ AND end_offset >= $focus_end_offset
+ ORDER BY (end_offset-start_offset),sequence_index,node_id
+ LIMIT 1;
+ """;
+ containingScene.Parameters.AddWithValue("$anchor_id", input.AnchorId);
+ containingScene.Parameters.AddWithValue("$chapter_index", chapterIndex.Value);
+ containingScene.Parameters.AddWithValue("$focus_start_offset", focusStartOffset);
+ containingScene.Parameters.AddWithValue("$focus_end_offset", focusEndOffset);
+ sceneNodeId = await containingScene.ExecuteScalarAsync(cancellationToken) as string;
  }
+}
 
  var chapterNodes = chapterIndex is null
  ? []
@@ -2371,7 +2665,7 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
                 cancellationToken);
             if (index.Status == ReferenceCorpusTechniqueVectorIndexBackfillStatuses.Empty)
             {
-                return new NativeTechniqueRecallResult(new HashSet<string>(StringComparer.Ordinal));
+ return new NativeTechniqueRecallResult(new Dictionary<string, double>(StringComparer.Ordinal));
             }
 
             if (index.Status != ReferenceCorpusTechniqueVectorIndexBackfillStatuses.Ready ||
@@ -2386,7 +2680,7 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
                 databasePath,
                 new SqliteVecSearchRequest(index.TableName, dimensions, queryEmbedding, topK),
                 cancellationToken);
-            var nodeIds = await ReadNativeTechniqueRecallNodeIdsAsync(
+ var scores = await ReadNativeTechniqueRecallNodeIdsAsync(
                 connection,
                 index.IndexScopeKey,
                 index.TableName,
@@ -2394,7 +2688,7 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
                 dimensions,
                 records,
                 cancellationToken);
-            return new NativeTechniqueRecallResult(nodeIds.ToHashSet(StringComparer.Ordinal));
+ return new NativeTechniqueRecallResult(scores);
         }
         catch (OperationCanceledException)
         {
@@ -3142,7 +3436,7 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async ValueTask<IReadOnlyList<string>> ReadNativeTechniqueRecallNodeIdsAsync(
+ private static async ValueTask<IReadOnlyDictionary<string, double>> ReadNativeTechniqueRecallNodeIdsAsync(
         SqliteConnection connection,
         string indexScopeKey,
         string tableName,
@@ -3153,35 +3447,34 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
     {
         if (records.Count == 0)
         {
-            return [];
+ return new Dictionary<string, double>(StringComparer.Ordinal);
         }
 
         var rowIds = records.Select(record => record.RowId).Distinct().ToArray();
-        var builder = new StringBuilder("""
-            SELECT r.source_node_id
-            FROM reference_technique_vector_rows r
-            JOIN reference_technique_vectors v
-              ON v.vector_id = r.vector_id
-             AND v.specimen_id = r.specimen_id
-             AND v.source_node_id = r.source_node_id
-             AND v.source_anchor_id = r.source_anchor_id
-             AND v.provider_key = r.provider_key
-             AND v.model_id = r.model_id
-             AND v.dimensions = r.dimensions
-             AND v.technique_hash = r.technique_hash
-            JOIN reference_technique_specimens ts
-              ON ts.specimen_id = r.specimen_id
-             AND ts.source_node_id = r.source_node_id
-             AND ts.source_anchor_id = r.source_anchor_id
-             AND ts.validity_state = 'active'
-             AND ts.review_state <> 'rejected'
-             AND ts.superseded_by_run_id IS NULL
-            WHERE r.index_scope_key = $index_scope_key
-              AND r.table_name = $table_name
-              AND r.provider_key = $provider_key
-              AND r.model_id = $model_id
-              AND r.dimensions = $dimensions
-            """);
+ var builder = new StringBuilder();
+ builder.AppendLine("SELECT r.source_node_id,r.row_id");
+ builder.AppendLine("FROM reference_technique_vector_rows r");
+ builder.AppendLine("JOIN reference_technique_vectors v");
+ builder.AppendLine(" ON v.vector_id = r.vector_id");
+ builder.AppendLine(" AND v.specimen_id = r.specimen_id");
+ builder.AppendLine(" AND v.source_node_id = r.source_node_id");
+ builder.AppendLine(" AND v.source_anchor_id = r.source_anchor_id");
+ builder.AppendLine(" AND v.provider_key = r.provider_key");
+ builder.AppendLine(" AND v.model_id = r.model_id");
+ builder.AppendLine(" AND v.dimensions = r.dimensions");
+ builder.AppendLine(" AND v.technique_hash = r.technique_hash");
+ builder.AppendLine("JOIN reference_technique_specimens ts");
+ builder.AppendLine(" ON ts.specimen_id = r.specimen_id");
+ builder.AppendLine(" AND ts.source_node_id = r.source_node_id");
+ builder.AppendLine(" AND ts.source_anchor_id = r.source_anchor_id");
+ builder.AppendLine(" AND ts.validity_state = 'active'");
+ builder.AppendLine(" AND ts.review_state <> 'rejected'");
+ builder.AppendLine(" AND ts.superseded_by_run_id IS NULL");
+ builder.AppendLine("WHERE r.index_scope_key = $index_scope_key");
+ builder.AppendLine(" AND r.table_name = $table_name");
+ builder.AppendLine(" AND r.provider_key = $provider_key");
+ builder.AppendLine(" AND r.model_id = $model_id");
+ builder.AppendLine(" AND r.dimensions = $dimensions");
         var parameters = new List<(string Name, object Value)>
         {
             ("$index_scope_key", indexScopeKey),
@@ -3198,11 +3491,18 @@ return await ReadLibraryIdSetAsync(command, cancellationToken);
             command.Parameters.AddWithValue(parameter.Name, parameter.Value);
         }
 
-        var result = new List<string>();
+ var distanceByRow = records
+ .GroupBy(record => record.RowId)
+ .ToDictionary(group => group.Key, group => group.Min(record => record.Distance));
+ var result = new Dictionary<string, double>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            result.Add(reader.GetString(0));
+ var nodeId = reader.GetString(0);
+ var rowId = reader.GetInt64(1);
+ if (!distanceByRow.TryGetValue(rowId, out var distance)) continue;
+ var score = Math.Round(1.0 / (1.0 + Math.Max(0, distance)), 6);
+ if (!result.TryGetValue(nodeId, out var existing) || score > existing) result[nodeId] = score;
         }
 
         return result;
@@ -4025,14 +4325,29 @@ List<CorpusCandidateObservation> Observations);
         string TechniqueHash,
         string EmbeddingText);
 
-    private sealed record NativeTechniqueRecallResult(
-        IReadOnlySet<string> NodeIds);
+ private sealed record TextSemanticRecallResult(
+ IReadOnlyDictionary<string, double> Scores)
+ {
+ public IReadOnlySet<string> NodeIds { get; } = Scores.Keys.ToHashSet(StringComparer.Ordinal);
+ }
 
-    private sealed record StructuredObservationRecallResult(
-        IReadOnlySet<string> NodeIds);
+ private sealed record NativeTechniqueRecallResult(
+ IReadOnlyDictionary<string, double> Scores)
+ {
+ public IReadOnlySet<string> NodeIds { get; } = Scores.Keys.ToHashSet(StringComparer.Ordinal);
+ }
 
-    private sealed record ChapterContextRecallResult(
-        IReadOnlySet<string> NodeIds);
+private sealed record StructuredObservationRecallResult(
+ IReadOnlyDictionary<string, double> Scores)
+ {
+ public IReadOnlySet<string> NodeIds { get; } = Scores.Keys.ToHashSet(StringComparer.Ordinal);
+ }
+
+private sealed record ChapterContextRecallResult(
+ IReadOnlyDictionary<string, double> Scores)
+ {
+ public IReadOnlySet<string> NodeIds { get; } = Scores.Keys.ToHashSet(StringComparer.Ordinal);
+ }
 
     private sealed record NativeTechniqueIndexEnsureResult(
         string Status,

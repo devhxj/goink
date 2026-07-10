@@ -6,7 +6,7 @@ namespace Novelist.Tests;
 public sealed class ReferenceOrchestrationStateMachineTests
 {
     [Theory]
- [InlineData(ReferenceOrchestrationDecisionTypes.ConfirmSourceAndFacts, ReferenceOrchestrationStages.SourceConfirmation, ReferenceOrchestrationStages.GoalParsing)]
+ [InlineData(ReferenceOrchestrationDecisionTypes.ConfirmSourceAndFacts, ReferenceOrchestrationStages.SourceConfirmation, ReferenceOrchestrationStages.BlueprintGeneration)]
     [InlineData(ReferenceOrchestrationDecisionTypes.ApplyBlueprintRevision, ReferenceOrchestrationStages.BlueprintReview, ReferenceOrchestrationStages.BlueprintReview)]
     [InlineData(ReferenceOrchestrationDecisionTypes.ApproveBlueprint, ReferenceOrchestrationStages.BlueprintApproval, ReferenceOrchestrationStages.MaterialBinding)]
     public void ResumeAfterDecisionMovesApprovedHumanDecisionsIntoRunningSafeStage(

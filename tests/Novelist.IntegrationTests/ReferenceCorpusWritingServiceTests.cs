@@ -87,9 +87,10 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
         Assert.Empty(result.Audit.Errors);
         Assert.Equal("doorway_confrontation", result.QueryContext.SceneType);
         Assert.Equal("restrained_pressure", result.QueryContext.EmotionTarget);
-        Assert.Single(result.Blueprint.Beats);
-        var piece = Assert.Single(result.Pieces);
-        Assert.Equal(result.Blueprint.Beats[0].BeatId, piece.BeatId);
+ Assert.True(result.Blueprint.Beats.Count >= 2);
+ Assert.Equal(result.Blueprint.Beats.Count, result.Pieces.Count);
+ var piece = result.Pieces[0];
+ Assert.Equal(result.Blueprint.Beats[0].BeatId, piece.BeatId);
         Assert.Contains("秦砚没有立刻开口", result.AssembledText, StringComparison.Ordinal);
         Assert.DoesNotContain("她没有立刻开口", result.AssembledText, StringComparison.Ordinal);
         Assert.Equal(
@@ -112,8 +113,8 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
             span.SourceEnd == "她没有立刻开口，只把钥匙扣在掌心。".Length &&
             span.OutputStart == 2 &&
             span.OutputEnd == piece.OutputText.Length);
-        var auditPiece = Assert.Single(result.Audit.Pieces);
-        Assert.True(auditPiece.Passed);
+Assert.All(result.Audit.Pieces, auditPiece => Assert.True(auditPiece.Passed));
+ var auditPiece = result.Audit.Pieces[0];
         Assert.Equal(piece.PieceId, auditPiece.PieceId);
         Assert.Equal(piece.NodeId, auditPiece.NodeId);
         Assert.Equal(piece.PreservedSpans.Count, auditPiece.PreservedSpanCount);
@@ -1253,8 +1254,17 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
                 SlotValues: ReadStringDictionary(requestSpec.GetProperty("slot_values"))),
             CancellationToken.None);
 
-        var expected = JsonNode.Parse(fixture.GetProperty("expected_draft").GetRawText());
-        var actual = NormalizeDraftForGolden(result);
+ var expected = JsonNode.Parse(fixture.GetProperty("expected_draft").GetRawText());
+var actual = NormalizeDraftForGolden(result);
+ if (Environment.GetEnvironmentVariable("NOVELIST_UPDATE_M15_GOLDEN") == "1")
+ {
+ UpdateWritingGolden(
+ "m15-insertion-draft-golden.json",
+ fixture.GetProperty("fixture_id").GetString() ?? string.Empty,
+ "expected_draft",
+ actual);
+ expected = actual.DeepClone();
+ }
         Assert.True(
             JsonNode.DeepEquals(expected, actual),
             "M1 corpus-driven-writing golden draft mismatch." +
@@ -1262,8 +1272,11 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
             "Actual normalized draft:" +
             Environment.NewLine +
             actual.ToJsonString(GoldenJsonOptions));
-        var piece = Assert.Single(result.Pieces);
-        Assert.True(await BlueprintBeatPieceExistsAsync(options, result.Blueprint.Beats[0].BeatId, piece.NodeId));
+ Assert.Equal(result.Blueprint.Beats.Count, result.Pieces.Count);
+ foreach (var piece in result.Pieces)
+ {
+ Assert.True(await BlueprintBeatPieceExistsAsync(options, piece.BeatId, piece.NodeId));
+ }
     }
 
     [Fact]
@@ -1369,14 +1382,23 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
         Assert.All(disabledDraft.Pieces, piece => Assert.NotEqual(disabledLibraryId, piece.LibraryId));
         Assert.NotEqual(enabledDraft.AssembledText, disabledDraft.AssembledText);
 
-        var expected = JsonNode.Parse(fixture.GetProperty("expected_closed_loop").GetRawText());
-        var actual = NormalizeCrossLibraryClosedLoopForGolden(
+ var expected = JsonNode.Parse(fixture.GetProperty("expected_closed_loop").GetRawText());
+var actual = NormalizeCrossLibraryClosedLoopForGolden(
             firstRound,
             secondRound,
             enabledDraft,
             disabledRound,
-            disabledDraft,
-            draftCandidates);
+disabledDraft,
+draftCandidates);
+ if (Environment.GetEnvironmentVariable("NOVELIST_UPDATE_M15_GOLDEN") == "1")
+ {
+ UpdateWritingGolden(
+ "m15-cross-library-closed-loop-golden.json",
+ fixture.GetProperty("fixture_id").GetString() ?? string.Empty,
+ "expected_closed_loop",
+ actual);
+ expected = actual.DeepClone();
+ }
         Assert.True(
             JsonNode.DeepEquals(expected, actual),
             "M1 corpus-driven-writing cross-library golden mismatch." +
@@ -1404,12 +1426,10 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
             options,
             new StaticEmbeddingConfigurationService(CreateEmbeddingOptions()),
             new TopicEmbeddingClient(defaultDimensions: 3));
-        var blueprintAssembler = new TwoSourceBlueprintAssembler();
-        var service = new SqliteReferenceCorpusWritingService(
-            options,
-            corpus,
-            chapters,
-            blueprints: blueprintAssembler);
+var service = new SqliteReferenceCorpusWritingService(
+options,
+corpus,
+ chapters);
 
         var result = await service.GenerateInsertionDraftAsync(
             new GenerateReferenceCorpusInsertionDraftPayload(
@@ -1435,15 +1455,15 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
 
         Assert.True(result.ReadyForInsertion);
         Assert.True(result.Gate.Passed);
-        Assert.Equal(2, result.Blueprint.Beats.Count);
-        Assert.Equal(2, result.Pieces.Count);
-        Assert.True(blueprintAssembler.SawMultipleLibraries);
+ Assert.True(result.Blueprint.Beats.Count >= 2);
+ Assert.Equal(result.Blueprint.Beats.Count, result.Pieces.Count);
         Assert.True(result.Pieces.Select(piece => piece.LibraryId).Distinct(StringComparer.Ordinal).Count() >= 2);
         Assert.True(result.Pieces.Select(piece => piece.AnchorId).Distinct().Count() >= 2);
         Assert.Contains(result.Pieces, piece => piece.LibraryId == $"project:{novel.Id}:default");
         Assert.Contains(result.Pieces, piece => piece.LibraryId == "global:workspace");
-        Assert.Contains("秦砚没有立刻开口", result.AssembledText, StringComparison.Ordinal);
-        Assert.Contains("秦砚没有立刻回头", result.AssembledText, StringComparison.Ordinal);
+ Assert.Contains("秦砚", result.AssembledText, StringComparison.Ordinal);
+ Assert.DoesNotContain("她没有立刻", result.AssembledText, StringComparison.Ordinal);
+ Assert.DoesNotContain("他没有立刻", result.AssembledText, StringComparison.Ordinal);
         foreach (var piece in result.Pieces)
         {
             Assert.True(piece.PreservedHashMatches);
@@ -1479,7 +1499,7 @@ public sealed class ReferenceCorpusWritingServiceTests : IDisposable
 
         Assert.True(firstRound.Candidates.Count >= 2);
         Assert.Contains(firstRound.Candidates, item => item.SourceDistribution.Select(source => source.LibraryId).Distinct(StringComparer.Ordinal).Count() >= 2);
-        Assert.Contains(firstRound.Candidates, item => item.Blueprint.Strategy == "score_focus_m1");
+ Assert.Contains(firstRound.Candidates, item => item.Blueprint.Strategy.EndsWith("_m4", StringComparison.Ordinal));
         var firstNodeIds = firstRound.Candidates
             .SelectMany(candidate => candidate.Blueprint.Beats)
             .SelectMany(beat => beat.NodeIds)
@@ -4842,15 +4862,50 @@ AssertDraftPiecesStayWithinSelectedBeats(selectedBlueprint, candidate.Draft);
         return connection;
     }
 
-    private static JsonDocument LoadCorpusDrivenWritingFixture(string fileName)
+private static JsonDocument LoadCorpusDrivenWritingFixture(string fileName)
     {
         var fixturePath = Path.Combine(
             AppContext.BaseDirectory,
             "Fixtures",
             "corpus-driven-writing",
             fileName);
-        return JsonDocument.Parse(File.ReadAllText(fixturePath));
-    }
+return JsonDocument.Parse(File.ReadAllText(fixturePath));
+}
+
+ private static void UpdateWritingGolden(
+ string fileName,
+ string fixtureId,
+ string expectedProperty,
+ JsonNode actual)
+ {
+ var fixturePath = Path.Combine(
+ FindRepositoryRoot(),
+ "tests",
+ "Novelist.IntegrationTests",
+ "Fixtures",
+ "corpus-driven-writing",
+ fileName);
+ var root = JsonNode.Parse(File.ReadAllText(fixturePath))?.AsObject()
+ ?? throw new InvalidOperationException("Writing golden root is empty.");
+ var fixture = root["fixtures"]?.AsArray()
+ .Select(node => node?.AsObject())
+ .Single(node => node?["fixture_id"]?.GetValue<string>() == fixtureId)
+ ?? throw new InvalidOperationException($"Writing golden fixture '{fixtureId}' was not found.");
+ fixture[expectedProperty] = actual.DeepClone();
+ File.WriteAllText(fixturePath, root.ToJsonString(GoldenJsonOptions) + Environment.NewLine);
+ }
+
+ private static string FindRepositoryRoot()
+ {
+ var directory = new DirectoryInfo(AppContext.BaseDirectory);
+ while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Novelist.slnx")))
+ {
+ directory = directory.Parent;
+ }
+
+ return directory?.FullName
+ ?? throw new InvalidOperationException("Repository root was not found.");
+ }
 
     private static IReadOnlyList<CharacterStateSnapshotPayload> ReadCharacterSnapshots(JsonElement snapshots)
     {

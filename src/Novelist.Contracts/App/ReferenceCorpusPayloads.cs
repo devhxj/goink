@@ -175,7 +175,84 @@ public sealed record ReferenceCorpusTechniqueVectorIndexBackfillPayload(
     [property: JsonPropertyName("vector_count")] int VectorCount,
     [property: JsonPropertyName("skipped_vector_count")] int SkippedVectorCount,
     [property: JsonPropertyName("rebuilt")] bool Rebuilt,
-    [property: JsonPropertyName("diagnostics")] IReadOnlyList<string> Diagnostics);
+[property: JsonPropertyName("diagnostics")] IReadOnlyList<string> Diagnostics);
+
+public static class ReferenceCorpusTechniqueVectorMaintenanceModes
+{
+ public const string Full = "full";
+ public const string Incremental = "incremental";
+}
+
+public static class ReferenceCorpusTechniqueVectorMaintenanceStatuses
+{
+ public const string Pending = "pending";
+ public const string Running = "running";
+ public const string RetryWait = "retry_wait";
+ public const string Completed = "completed";
+ public const string Failed = "failed";
+}
+
+public sealed record ScheduleReferenceCorpusTechniqueVectorMaintenancePayload(
+ [property: JsonPropertyName("query_context")] ReferenceCorpusQueryContextPayload QueryContext,
+ [property: JsonPropertyName("node_type")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NodeType = null,
+ [property: JsonPropertyName("mode")] string Mode = ReferenceCorpusTechniqueVectorMaintenanceModes.Incremental,
+ [property: JsonPropertyName("max_attempts")] int MaxAttempts = 3);
+
+public sealed record PumpReferenceCorpusTechniqueVectorMaintenancePayload(
+ [property: JsonPropertyName("worker_id")] string WorkerId,
+ [property: JsonPropertyName("lease_seconds")] int LeaseSeconds = 120);
+
+public sealed record InspectReferenceCorpusTechniqueVectorIndexesPayload(
+ [property: JsonPropertyName("include_completed_jobs")] bool IncludeCompletedJobs = false);
+
+public sealed record ReferenceCorpusTechniqueVectorMaintenanceJobPayload(
+ [property: JsonPropertyName("job_id")] string JobId,
+ [property: JsonPropertyName("scope_key")] string ScopeKey,
+ [property: JsonPropertyName("mode")] string Mode,
+ [property: JsonPropertyName("status")] string Status,
+ [property: JsonPropertyName("provider_key")] string ProviderKey,
+ [property: JsonPropertyName("model_id")] string ModelId,
+ [property: JsonPropertyName("dimensions")] int Dimensions,
+ [property: JsonPropertyName("attempt_count")] int AttemptCount,
+ [property: JsonPropertyName("max_attempts")] int MaxAttempts,
+ [property: JsonPropertyName("next_attempt_at")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? NextAttemptAt,
+ [property: JsonPropertyName("last_error")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? LastError,
+ [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+ [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+public sealed record ReferenceCorpusTechniqueVectorMaintenancePumpResultPayload(
+ [property: JsonPropertyName("processed")] bool Processed,
+ [property: JsonPropertyName("job")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReferenceCorpusTechniqueVectorMaintenanceJobPayload? Job,
+ [property: JsonPropertyName("backfill")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReferenceCorpusTechniqueVectorIndexBackfillPayload? Backfill);
+
+public sealed record ReferenceCorpusTechniqueVectorIndexInspectionItemPayload(
+ [property: JsonPropertyName("index_scope_key")] string IndexScopeKey,
+ [property: JsonPropertyName("table_name")] string TableName,
+ [property: JsonPropertyName("provider_key")] string ProviderKey,
+ [property: JsonPropertyName("model_id")] string ModelId,
+ [property: JsonPropertyName("dimensions")] int Dimensions,
+ [property: JsonPropertyName("source_count")] int SourceCount,
+ [property: JsonPropertyName("row_count")] int RowCount,
+ [property: JsonPropertyName("health")] string Health,
+ [property: JsonPropertyName("diagnostics")] IReadOnlyList<string> Diagnostics,
+ [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+public sealed record ReferenceCorpusTechniqueVectorIndexInspectionPayload(
+ [property: JsonPropertyName("active_provider_key")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActiveProviderKey,
+ [property: JsonPropertyName("active_model_id")]
+ [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActiveModelId,
+ [property: JsonPropertyName("active_dimensions")] int ActiveDimensions,
+ [property: JsonPropertyName("indexes")] IReadOnlyList<ReferenceCorpusTechniqueVectorIndexInspectionItemPayload> Indexes,
+ [property: JsonPropertyName("jobs")] IReadOnlyList<ReferenceCorpusTechniqueVectorMaintenanceJobPayload> Jobs,
+ [property: JsonPropertyName("healthy_count")] int HealthyCount,
+ [property: JsonPropertyName("stale_count")] int StaleCount,
+ [property: JsonPropertyName("failed_job_count")] int FailedJobCount);
 
 public sealed record ReferenceCorpusCandidateEvidencePayload(
     [property: JsonPropertyName("observation_id")] string ObservationId,
