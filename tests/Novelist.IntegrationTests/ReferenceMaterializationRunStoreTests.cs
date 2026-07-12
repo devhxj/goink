@@ -160,6 +160,63 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
         Assert.Equal(chapter.CandidateCount, await CountPendingCandidatesForChapterAsync(options, run.RunId, chapterIndex: 1));
     }
 
+    [Fact]
+    public async Task EmbeddingPersistsOneFiniteFrozenVectorForEveryAcceptedCandidate()
+    {
+        var options = CreateOptions();
+        var anchor = await CreateAnchorAsync(options, chapterCount: 2);
+        var splitService = new SqliteReferenceMaterializationService(options, new EmptyChapterSplitAnalyzer());
+        var profile = await splitService.PreviewChapterSplitAsync(
+            new PreviewReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, "# {title}"),
+            CancellationToken.None);
+        await splitService.ConfirmChapterSplitAsync(
+            new ConfirmReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, profile.SplitProfileId),
+            CancellationToken.None);
+        var store = new SqliteReferenceMaterializationRunStore(new ReferenceCorpusDatabasePathResolver(options));
+        var run = await store.CreateAsync(CreateSeed(anchor.AnchorId, profile.SplitProfileId, chapterBatchSize: 5), CancellationToken.None);
+        await store.BuildCandidatesForChapterAsync(run.RunId, chapterIndex: 1, CancellationToken.None);
+        var qualificationWork = await store.ReadQualificationWorkItemAsync(run.RunId, chapterIndex: 1, CancellationToken.None);
+        await store.PersistQualificationAsync(
+            run.RunId,
+            chapterIndex: 1,
+            new ReferenceMaterializationQualificationResult(
+                qualificationWork.Request.Candidates.Select(candidate => AcceptedDecision(candidate)).ToArray()),
+            CancellationToken.None);
+
+        var embeddingWork = await store.ReadEmbeddingWorkItemAsync(run.RunId, chapterIndex: 1, CancellationToken.None);
+        var embedder = new ReferenceMaterializationEmbeddingProcessor(
+            new FixedEmbeddingConfigurationService(new EmbeddingRequestOptions(
+                "embedding-provider", "https://example.invalid", "key", "embedding-model", 8, null)),
+            new FixedEmbeddingClient(dimensions: 8));
+        var result = await embedder.EmbedAsync(embeddingWork.Request, CancellationToken.None);
+        var persisted = await store.PersistEmbeddingsAsync(run.RunId, chapterIndex: 1, result, CancellationToken.None);
+
+        var progress = await store.ListChapterProgressAsync(run.RunId, page: 1, size: 10, CancellationToken.None);
+        var chapter = Assert.Single(progress.Items, item => item.ChapterIndex == 1);
+        Assert.Equal(embeddingWork.Request.Items.Count, persisted.VectorCount);
+        Assert.Equal(embeddingWork.Request.Items.Count, chapter.VectorCount);
+        Assert.Equal(ReferenceMaterializationChapterStates.Indexing, chapter.Status);
+        Assert.Equal(embeddingWork.Request.Items.Count, await CountEmbeddingsForChapterAsync(options, run.RunId, chapterIndex: 1));
+    }
+
+    [Fact]
+    public async Task EmbeddingRejectsMismatchedProviderResponseBeforeAnyPersistence()
+    {
+        var embedder = new ReferenceMaterializationEmbeddingProcessor(
+            new FixedEmbeddingConfigurationService(new EmbeddingRequestOptions(
+                "embedding-provider", "https://example.invalid", "key", "embedding-model", 8, null)),
+            new FixedEmbeddingClient(dimensions: 7));
+
+        var exception = await Assert.ThrowsAsync<ReferenceMaterializationException>(async () =>
+            await embedder.EmbedAsync(
+                new ReferenceMaterializationEmbeddingRequest(
+                    new ReferenceMaterializationEmbeddingModel("embedding-provider", "embedding-model", 8),
+                    [new ReferenceMaterializationEmbeddingItem("candidate-1", "完整的证据文本。")]),
+                CancellationToken.None));
+
+        Assert.Equal(ReferenceMaterializationErrorCodes.EmbeddingInvalid, exception.ErrorCode);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -255,6 +312,37 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
         return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None));
     }
 
+    private static ReferenceMaterializationCandidateQualification AcceptedDecision(
+        ReferenceMaterializationQualificationCandidate candidate)
+    {
+        return new ReferenceMaterializationCandidateQualification(
+            candidate.CandidateId,
+            ReferenceMaterializationCandidateDecisions.Accepted,
+            candidate.SourceNodes.Select(node => new ReferenceMaterializationQualificationSpan(node.NodeId, 0, node.Text.Length)).ToArray(),
+            new ReferenceMaterializationQualityScores(0.9, 0.8, 0.7, 0.6, 0.5, 0.4),
+            new ReferenceMaterializationQualificationTags(["reveal"], [], ["close_third"], ["subtext"]),
+            0.85,
+            ["complete_exchange"]);
+    }
+
+    private static async ValueTask<int> CountEmbeddingsForChapterAsync(AppInitializationOptions options, string runId, int chapterIndex)
+    {
+        await using var connection = await OpenConnectionAsync(options);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM reference_materialization_candidate_embeddings embedding
+            JOIN reference_material_candidates candidate ON candidate.candidate_id = embedding.candidate_id
+            JOIN reference_material_candidate_nodes candidate_node ON candidate_node.candidate_id = candidate.candidate_id
+            JOIN reference_text_nodes node ON node.node_id = candidate_node.node_id
+            WHERE embedding.run_id = $run_id
+              AND node.chapter_index = $chapter_index;
+            """;
+        command.Parameters.AddWithValue("$run_id", runId);
+        command.Parameters.AddWithValue("$chapter_index", chapterIndex);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None));
+    }
+
     private static async ValueTask<SqliteConnection> OpenConnectionAsync(AppInitializationOptions options)
     {
         var path = Path.Combine(options.DefaultDataDirectory, "reference-anchor", "index.sqlite");
@@ -280,6 +368,30 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
             CancellationToken cancellationToken)
         {
             return ValueTask.FromResult(Novelist.Core.App.ReferenceChapterSplitModelResult.Empty);
+        }
+    }
+
+    private sealed class FixedEmbeddingConfigurationService(EmbeddingRequestOptions options) : IEmbeddingConfigurationService
+    {
+        public ValueTask<EmbeddingRequestOptions?> GetActiveEmbeddingOptionsAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<EmbeddingRequestOptions?>(options);
+        }
+    }
+
+    private sealed class FixedEmbeddingClient(int dimensions) : IEmbeddingClient
+    {
+        public ValueTask<EmbeddingBatchResult> EmbedAsync(
+            IReadOnlyList<string> inputs,
+            EmbeddingRequestOptions options,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var items = inputs.Select((_, index) => new EmbeddingItemResult(
+                index,
+                Enumerable.Range(0, dimensions).Select(value => (float)(index + value + 1)).ToArray())).ToArray();
+            return ValueTask.FromResult(new EmbeddingBatchResult(options.ModelId, dimensions, items, new EmbeddingUsage(0, 0)));
         }
     }
 }
