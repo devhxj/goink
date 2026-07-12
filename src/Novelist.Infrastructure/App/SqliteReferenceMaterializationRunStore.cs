@@ -5,13 +5,17 @@ using Novelist.Core.App;
 
 namespace Novelist.Infrastructure.App;
 
-internal sealed class SqliteReferenceMaterializationRunStore
+internal sealed partial class SqliteReferenceMaterializationRunStore
 {
     private readonly IReferenceCorpusDatabasePathResolver _databasePathResolver;
+    private readonly ReferenceCandidateWindowBuilder _candidateWindowBuilder;
 
-    public SqliteReferenceMaterializationRunStore(IReferenceCorpusDatabasePathResolver databasePathResolver)
+    public SqliteReferenceMaterializationRunStore(
+        IReferenceCorpusDatabasePathResolver databasePathResolver,
+        ReferenceCandidateWindowBuilder? candidateWindowBuilder = null)
     {
         _databasePathResolver = databasePathResolver ?? throw new ArgumentNullException(nameof(databasePathResolver));
+        _candidateWindowBuilder = candidateWindowBuilder ?? new ReferenceCandidateWindowBuilder();
     }
 
     public async ValueTask<ReferenceMaterializationStatusPayload> CreateAsync(

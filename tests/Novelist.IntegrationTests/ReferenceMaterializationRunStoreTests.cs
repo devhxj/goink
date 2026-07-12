@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Novelist.Contracts.App;
 using Novelist.Infrastructure.App;
 
@@ -56,6 +57,34 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
             await store.CreateAsync(CreateSeed(anchor.AnchorId, profile.SplitProfileId, chapterBatchSize: 7), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task BuildCandidatesPersistsOnlyChapterLocalNodeEvidenceAndIsIdempotent()
+    {
+        var options = CreateOptions();
+        var anchor = await CreateAnchorAsync(options, chapterCount: 2);
+        var splitService = new SqliteReferenceMaterializationService(options, new EmptyChapterSplitAnalyzer());
+        var profile = await splitService.PreviewChapterSplitAsync(
+            new PreviewReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, "# {title}"),
+            CancellationToken.None);
+        await splitService.ConfirmChapterSplitAsync(
+            new ConfirmReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, profile.SplitProfileId),
+            CancellationToken.None);
+        var store = new SqliteReferenceMaterializationRunStore(new ReferenceCorpusDatabasePathResolver(options));
+        var run = await store.CreateAsync(CreateSeed(anchor.AnchorId, profile.SplitProfileId, chapterBatchSize: 5), CancellationToken.None);
+
+        var first = await store.BuildCandidatesForChapterAsync(run.RunId, chapterIndex: 1, CancellationToken.None);
+        var second = await store.BuildCandidatesForChapterAsync(run.RunId, chapterIndex: 1, CancellationToken.None);
+        var progress = await store.ListChapterProgressAsync(run.RunId, page: 1, size: 10, CancellationToken.None);
+
+        Assert.True(first.CandidateCount > 0);
+        Assert.Equal(first.CandidateCount, second.CandidateCount);
+        var chapterOne = Assert.Single(progress.Items, item => item.ChapterIndex == 1);
+        Assert.Equal(ReferenceMaterializationChapterStates.LlmQualifying, chapterOne.Status);
+        Assert.Equal(first.CandidateCount, chapterOne.CandidateCount);
+        Assert.Equal(first.CandidateCount, await CountCandidatesForChapterAsync(options, run.RunId, chapterIndex: 1));
+        Assert.Equal(0, await CountCandidateLinksOutsideChapterAsync(options, run.RunId, chapterIndex: 1));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -96,6 +125,48 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
             Embedding: new ReferenceMaterializationModelIdentityPayload("embedding-provider", "embedding-model", 8),
             ChapterBatchSize: chapterBatchSize,
             StartedAt: DateTimeOffset.UtcNow);
+    }
+
+    private static async ValueTask<int> CountCandidatesForChapterAsync(AppInitializationOptions options, string runId, int chapterIndex)
+    {
+        await using var connection = await OpenConnectionAsync(options);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(DISTINCT candidate.candidate_id)
+            FROM reference_material_candidates candidate
+            JOIN reference_material_candidate_nodes candidate_node ON candidate_node.candidate_id = candidate.candidate_id
+            JOIN reference_text_nodes node ON node.node_id = candidate_node.node_id
+            WHERE candidate.run_id = $run_id
+              AND node.chapter_index = $chapter_index;
+            """;
+        command.Parameters.AddWithValue("$run_id", runId);
+        command.Parameters.AddWithValue("$chapter_index", chapterIndex);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None));
+    }
+
+    private static async ValueTask<int> CountCandidateLinksOutsideChapterAsync(AppInitializationOptions options, string runId, int chapterIndex)
+    {
+        await using var connection = await OpenConnectionAsync(options);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM reference_material_candidates candidate
+            JOIN reference_material_candidate_nodes candidate_node ON candidate_node.candidate_id = candidate.candidate_id
+            JOIN reference_text_nodes node ON node.node_id = candidate_node.node_id
+            WHERE candidate.run_id = $run_id
+              AND node.chapter_index <> $chapter_index;
+            """;
+        command.Parameters.AddWithValue("$run_id", runId);
+        command.Parameters.AddWithValue("$chapter_index", chapterIndex);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None));
+    }
+
+    private static async ValueTask<SqliteConnection> OpenConnectionAsync(AppInitializationOptions options)
+    {
+        var path = Path.Combine(options.DefaultDataDirectory, "reference-anchor", "index.sqlite");
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
+        await connection.OpenAsync(CancellationToken.None);
+        return connection;
     }
 
     private AppInitializationOptions CreateOptions()
