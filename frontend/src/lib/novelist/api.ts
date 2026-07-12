@@ -159,6 +159,7 @@ export interface NovelistAppApi {
  GetReferenceCorpusAnalysisJob: AppMethod<[{ job_id: string }], reference.CorpusAnalysisJob | null>
  ListReferenceCorpusAnalysisJobs: AppMethod<[{ page_request: storage.PageRequest }], reference.CorpusAnalysisJobPage>
  ListReferenceMaterializationChapterProgress: AppMethod<[reference.ListMaterializationChapterProgressInput], storage.PageResult_reference_MaterializationChapterProgress_>
+ ListActiveReferenceMaterializationMaterials: AppMethod<[reference.ListActiveMaterializationMaterialsInput], storage.PageResult_reference_MaterializationMaterial_>
  PauseReferenceCorpusAnalysisJob: AppMethod<[{ job_id: string; expected_version: number }], reference.CorpusAnalysisJob>
  ResumeReferenceCorpusAnalysisJob: AppMethod<[{ job_id: string; expected_version: number; new_token_budget?: number | null }], reference.CorpusAnalysisJob>
  ReprioritizeReferenceCorpusAnalysisJob: AppMethod<[{ job_id: string; expected_version: number; priority_class: string; priority_value: number }], reference.CorpusAnalysisJob>
@@ -396,6 +397,7 @@ GetReferenceCorpusFeatureAnalysisRun: appMethod<NovelistAppApi['GetReferenceCorp
  GetReferenceCorpusAnalysisJob: appMethod<NovelistAppApi['GetReferenceCorpusAnalysisJob']>('GetReferenceCorpusAnalysisJob'),
  ListReferenceCorpusAnalysisJobs: appMethod<NovelistAppApi['ListReferenceCorpusAnalysisJobs']>('ListReferenceCorpusAnalysisJobs'),
  ListReferenceMaterializationChapterProgress: appMethod<NovelistAppApi['ListReferenceMaterializationChapterProgress']>('ListReferenceMaterializationChapterProgress'),
+ ListActiveReferenceMaterializationMaterials: appMethod<NovelistAppApi['ListActiveReferenceMaterializationMaterials']>('ListActiveReferenceMaterializationMaterials'),
  PauseReferenceCorpusAnalysisJob: appMethod<NovelistAppApi['PauseReferenceCorpusAnalysisJob']>('PauseReferenceCorpusAnalysisJob'),
  ResumeReferenceCorpusAnalysisJob: appMethod<NovelistAppApi['ResumeReferenceCorpusAnalysisJob']>('ResumeReferenceCorpusAnalysisJob'),
  ReprioritizeReferenceCorpusAnalysisJob: appMethod<NovelistAppApi['ReprioritizeReferenceCorpusAnalysisJob']>('ReprioritizeReferenceCorpusAnalysisJob'),

@@ -1013,6 +1013,14 @@ has_more: boolean
     size: number
   }
 
+  export interface ListActiveMaterializationMaterialsInput {
+    novel_id: number
+    anchor_id: number
+    page: number
+    size: number
+    query?: string | null
+  }
+
   export interface MaterializationModelIdentity {
     provider: string
     model_id: string
@@ -1065,6 +1073,25 @@ has_more: boolean
     completed_at?: Timestamp | null
     vector_index_healthy: boolean
     next_action: string
+  }
+
+  export interface MaterializationMaterialTags {
+    narrative_functions: string[]
+    emotion_mechanics: string[]
+    pov: string[]
+    techniques: string[]
+  }
+
+  export interface MaterializationMaterial {
+    material_id: string
+    anchor_id: number
+    generation_id: string
+    material_type: string
+    text: string
+    quality_score: number
+    confidence: number
+    tags: MaterializationMaterialTags
+    reason_codes: string[]
   }
 
   export interface CreateAnchorFailure {
@@ -2910,6 +2937,14 @@ export namespace storage {
 
   export interface PageResult_reference_MaterializationChapterProgress_ {
     items: reference.MaterializationChapterProgress[]
+    total: number
+    page: number
+    size: number
+    total_pages: number
+  }
+
+  export interface PageResult_reference_MaterializationMaterial_ {
+    items: reference.MaterializationMaterial[]
     total: number
     page: number
     size: number
