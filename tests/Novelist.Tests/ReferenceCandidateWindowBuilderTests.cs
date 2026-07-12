@@ -131,6 +131,28 @@ public sealed class ReferenceCandidateWindowBuilderTests
     }
 
     [Fact]
+    public void BuildMergesAnOrdinaryShortParagraphWithItsNarrativeContext()
+    {
+        var builder = new ReferenceCandidateWindowBuilder();
+        var chapter = new ReferenceCandidateChapterInput(
+            AnchorId: 99,
+            ChapterIndex: 1,
+            ContentStart: 0,
+            ContentEnd: 64,
+            Nodes:
+            [
+                new ReferenceCandidateSourceNode("p-trigger", "paragraph", 0, 18, "钥匙在锁孔里停了一下。", "p-trigger-hash"),
+                new ReferenceCandidateSourceNode("p-event", "paragraph", 18, 23, "门开了。", "p-event-hash"),
+                new ReferenceCandidateSourceNode("p-reaction", "paragraph", 23, 42, "她没有回头，只把灯按灭。", "p-reaction-hash")
+            ]);
+
+        var candidate = Assert.Single(builder.Build(chapter));
+
+        Assert.Equal(["p-trigger", "p-event", "p-reaction"], candidate.SourceNodes.Select(node => node.NodeId).ToArray());
+        Assert.NotEqual(ReferenceMaterializationCandidateDecisions.Rejected, candidate.InitialDecision);
+    }
+
+    [Fact]
     public void BuildRecordsAnIsolatedAcknowledgementAsADeterministicRejection()
     {
         var builder = new ReferenceCandidateWindowBuilder();

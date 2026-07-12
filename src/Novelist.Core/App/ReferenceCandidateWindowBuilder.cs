@@ -16,6 +16,7 @@ public sealed class ReferenceCandidateWindowBuilder
     private static readonly string[] ActionMarkers = ["点头", "抬头", "转身", "看了", "笑了", "坐下", "起身", "把", "推", "拉", "走", "停", "转", "拿", "放", "扣", "握"];
     private static readonly string[] HighValueShortMarkers = ["别开", "不能", "真相", "原来", "死了", "活着", "回来", "钥匙"];
     private const int GenericActionMaximumCharacters = 8;
+    private const int ContextDependentShortMaximumCharacters = 8;
 
     public IReadOnlyList<ReferenceMaterialCandidateWindow> Build(ReferenceCandidateChapterInput input)
     {
@@ -95,6 +96,11 @@ public sealed class ReferenceCandidateWindowBuilder
             var range = kind == ContextDependencyKind.Transition
                 ? new ParagraphRange(index, Math.Min(index + 1, paragraphs.Count - 1))
                 : new ParagraphRange(Math.Max(index - 1, 0), Math.Min(index + 1, paragraphs.Count - 1));
+            if (kind == ContextDependencyKind.ShortContext && range.Start == range.End)
+            {
+                continue;
+            }
+
             if (ranges.Count > 0 && range.Start <= ranges[^1].End)
             {
                 ranges[^1] = new ParagraphRange(ranges[^1].Start, Math.Max(ranges[^1].End, range.End));
@@ -240,8 +246,13 @@ public sealed class ReferenceCandidateWindowBuilder
             return ContextDependencyKind.Transition;
         }
 
-        return IsGenericActionOnly(value)
-            ? ContextDependencyKind.GenericAction
+        if (IsGenericActionOnly(value))
+        {
+            return ContextDependencyKind.GenericAction;
+        }
+
+        return IsContextDependentShortParagraph(value)
+            ? ContextDependencyKind.ShortContext
             : ContextDependencyKind.None;
     }
 
@@ -251,6 +262,10 @@ public sealed class ReferenceCandidateWindowBuilder
     private static bool IsGenericActionOnly(string value) =>
         NormalizedCharacterCount(value) <= GenericActionMaximumCharacters &&
         ContainsAny(value, ActionMarkers) &&
+        !IsStandaloneValuable(value);
+
+    private static bool IsContextDependentShortParagraph(string value) =>
+        NormalizedCharacterCount(value) <= ContextDependentShortMaximumCharacters &&
         !IsStandaloneValuable(value);
 
     private static bool IsStandaloneValuable(string value) =>
@@ -277,7 +292,8 @@ public sealed class ReferenceCandidateWindowBuilder
         None,
         Acknowledgement,
         GenericAction,
-        Transition
+        Transition,
+        ShortContext
     }
 
     private readonly record struct ParagraphRange(int Start, int End, string? RuleRejectionCode = null);
