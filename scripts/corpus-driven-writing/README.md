@@ -65,6 +65,22 @@ The 2,000,000-character workload is deliberately explicit and non-blocking. It i
 ./scripts/corpus-driven-writing/run-scale-harness.ps1 -Mode JobStore -Configuration Release -MinimumCharacters 2000000 -Output build/tmp/corpus-driven-writing/scale-2m-metrics.json
 ```
 
+## Materialization scale gate
+
+`run-materialization-scale-gate.ps1` is the independent 50K gate for the v2 reference materialization path. It uses schema-locked fake LLM and embedding providers, two reference sources, three complete runs with 5-chapter batches, and one complete run with 10-chapter batches. The gate verifies candidate/embedding/index count closure, active-generation semantic retrieval, no active lease, no duplicate embedding rows, and fake-provider throughput.
+
+Run it explicitly so it does not contend with timing-sensitive integration tests:
+
+```powershell
+./scripts/corpus-driven-writing/run-materialization-scale-gate.ps1 -Configuration Release
+```
+
+The normal `dotnet test` suite discovers this test but skips it unless the script sets `NOVELIST_RUN_MATERIALIZATION_SCALE=1`. A 2M materialization run remains an explicit diagnostic only:
+
+```powershell
+./scripts/corpus-driven-writing/run-materialization-scale-gate.ps1 -Configuration Release -ScaleCharacters 2000000
+```
+
 ## Writing-effect evaluation
 
 `run-writing-evaluation.ps1` evaluates a redacted dataset containing only IDs, hashes, numeric results, and human labels. It writes aggregate retrieval, blueprint, and prose metrics beneath `build/tmp/corpus-driven-writing/`; it never writes source or candidate prose to the report.

@@ -133,6 +133,19 @@ Assert.True(sentence.GetProperty("expected_evidence").GetProperty("end").GetInt3
  }
 
  [Fact]
+ public void MaterializationScaleGateDefaultsToFiftyKAndKeepsTwoMExplicit()
+ {
+ var source = File.ReadAllText(Path.Combine(
+ FindRepositoryRoot(), "scripts", "corpus-driven-writing", "run-materialization-scale-gate.ps1"));
+
+ Assert.Contains("[int]$ScaleCharacters = 50000", source, StringComparison.Ordinal);
+ Assert.Contains("NOVELIST_RUN_MATERIALIZATION_SCALE", source, StringComparison.Ordinal);
+ Assert.Contains("ReferenceMaterializationScaleTests", source, StringComparison.Ordinal);
+ Assert.Contains("ScaleCharacters 2000000", File.ReadAllText(Path.Combine(
+ FindRepositoryRoot(), "scripts", "corpus-driven-writing", "README.md")), StringComparison.Ordinal);
+ }
+
+ [Fact]
  public void RecoveryHarnessSkeletonCoversDurablePipelineBoundaries()
  {
  var source = File.ReadAllText(Path.Combine(
