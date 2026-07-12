@@ -270,6 +270,83 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
         Assert.Equal(1, status?.CompletedChapterBatches);
     }
 
+    [Fact]
+    public async Task WorkerProcessesAllChaptersInTheFrozenBatchConcurrentlyBeforeAdvancing()
+    {
+        var options = CreateOptions();
+        var anchor = await CreateAnchorAsync(options, chapterCount: 2);
+        var splitService = new SqliteReferenceMaterializationService(options, new EmptyChapterSplitAnalyzer());
+        var profile = await splitService.PreviewChapterSplitAsync(
+            new PreviewReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, "# {title}"),
+            CancellationToken.None);
+        await splitService.ConfirmChapterSplitAsync(
+            new ConfirmReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, profile.SplitProfileId),
+            CancellationToken.None);
+        var resolver = new ReferenceCorpusDatabasePathResolver(options);
+        var store = new SqliteReferenceMaterializationRunStore(resolver);
+        var run = await store.CreateAsync(CreateSeed(anchor.AnchorId, profile.SplitProfileId, chapterBatchSize: 5), CancellationToken.None);
+        var qualifier = new ConcurrentAcceptingQualifier();
+        var indexer = new ReferenceMaterializationVectorIndexer(resolver, new RecordingVecProvisioner());
+        var worker = new ReferenceMaterializationWorker(
+            resolver,
+            qualifier,
+            new AcceptingEmbedder(),
+            indexer,
+            workerId: "test-materialization-worker");
+
+        var before = await store.GetAsync(run.RunId, CancellationToken.None);
+        Assert.Equal(ReferenceMaterializationRunStates.Queued, before?.Status);
+        Assert.Equal(0, before?.CurrentBatchIndex);
+
+        var processed = await worker.ProcessRunOnceAsync(run.RunId, CancellationToken.None);
+        var progress = await store.ListChapterProgressAsync(run.RunId, page: 1, size: 10, CancellationToken.None);
+        var status = await store.GetAsync(run.RunId, CancellationToken.None);
+
+        Assert.True(processed);
+        Assert.Equal(2, qualifier.InvocationCount);
+        Assert.True(qualifier.MaximumConcurrency >= 2);
+        Assert.All(progress.Items, item => Assert.Equal(ReferenceMaterializationChapterStates.Completed, item.Status));
+        Assert.Equal(2, status?.ProcessedChapters);
+        Assert.Equal(1, status?.CompletedChapterBatches);
+        Assert.Null(status?.CurrentBatchIndex);
+    }
+
+    [Fact]
+    public async Task WorkerFailsTheCurrentBatchAndLeavesLaterBatchesUnclaimedWhenOneChapterFails()
+    {
+        var options = CreateOptions();
+        var anchor = await CreateAnchorAsync(options, chapterCount: 6);
+        var splitService = new SqliteReferenceMaterializationService(options, new EmptyChapterSplitAnalyzer());
+        var profile = await splitService.PreviewChapterSplitAsync(
+            new PreviewReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, "# {title}"),
+            CancellationToken.None);
+        await splitService.ConfirmChapterSplitAsync(
+            new ConfirmReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, profile.SplitProfileId),
+            CancellationToken.None);
+        var resolver = new ReferenceCorpusDatabasePathResolver(options);
+        var store = new SqliteReferenceMaterializationRunStore(resolver);
+        var run = await store.CreateAsync(CreateSeed(anchor.AnchorId, profile.SplitProfileId, chapterBatchSize: 5), CancellationToken.None);
+        var worker = new ReferenceMaterializationWorker(
+            resolver,
+            new FailingQualifier(),
+            new AcceptingEmbedder(),
+            new ReferenceMaterializationVectorIndexer(resolver, new RecordingVecProvisioner()),
+            workerId: "test-materialization-failing-worker");
+
+        var processed = await worker.ProcessRunOnceAsync(run.RunId, CancellationToken.None);
+        var progress = await store.ListChapterProgressAsync(run.RunId, page: 1, size: 10, CancellationToken.None);
+        var status = await store.GetAsync(run.RunId, CancellationToken.None);
+
+        Assert.True(processed);
+        Assert.Equal(ReferenceMaterializationRunStates.Failed, status?.Status);
+        Assert.Equal(ReferenceMaterializationErrorCodes.LlmRequestFailed, status?.LastErrorCode);
+        Assert.All(progress.Items.Where(item => item.BatchIndex == 0), item =>
+            Assert.Equal(ReferenceMaterializationChapterStates.Failed, item.Status));
+        var later = Assert.Single(progress.Items, item => item.BatchIndex == 1);
+        Assert.Equal(ReferenceMaterializationChapterStates.Pending, later.Status);
+        Assert.Equal(0, later.CandidateCount);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -460,6 +537,69 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             LastRequest = request;
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ConcurrentAcceptingQualifier : IReferenceMaterializationQualifier
+    {
+        private int _active;
+        private int _maximumConcurrency;
+        private int _invocationCount;
+
+        public int MaximumConcurrency => Volatile.Read(ref _maximumConcurrency);
+        public int InvocationCount => Volatile.Read(ref _invocationCount);
+
+        public async ValueTask<ReferenceMaterializationQualificationResult> QualifyAsync(
+            ReferenceMaterializationQualificationRequest input,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _invocationCount);
+            var active = Interlocked.Increment(ref _active);
+            while (true)
+            {
+                var observed = Volatile.Read(ref _maximumConcurrency);
+                if (observed >= active || Interlocked.CompareExchange(ref _maximumConcurrency, active, observed) == observed)
+                {
+                    break;
+                }
+            }
+
+            try
+            {
+                await Task.Delay(80, cancellationToken);
+                return new ReferenceMaterializationQualificationResult(
+                    input.Candidates.Select(candidate => AcceptedDecision(candidate)).ToArray());
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+            }
+        }
+    }
+
+    private sealed class AcceptingEmbedder : IReferenceMaterializationEmbedder
+    {
+        public ValueTask<ReferenceMaterializationEmbeddingResult> EmbedAsync(
+            ReferenceMaterializationEmbeddingRequest input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new ReferenceMaterializationEmbeddingResult(
+                input.Items.Select(item => new ReferenceMaterializationCandidateEmbedding(
+                    item.CandidateId,
+                    Enumerable.Range(1, input.Model.Dimensions).Select(value => (float)value).ToArray())).ToArray()));
+        }
+    }
+
+    private sealed class FailingQualifier : IReferenceMaterializationQualifier
+    {
+        public ValueTask<ReferenceMaterializationQualificationResult> QualifyAsync(
+            ReferenceMaterializationQualificationRequest input,
+            CancellationToken cancellationToken)
+        {
+            _ = input;
+            _ = cancellationToken;
+            throw new InvalidOperationException("provider rejected the qualification request");
         }
     }
 }

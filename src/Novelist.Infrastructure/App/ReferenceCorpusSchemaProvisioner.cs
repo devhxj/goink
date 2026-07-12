@@ -160,6 +160,15 @@ internal static class ReferenceCorpusSchemaProvisioner
             CREATE INDEX IF NOT EXISTS idx_reference_materialization_chapter_progress_run_batch
               ON reference_materialization_chapter_progress(run_id, batch_index, chapter_index);
 
+            CREATE TABLE IF NOT EXISTS reference_materialization_run_leases (
+              run_id TEXT PRIMARY KEY,
+              worker_id TEXT NOT NULL,
+              lease_token TEXT NOT NULL,
+              lease_expires_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(run_id) REFERENCES reference_materialization_runs(run_id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS reference_material_candidates (
               candidate_id TEXT PRIMARY KEY,
               candidate_key TEXT NOT NULL,
