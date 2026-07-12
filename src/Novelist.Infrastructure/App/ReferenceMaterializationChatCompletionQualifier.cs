@@ -259,8 +259,9 @@ public sealed class ReferenceMaterializationChatCompletionQualifier : IReference
             spans.Add(new ReferenceMaterializationQualificationSpan(nodeId, start, end));
         }
 
-        if (spans.Count == 0 ||
-            spans.Select(span => (span.NodeId, span.Start, span.End)).Distinct().Count() != spans.Count)
+        if (spans.Count != nodes.Count ||
+            spans.Select(span => span.NodeId).Distinct(StringComparer.Ordinal).Count() != spans.Count ||
+            spans.Any(span => !nodes.ContainsKey(span.NodeId)))
         {
             throw InvalidOutput("Material qualification response has invalid source span evidence.");
         }
