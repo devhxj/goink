@@ -1,6 +1,7 @@
 {
   "schema_version": "reference-materialization-quality-fixture-v1",
   "fixture_id": "materialization-quality-calibration-v1",
+  "dataset_kind": "seed",
   "split": "calibration",
   "cases": [
     {

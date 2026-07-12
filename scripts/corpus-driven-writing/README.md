@@ -99,6 +99,16 @@ The normal `dotnet test` suite discovers this test but skips it unless the scrip
 
 The checked-in seed fixture establishes the measurement path and exposes v1's mechanical projection behavior; it is not the approximately 500-sentence human holdout required to pass the v2 materialization quality gate. Do not treat a successful baseline command as a v2 quality result.
 
+## V2 materialization quality evaluation
+
+`run-materialization-quality-evaluation.ps1` sends the fixture candidates to the currently selected LLM only after the selected LLM and embedding model both pass their health checks. It writes a redacted report with the qualification precision/recall, short-noise and short-valuable recall, and median evidence-span IoU. Model or validation failure exits with a stable error and does not write a partial report.
+
+```powershell
+./scripts/corpus-driven-writing/run-materialization-quality-evaluation.ps1 -Configuration Release
+```
+
+The checked-in fixtures have `dataset_kind: seed`, so their report is deliberately ineligible for the human quality gate. A passing gate requires physically separated `dataset_kind: human` calibration and holdout fixtures with at least 500 annotated source nodes in total; this qualification report does not replace the separate active-material overlap, provenance, retrieval, and full-pipeline gates.
+
 ## Writing-effect evaluation
 
 `run-writing-evaluation.ps1` evaluates a redacted dataset containing only IDs, hashes, numeric results, and human labels. It writes aggregate retrieval, blueprint, and prose metrics beneath `build/tmp/corpus-driven-writing/`; it never writes source or candidate prose to the report.

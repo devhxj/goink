@@ -19,6 +19,8 @@ public sealed class ReferenceMaterializationQualityFixtureTests
         Assert.Equal("reference-materialization-quality-fixture-v1", calibration.RootElement.GetProperty("schema_version").GetString());
         Assert.Equal("calibration", calibration.RootElement.GetProperty("split").GetString());
         Assert.Equal("holdout", holdout.RootElement.GetProperty("split").GetString());
+        Assert.Equal("seed", calibration.RootElement.GetProperty("dataset_kind").GetString());
+        Assert.Equal("seed", holdout.RootElement.GetProperty("dataset_kind").GetString());
         Assert.NotEmpty(calibration.RootElement.GetProperty("cases").EnumerateArray());
         Assert.NotEmpty(holdout.RootElement.GetProperty("cases").EnumerateArray());
     }
@@ -201,6 +203,8 @@ internal static class MaterializationQualityFixtureContract
         Require(root.ValueKind == JsonValueKind.Object, "Fixture root must be an object.");
         Require(root.GetProperty("schema_version").GetString() == "reference-materialization-quality-fixture-v1", "Fixture schema is invalid.");
         Require(root.GetProperty("split").GetString() == expectedSplit, "Fixture split is invalid.");
+        var datasetKind = RequiredString(root, "dataset_kind");
+        Require(datasetKind is "seed" or "human", "Fixture dataset kind is invalid.");
         var caseIds = new HashSet<string>(StringComparer.Ordinal);
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
         var categories = new HashSet<string>(StringComparer.Ordinal);
@@ -255,7 +259,7 @@ internal static class MaterializationQualityFixtureContract
             Require(tags.ValueKind == JsonValueKind.Object, "Fixture tags must be an object.");
         }
 
-        return new MaterializationQualityFixtureIndex(caseIds, nodeIds, categories, styles);
+        return new MaterializationQualityFixtureIndex(caseIds, nodeIds, categories, styles, datasetKind);
     }
 
     private static string RequiredString(JsonElement element, string propertyName)
@@ -280,4 +284,5 @@ internal sealed record MaterializationQualityFixtureIndex(
     IReadOnlySet<string> CaseIds,
     IReadOnlySet<string> NodeIds,
     IReadOnlySet<string> Categories,
-    IReadOnlySet<string> Styles);
+    IReadOnlySet<string> Styles,
+    string DatasetKind);

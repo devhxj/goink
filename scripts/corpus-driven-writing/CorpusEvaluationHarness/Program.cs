@@ -9,6 +9,15 @@ if (args.Length > 0 && string.Equals(args[0], "--materialization-v1-baseline", S
         CancellationToken.None);
 }
 
+if (args.Length > 0 && string.Equals(args[0], "--materialization-quality", StringComparison.Ordinal))
+{
+    return await ReferenceMaterializationQualityCommand.RunAsync(
+        args.Skip(1).ToArray(),
+        Console.Out,
+        Console.Error,
+        CancellationToken.None);
+}
+
 return await CorpusDrivenWritingEvaluationCommand.RunAsync(
     args,
     Console.Out,
