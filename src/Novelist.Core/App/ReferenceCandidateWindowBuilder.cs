@@ -10,8 +10,10 @@ public sealed class ReferenceCandidateWindowBuilder
     private static readonly string[] EmotionMarkers = ["沉默", "没有回答", "攥", "发紧", "发凉", "发涩", "发颤", "避开", "咽下", "欲言又止"];
     private static readonly string[] HookMarkers = ["忽然", "突然", "敲门", "第三次", "威胁", "？", "?"];
     private static readonly string[] PayoffMarkers = ["终于", "真相", "答案", "原来", "揭开", "兑现"];
-    private static readonly string[] TransitionMarkers = ["然后", "后来", "与此同时", "片刻", "很快", "直到"];
-    private static readonly string[] ActionMarkers = ["把", "推", "拉", "走", "停", "转", "拿", "放", "扣", "握"];
+    private static readonly string[] TransitionMarkers = ["然后", "后来", "与此同时", "片刻", "很快", "直到", "次日", "天后", "日后", "月后", "年后"];
+    private static readonly string[] ActionMarkers = ["点头", "抬头", "转身", "看了", "笑了", "坐下", "起身", "把", "推", "拉", "走", "停", "转", "拿", "放", "扣", "握"];
+    private static readonly string[] HighValueShortMarkers = ["别开", "不能", "真相", "原来", "死了", "活着", "回来", "钥匙"];
+    private const int GenericActionMaximumCharacters = 8;
 
     public IReadOnlyList<ReferenceMaterialCandidateWindow> Build(ReferenceCandidateChapterInput input)
     {
@@ -24,46 +26,41 @@ public sealed class ReferenceCandidateWindowBuilder
             .ThenBy(node => node.NodeId, StringComparer.Ordinal)
             .ToArray();
         var candidates = new List<ReferenceMaterialCandidateWindow>();
-
-        foreach (var paragraph in boundedNodes.Where(node => string.Equals(node.NodeType, "paragraph", StringComparison.Ordinal)))
+        var paragraphs = boundedNodes
+            .Where(node => string.Equals(node.NodeType, "paragraph", StringComparison.Ordinal))
+            .ToArray();
+        if (paragraphs.Length > 0)
         {
-            AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.Passage, [paragraph]);
-            if (ContainsAny(paragraph.Text, DialogueMarkers))
+            var mergedRanges = BuildContextDependentRanges(paragraphs);
+            var coveredParagraphs = new bool[paragraphs.Length];
+            foreach (var range in mergedRanges)
             {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.DialogueExchange, [paragraph]);
+                for (var index = range.Start; index <= range.End; index++)
+                {
+                    coveredParagraphs[index] = true;
+                }
+
+                var nodes = paragraphs[range.Start..(range.End + 1)];
+                AddCandidate(candidates, input, SelectCandidateType(nodes), nodes);
             }
 
-            if (ContainsAny(paragraph.Text, EmotionMarkers))
+            for (var index = 0; index < paragraphs.Length; index++)
             {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.Emotion, [paragraph]);
-            }
-
-            if (ContainsAny(paragraph.Text, HookMarkers))
-            {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.Hook, [paragraph]);
-            }
-
-            if (ContainsAny(paragraph.Text, PayoffMarkers))
-            {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.Payoff, [paragraph]);
-            }
-
-            if (ContainsAny(paragraph.Text, TransitionMarkers))
-            {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.Transition, [paragraph]);
-            }
-
-            if (ContainsAny(paragraph.Text, ActionMarkers) && ContainsAny(paragraph.Text, EmotionMarkers))
-            {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.ActionReaction, [paragraph]);
+                if (!coveredParagraphs[index])
+                {
+                    AddCandidate(candidates, input, SelectCandidateType([paragraphs[index]]), [paragraphs[index]]);
+                }
             }
         }
-
-        foreach (var sentence in boundedNodes.Where(node => string.Equals(node.NodeType, "sentence", StringComparison.Ordinal)))
+        else
         {
-            if (NormalizedCharacterCount(sentence.Text) >= 8 && !IsAcknowledgementOnly(sentence.Text))
+            foreach (var sentence in boundedNodes.Where(node => string.Equals(node.NodeType, "sentence", StringComparison.Ordinal)))
             {
-                AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.QualifiedSentence, [sentence]);
+                if (IsStandaloneValuable(sentence.Text) ||
+                    (NormalizedCharacterCount(sentence.Text) >= 8 && !IsAcknowledgementOnly(sentence.Text)))
+                {
+                    AddCandidate(candidates, input, ReferenceMaterializationCandidateTypes.QualifiedSentence, [sentence]);
+                }
             }
         }
 
@@ -72,6 +69,75 @@ public sealed class ReferenceCandidateWindowBuilder
             .ThenBy(candidate => candidate.SourceNodes[0].EndOffset)
             .ThenBy(candidate => candidate.CandidateType, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    private static IReadOnlyList<ParagraphRange> BuildContextDependentRanges(
+        IReadOnlyList<ReferenceCandidateSourceNode> paragraphs)
+    {
+        var ranges = new List<ParagraphRange>();
+        for (var index = 0; index < paragraphs.Count; index++)
+        {
+            var kind = GetContextDependencyKind(paragraphs[index].Text);
+            if (kind == ContextDependencyKind.None)
+            {
+                continue;
+            }
+
+            var range = kind == ContextDependencyKind.Transition
+                ? new ParagraphRange(index, Math.Min(index + 1, paragraphs.Count - 1))
+                : new ParagraphRange(Math.Max(index - 1, 0), Math.Min(index + 1, paragraphs.Count - 1));
+            if (ranges.Count > 0 && range.Start <= ranges[^1].End)
+            {
+                ranges[^1] = new ParagraphRange(ranges[^1].Start, Math.Max(ranges[^1].End, range.End));
+            }
+            else
+            {
+                ranges.Add(range);
+            }
+        }
+
+        return ranges;
+    }
+
+    private static string SelectCandidateType(IReadOnlyList<ReferenceCandidateSourceNode> nodes)
+    {
+        var text = string.Join("\n", nodes.Select(node => node.Text));
+        if (ContainsAny(text, DialogueMarkers))
+        {
+            return ReferenceMaterializationCandidateTypes.DialogueExchange;
+        }
+
+        if (ContainsAny(text, ActionMarkers) && ContainsAny(text, EmotionMarkers))
+        {
+            return ReferenceMaterializationCandidateTypes.ActionReaction;
+        }
+
+        if (ContainsAny(text, HookMarkers))
+        {
+            return ReferenceMaterializationCandidateTypes.Hook;
+        }
+
+        if (ContainsAny(text, PayoffMarkers))
+        {
+            return ReferenceMaterializationCandidateTypes.Payoff;
+        }
+
+        if (ContainsAny(text, EmotionMarkers))
+        {
+            return ReferenceMaterializationCandidateTypes.Emotion;
+        }
+
+        if (ContainsAny(text, TransitionMarkers))
+        {
+            return ReferenceMaterializationCandidateTypes.Transition;
+        }
+
+        if (nodes.Count == 1 && IsStandaloneValuable(text))
+        {
+            return ReferenceMaterializationCandidateTypes.QualifiedSentence;
+        }
+
+        return ReferenceMaterializationCandidateTypes.Passage;
     }
 
     private static void AddCandidate(
@@ -144,11 +210,51 @@ public sealed class ReferenceCandidateWindowBuilder
         return normalized is "好" or "嗯" or "哦" or "是" or "行" or "知道";
     }
 
+    private static ContextDependencyKind GetContextDependencyKind(string value)
+    {
+        if (IsAcknowledgementOnly(value))
+        {
+            return ContextDependencyKind.Acknowledgement;
+        }
+
+        if (IsTransitionOnly(value))
+        {
+            return ContextDependencyKind.Transition;
+        }
+
+        return IsGenericActionOnly(value)
+            ? ContextDependencyKind.GenericAction
+            : ContextDependencyKind.None;
+    }
+
+    private static bool IsTransitionOnly(string value) =>
+        NormalizedCharacterCount(value) <= 24 && ContainsAny(value, TransitionMarkers);
+
+    private static bool IsGenericActionOnly(string value) =>
+        NormalizedCharacterCount(value) <= GenericActionMaximumCharacters &&
+        ContainsAny(value, ActionMarkers) &&
+        !IsStandaloneValuable(value);
+
+    private static bool IsStandaloneValuable(string value) =>
+        ContainsAny(value, HighValueShortMarkers) ||
+        (NormalizedCharacterCount(value) >= 8 &&
+         (ContainsAny(value, HookMarkers) || ContainsAny(value, PayoffMarkers) || ContainsAny(value, EmotionMarkers)));
+
     private static int NormalizedCharacterCount(string value) =>
         value.Count(character => !char.IsWhiteSpace(character) && !char.IsPunctuation(character));
 
     private static string HashText(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private enum ContextDependencyKind
+    {
+        None,
+        Acknowledgement,
+        GenericAction,
+        Transition
+    }
+
+    private readonly record struct ParagraphRange(int Start, int End);
 }
 
 public sealed record ReferenceCandidateChapterInput(

@@ -6,7 +6,7 @@ namespace Novelist.Tests;
 public sealed class ReferenceCandidateWindowBuilderTests
 {
     [Fact]
-    public void BuildCreatesDeterministicQualifiedWindowsWithoutCrossingConfirmedChapterBoundaries()
+    public void BuildCreatesDeterministicNonOverlappingWindowsWithoutCrossingConfirmedChapterBoundaries()
     {
         var builder = new ReferenceCandidateWindowBuilder();
         var chapterOne = new ReferenceCandidateChapterInput(
@@ -29,10 +29,14 @@ public sealed class ReferenceCandidateWindowBuilderTests
 
         Assert.NotEmpty(first);
         Assert.Equal(first.Select(candidate => candidate.CandidateKey), second.Select(candidate => candidate.CandidateKey));
-        Assert.Contains(first, candidate => candidate.CandidateType == ReferenceMaterializationCandidateTypes.Passage);
         Assert.Contains(first, candidate => candidate.CandidateType == ReferenceMaterializationCandidateTypes.DialogueExchange);
-        Assert.Contains(first, candidate => candidate.CandidateType == ReferenceMaterializationCandidateTypes.Emotion);
         Assert.Contains(first, candidate => candidate.CandidateType == ReferenceMaterializationCandidateTypes.Hook);
+        Assert.DoesNotContain(first, candidate =>
+            candidate.SourceNodes.Any(node => node.NodeId == "p-1") &&
+            candidate.CandidateType == ReferenceMaterializationCandidateTypes.Emotion);
+        Assert.Equal(
+            first.Select(candidate => string.Join("|", candidate.SourceNodes.Select(node => node.NodeId))).Distinct(StringComparer.Ordinal).Count(),
+            first.Count);
         Assert.All(first, candidate =>
         {
             Assert.All(candidate.SourceNodes, node =>
@@ -66,10 +70,84 @@ public sealed class ReferenceCandidateWindowBuilderTests
             candidate.CandidateType == ReferenceMaterializationCandidateTypes.QualifiedSentence &&
             Assert.Single(candidate.SourceNodes).NodeId == "s-short");
         Assert.Contains(candidates, candidate =>
-            candidate.CandidateType == ReferenceMaterializationCandidateTypes.QualifiedSentence &&
-            Assert.Single(candidate.SourceNodes).NodeId == "s-long");
-        Assert.Contains(candidates, candidate =>
-            candidate.CandidateType == ReferenceMaterializationCandidateTypes.Passage &&
+            candidate.CandidateType == ReferenceMaterializationCandidateTypes.DialogueExchange &&
             candidate.SourceNodes.Any(node => node.NodeId == "p-1"));
+    }
+
+    [Fact]
+    public void BuildMergesContextDependentAcknowledgementsAndTransitionsWithTheirNeighbors()
+    {
+        var builder = new ReferenceCandidateWindowBuilder();
+        var chapter = new ReferenceCandidateChapterInput(
+            AnchorId: 99,
+            ChapterIndex: 1,
+            ContentStart: 0,
+            ContentEnd: 80,
+            Nodes:
+            [
+                new ReferenceCandidateSourceNode("p-dialogue", "paragraph", 0, 8, "“你早就知道？”", "p-dialogue-hash"),
+                new ReferenceCandidateSourceNode("p-ack", "paragraph", 8, 10, "嗯。", "p-ack-hash"),
+                new ReferenceCandidateSourceNode("p-evidence", "paragraph", 10, 24, "他把遗嘱推到她面前。", "p-evidence-hash"),
+                new ReferenceCandidateSourceNode("p-transition", "paragraph", 26, 34, "三天后，雨停了。", "p-transition-hash"),
+                new ReferenceCandidateSourceNode("p-aftermath", "paragraph", 34, 56, "她在门缝里看见父亲留下的钥匙。", "p-aftermath-hash")
+            ]);
+
+        var candidates = builder.Build(chapter);
+
+        Assert.Collection(
+            candidates,
+            first =>
+            {
+                Assert.Equal(ReferenceMaterializationCandidateTypes.DialogueExchange, first.CandidateType);
+                Assert.Equal(["p-dialogue", "p-ack", "p-evidence"], first.SourceNodes.Select(node => node.NodeId).ToArray());
+            },
+            second =>
+            {
+                Assert.Equal(ReferenceMaterializationCandidateTypes.Transition, second.CandidateType);
+                Assert.Equal(["p-transition", "p-aftermath"], second.SourceNodes.Select(node => node.NodeId).ToArray());
+            });
+    }
+
+    [Fact]
+    public void BuildMergesAFragmentaryActionWithItsTriggerAndReaction()
+    {
+        var builder = new ReferenceCandidateWindowBuilder();
+        var chapter = new ReferenceCandidateChapterInput(
+            AnchorId: 99,
+            ChapterIndex: 1,
+            ContentStart: 0,
+            ContentEnd: 48,
+            Nodes:
+            [
+                new ReferenceCandidateSourceNode("p-trigger", "paragraph", 0, 9, "她等着他开口。", "p-trigger-hash"),
+                new ReferenceCandidateSourceNode("p-action", "paragraph", 9, 13, "他点头。", "p-action-hash"),
+                new ReferenceCandidateSourceNode("p-reaction", "paragraph", 13, 28, "她攥紧门闩，没有松手。", "p-reaction-hash")
+            ]);
+
+        var candidate = Assert.Single(builder.Build(chapter));
+
+        Assert.Equal(ReferenceMaterializationCandidateTypes.ActionReaction, candidate.CandidateType);
+        Assert.Equal(["p-trigger", "p-action", "p-reaction"], candidate.SourceNodes.Select(node => node.NodeId).ToArray());
+    }
+
+    [Fact]
+    public void BuildRetainsAStandaloneHighValueShortSentence()
+    {
+        var builder = new ReferenceCandidateWindowBuilder();
+        var chapter = new ReferenceCandidateChapterInput(
+            AnchorId: 99,
+            ChapterIndex: 1,
+            ContentStart: 0,
+            ContentEnd: 10,
+            Nodes:
+            [
+                new ReferenceCandidateSourceNode("p-warning", "paragraph", 0, 3, "别开。", "p-warning-hash"),
+                new ReferenceCandidateSourceNode("s-warning", "sentence", 0, 3, "别开。", "s-warning-hash")
+            ]);
+
+        var candidate = Assert.Single(builder.Build(chapter));
+
+        Assert.Equal(ReferenceMaterializationCandidateTypes.QualifiedSentence, candidate.CandidateType);
+        Assert.Equal("p-warning", Assert.Single(candidate.SourceNodes).NodeId);
     }
 }

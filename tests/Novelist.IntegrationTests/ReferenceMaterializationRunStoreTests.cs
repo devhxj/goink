@@ -738,7 +738,7 @@ public sealed class ReferenceMaterializationRunStoreTests : IDisposable
         var options = CreateOptions();
         var repeated = string.Join(
             "\n\n",
-            Enumerable.Range(1, 11).Select(index => $"“第{index}次别开门。”她把钥匙攥进掌心，门外响起第三次敲门，她仍没有回答。"));
+            Enumerable.Range(1, 41).Select(index => $"“第{index}次别开门。”她把钥匙攥进掌心，门外响起第三次敲门，她仍没有回答。"));
         var anchor = await CreateAnchorAsync(
             options,
             chapterCount: 2,
