@@ -10,6 +10,14 @@ public sealed class ReferenceMaterializationBlueprintPreviewServiceTests : IDisp
     private readonly string _root = Path.Combine(Path.GetTempPath(), "novelist-tests", Guid.NewGuid().ToString("N"));
 
     [Fact]
+    public void CreateOptionsKeepsConfigurationInsideTheTestRoot()
+    {
+        var options = CreateOptions();
+
+        Assert.Equal(Path.Combine(_root, "config"), options.ConfigDirectory);
+    }
+
+    [Fact]
     public async Task GeneratePersistsOnlyActiveSemanticMaterialLinksWithTheirFrozenGenerations()
     {
         var options = CreateOptions();
@@ -151,6 +159,7 @@ public sealed class ReferenceMaterializationBlueprintPreviewServiceTests : IDisp
 
     private AppInitializationOptions CreateOptions() => new()
     {
+        ConfigDirectory = Path.Combine(_root, "config"),
         DefaultDataDirectory = Path.Combine(_root, "data")
     };
 

@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Novelist.Core.App;
 
@@ -7,7 +6,9 @@ namespace Novelist.Infrastructure.App;
 public sealed class ReferenceChapterSplitChatCompletionAnalyzer : IReferenceChapterSplitAnalyzer
 {
     private const int MaxOutputChars = 16 * 1024;
-    private const int MaxOutputTokens = 1_024;
+    private const int MaxOutputTokens = 8_192;
+    private const string ChapterSplitToolName = "submit_chapter_split_profile";
+    private static readonly JsonElement ChapterSplitToolSchema = CreateChapterSplitToolSchema();
     private readonly IAppSettingsService _settings;
     private readonly IChatCompletionClient _completion;
 
@@ -38,7 +39,7 @@ public sealed class ReferenceChapterSplitChatCompletionAnalyzer : IReferenceChap
             [
                 new ChatCompletionMessage("system", """
                     Identify the chapter-heading convention in the supplied fiction source sample.
-                    Return strict JSON only with this exact shape:
+                    Call submit_chapter_split_profile exactly once with a root object containing only:
                     {"pattern_kind":"markdown_heading|chapter_template","delimiter_template":"...","confidence":0.0,"evidence_offsets":[0]}
 
                     Rules:
@@ -47,32 +48,92 @@ public sealed class ReferenceChapterSplitChatCompletionAnalyzer : IReferenceChap
                     - chapter_template may use only literal characters plus {number} and {title}; it must match a complete heading line.
                     - evidence_offsets are zero-based offsets inside normalized_source_sample.
                     - Do not return source text, rewritten text, Markdown, explanations, paths, URLs, or any additional fields.
+                    - Do not return plain text. Use only the required tool call.
                     """),
                 new ChatCompletionMessage("user", JsonSerializer.Serialize(new
                 {
                     normalized_source_sample = input.NormalizedSample
                 }))
             ],
-            MaxOutputTokens: MaxOutputTokens);
+            [new ChatToolDefinition(
+                ChapterSplitToolName,
+                "Submit one validated chapter split profile.",
+                ChapterSplitToolSchema,
+                Strict: true)],
+            MaxOutputTokens: MaxOutputTokens,
+            TemperatureOverride: 0);
 
-        var response = new StringBuilder();
+        ChatToolCall? toolCall = null;
         await foreach (var item in _completion.StreamChatAsync(request, cancellationToken))
         {
-            if (item.Kind != ChatCompletionStreamEventKind.Content || string.IsNullOrEmpty(item.Data))
+            if (item.Kind == ChatCompletionStreamEventKind.Content && !string.IsNullOrWhiteSpace(item.Data))
+            {
+                throw InvalidOutput();
+            }
+
+            if (item.Kind != ChatCompletionStreamEventKind.ToolCall)
             {
                 continue;
             }
 
-            if (response.Length + item.Data.Length > MaxOutputChars)
+            if (item.ToolCall is null ||
+                !string.Equals(item.ToolCall.Name, ChapterSplitToolName, StringComparison.Ordinal) ||
+                toolCall is not null ||
+                item.ToolCall.ArgumentsJson.Length > MaxOutputChars)
             {
-                throw new InvalidOperationException("Chapter split analysis response is too large.");
+                throw InvalidOutput();
             }
 
-            response.Append(item.Data);
+            toolCall = item.ToolCall;
         }
 
-        return ParseResponse(response.ToString(), input.NormalizedSample.Length, model);
+        return toolCall is null
+            ? throw InvalidOutput()
+            : ParseResponse(toolCall.ArgumentsJson, input.NormalizedSample.Length, model);
     }
+
+    private static JsonElement CreateChapterSplitToolSchema()
+    {
+        return JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+        {
+            ["type"] = "object",
+            ["additionalProperties"] = false,
+            ["required"] = new[] { "pattern_kind", "delimiter_template", "confidence", "evidence_offsets" },
+            ["properties"] = new Dictionary<string, object?>
+            {
+                ["pattern_kind"] = new Dictionary<string, object?>
+                {
+                    ["type"] = "string",
+                    ["enum"] = new[] { "markdown_heading", "chapter_template" }
+                },
+                ["delimiter_template"] = new Dictionary<string, object?>
+                {
+                    ["type"] = "string",
+                    ["minLength"] = 1,
+                    ["maxLength"] = 160
+                },
+                ["confidence"] = new Dictionary<string, object?>
+                {
+                    ["type"] = "number",
+                    ["minimum"] = 0,
+                    ["maximum"] = 1
+                },
+                ["evidence_offsets"] = new Dictionary<string, object?>
+                {
+                    ["type"] = "array",
+                    ["minItems"] = 1,
+                    ["items"] = new Dictionary<string, object?>
+                    {
+                        ["type"] = "integer",
+                        ["minimum"] = 0
+                    }
+                }
+            }
+        });
+    }
+
+    private static InvalidOperationException InvalidOutput() =>
+        new("Chapter split analysis returned invalid structured output.");
 
     private static ReferenceChapterSplitModelResult ParseResponse(
         string response,

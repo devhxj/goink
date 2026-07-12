@@ -13,10 +13,13 @@ public sealed class ReferenceChapterSplitChatCompletionAnalyzerTests
         var chat = new RecordingChatCompletionClient(
         [
             new ChatCompletionStreamEvent(
-                ChatCompletionStreamEventKind.Content,
-                """
-                {"pattern_kind":"markdown_heading","delimiter_template":"# {title}","confidence":0.9,"evidence_offsets":[0,16]}
-                """)
+                ChatCompletionStreamEventKind.ToolCall,
+                ToolCall: new ChatToolCall(
+                    "call_split",
+                    "submit_chapter_split_profile",
+                    """
+                    {"pattern_kind":"markdown_heading","delimiter_template":"# {title}","confidence":0.9,"evidence_offsets":[0,16]}
+                    """))
         ]);
         var analyzer = new ReferenceChapterSplitChatCompletionAnalyzer(
             new FixedAppSettingsService("qwen/qwen-plus", "high"),
@@ -38,9 +41,45 @@ public sealed class ReferenceChapterSplitChatCompletionAnalyzerTests
         Assert.Equal("qwen", chat.LastRequest.ProviderName);
         Assert.Equal("qwen-plus", chat.LastRequest.ModelId);
         Assert.Equal("high", chat.LastRequest.ReasoningEffort);
-        Assert.Contains("Return strict JSON only", chat.LastRequest.Messages[0].Content, StringComparison.Ordinal);
+        Assert.Contains("Call submit_chapter_split_profile exactly once", chat.LastRequest.Messages[0].Content, StringComparison.Ordinal);
         Assert.Contains("normalized_source_sample", chat.LastRequest.Messages[1].Content, StringComparison.Ordinal);
         Assert.DoesNotContain("source-hash", chat.LastRequest.Messages[1].Content, StringComparison.Ordinal);
+        var tool = Assert.Single(chat.LastRequest.Tools!);
+        Assert.Equal("submit_chapter_split_profile", tool.Name);
+        Assert.True(tool.Strict);
+        Assert.Equal(8_192, chat.LastRequest.MaxOutputTokens);
+        Assert.Equal(0, chat.LastRequest.TemperatureOverride);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsyncRejectsPlainTextInsteadOfTheRequiredToolCall()
+    {
+        var chat = new RecordingChatCompletionClient(
+        [
+            new ChatCompletionStreamEvent(
+                ChatCompletionStreamEventKind.Content,
+                """
+                {"pattern_kind":"chapter_template","delimiter_template":"第{number}章","confidence":0.9,"evidence_offsets":[0,16]}
+                """)
+        ]);
+        var analyzer = new ReferenceChapterSplitChatCompletionAnalyzer(
+            new FixedAppSettingsService("qwen/qwen-plus", "high"),
+            chat);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await analyzer.AnalyzeAsync(
+                new ReferenceChapterSplitModelRequest(
+                    99,
+                    "source-hash",
+                    "第一章\n\n雨声压住窗沿。\n\n第二章\n\n门外响起第三次敲门。"),
+                CancellationToken.None));
+
+        Assert.Contains("invalid structured output", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(chat.LastRequest);
+        var tool = Assert.Single(chat.LastRequest.Tools!);
+        Assert.Equal("submit_chapter_split_profile", tool.Name);
+        Assert.True(tool.Strict);
+        Assert.Equal(0, chat.LastRequest.TemperatureOverride);
     }
 
     [Fact]
@@ -49,10 +88,13 @@ public sealed class ReferenceChapterSplitChatCompletionAnalyzerTests
         var chat = new RecordingChatCompletionClient(
         [
             new ChatCompletionStreamEvent(
-                ChatCompletionStreamEventKind.Content,
-                """
-                {"pattern_kind":"markdown_heading","delimiter_template":"# {title}","confidence":0.9,"evidence_offsets":[0],"source_text":"leak"}
-                """)
+                ChatCompletionStreamEventKind.ToolCall,
+                ToolCall: new ChatToolCall(
+                    "call_split",
+                    "submit_chapter_split_profile",
+                    """
+                    {"pattern_kind":"markdown_heading","delimiter_template":"# {title}","confidence":0.9,"evidence_offsets":[0],"source_text":"leak"}
+                    """))
         ]);
         var analyzer = new ReferenceChapterSplitChatCompletionAnalyzer(
             new FixedAppSettingsService("qwen/qwen-plus", "high"),
