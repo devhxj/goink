@@ -113,6 +113,32 @@ public sealed class ReferenceMaterializationChapterSplitTests : IDisposable
     }
 
     [Fact]
+    public async Task PreviewManualSplitExcludesLeadingTableOfContentsThatRepeatsTheBodyHeadings()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("目录章节切分", "", ""), CancellationToken.None);
+        var sourcePath = CreateSourceFile(
+            "toc-split.txt",
+            "目录\n第一辑 开端(text00002.html)\n第二辑 回声(text00003.html)\n\n版权信息\n\n第一辑 开端\n\n雨声压住窗沿。\n\n第二辑 回声\n\n门外响起第三次敲门。\n");
+        var anchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await anchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "目录来源", null, sourcePath, "text", "user_provided"),
+            CancellationToken.None);
+        var service = new SqliteReferenceMaterializationService(options, new RecordingChapterSplitAnalyzer(ReferenceChapterSplitModelResult.Empty));
+
+        var result = await service.PreviewChapterSplitAsync(
+            new PreviewReferenceChapterSplitPayload(novel.Id, anchor.AnchorId, "第{number}辑 {title}"),
+            CancellationToken.None);
+
+        Assert.Equal(2, result.ChapterCount);
+        Assert.Equal(["开端", "回声"], result.Boundaries.Select(boundary => boundary.Title).ToArray());
+        Assert.True(result.Boundaries[0].HeadingStart > 30);
+        Assert.All(result.Boundaries, boundary => Assert.True(boundary.ContentEnd > boundary.ContentStart));
+    }
+
+    [Fact]
     public async Task PreviewManualSplitSupportsLiteralDelimiters()
     {
         var options = CreateOptions();

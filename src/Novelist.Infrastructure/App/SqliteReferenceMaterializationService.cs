@@ -17,6 +17,9 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
     private static readonly Regex MarkdownHeadingPattern = new(
         @"^\s{0,3}#{1,6}\s+(?<title>.+?)\s*$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex TableOfContentsLinkSuffixPattern = new(
+        @"\s*[（(]\s*(?:text|chapter)\d+\.html\s*[)）]\s*$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private readonly AppInitializationOptions _options;
     private readonly IReferenceChapterSplitAnalyzer _analyzer;
@@ -430,7 +433,9 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
         string patternKind,
         string delimiterTemplate)
     {
-        var headings = FindHeadings(source, patternKind, delimiterTemplate);
+        var headings = ExcludeLeadingTableOfContentsHeadings(
+            source,
+            FindHeadings(source, patternKind, delimiterTemplate));
         if (headings.Count < 2)
         {
             throw new ArgumentException("Chapter split must produce at least two valid chapter boundaries.", nameof(delimiterTemplate));
@@ -459,6 +464,45 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
 
         return boundaries;
     }
+
+    private static List<Heading> ExcludeLeadingTableOfContentsHeadings(
+        string source,
+        List<Heading> headings)
+    {
+        if (headings.Count < 4 ||
+            !ContainsTableOfContentsMarker(source[..headings[0].HeadingStart]))
+        {
+            return headings;
+        }
+
+        var normalizedTitles = headings
+            .Select(heading => NormalizeTableOfContentsTitle(heading.Title))
+            .ToArray();
+        for (var bodyStart = 2; bodyStart * 2 <= headings.Count; bodyStart++)
+        {
+            if (!headings.Take(bodyStart).Any(heading => TableOfContentsLinkSuffixPattern.IsMatch(heading.Title)) ||
+                !Enumerable.Range(0, bodyStart).All(index =>
+                    string.Equals(normalizedTitles[index], normalizedTitles[bodyStart + index], StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            return headings[bodyStart..];
+        }
+
+        return headings;
+    }
+
+    private static bool ContainsTableOfContentsMarker(string prefix) =>
+        EnumerateLines(prefix)
+            .Select(line => prefix[line.Start..line.End].Trim())
+            .Any(line => line.Equals("目录", StringComparison.Ordinal) ||
+                         line.Equals("目錄", StringComparison.Ordinal) ||
+                         line.Equals("contents", StringComparison.OrdinalIgnoreCase) ||
+                         line.Equals("table of contents", StringComparison.OrdinalIgnoreCase));
+
+    private static string NormalizeTableOfContentsTitle(string value) =>
+        TableOfContentsLinkSuffixPattern.Replace(value, string.Empty).Trim();
 
     private static List<Heading> FindHeadings(string source, string patternKind, string delimiterTemplate)
     {
