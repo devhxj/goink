@@ -79,6 +79,42 @@ internal sealed partial class SqliteReferenceMaterializationRunStore
         return await reader.ReadAsync(cancellationToken) ? ReadStatus(reader) : null;
     }
 
+    public async ValueTask<ReferenceMaterializationStatusPayload?> GetLatestForAnchorAsync(
+        long anchorId,
+        CancellationToken cancellationToken)
+    {
+        if (anchorId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(anchorId), "Anchor id must be positive.");
+        }
+
+        var databasePath = await EnsureSchemaAsync(cancellationToken);
+        await using var connection = await OpenConnectionAsync(databasePath, cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT run_id, anchor_id, split_profile_id, generation_id, status, chapter_batch_size,
+                   total_chapters, processed_chapters, total_chapter_batches, completed_chapter_batches,
+                   current_batch_index, current_batch_start_chapter, current_batch_end_chapter,
+                   candidate_count, accepted_count, rejected_count, review_count, vector_count,
+                   model_provider, model_id, embedding_provider, embedding_model_id, embedding_dimensions,
+                   last_error_code, last_error_message, started_at, completed_at,
+                   EXISTS(
+                     SELECT 1
+                     FROM reference_materialization_vector_indexes vector_index
+                     WHERE vector_index.run_id = reference_materialization_runs.run_id
+                       AND vector_index.status = 'ready'
+                       AND vector_index.vector_count = reference_materialization_runs.vector_count
+                   ) AS vector_index_healthy
+            FROM reference_materialization_runs
+            WHERE anchor_id = $anchor_id
+            ORDER BY started_at DESC, run_id DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$anchor_id", anchorId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadStatus(reader) : null;
+    }
+
     public async ValueTask<PageResultPayload<ReferenceMaterializationChapterProgressPayload>> ListChapterProgressAsync(
         string runId,
         int page,

@@ -45,7 +45,9 @@ public sealed partial class SqliteReferenceMaterializationService
         ArgumentNullException.ThrowIfNull(input);
         ValidateReferenceInput(input.NovelId, input.AnchorId);
         await EnsureAnchorAccessibleAsync(input.NovelId, input.AnchorId, cancellationToken);
-        var status = await _runStore.GetAsync(input.RunId, cancellationToken);
+        var status = string.IsNullOrWhiteSpace(input.RunId)
+            ? await _runStore.GetLatestForAnchorAsync(input.AnchorId, cancellationToken)
+            : await _runStore.GetAsync(input.RunId, cancellationToken);
         return status is null || status.AnchorId != input.AnchorId ? null : status;
     }
 

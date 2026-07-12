@@ -157,7 +157,7 @@ public sealed record EnqueueReferenceMaterializationPayload(
 public sealed record GetReferenceMaterializationStatusPayload(
     [property: JsonPropertyName("novel_id")] long NovelId,
     [property: JsonPropertyName("anchor_id")] long AnchorId,
-    [property: JsonPropertyName("run_id")] string RunId);
+    [property: JsonPropertyName("run_id")] string? RunId = null);
 
 public sealed record RetryReferenceMaterializationPayload(
     [property: JsonPropertyName("novel_id")] long NovelId,

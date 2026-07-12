@@ -46,6 +46,35 @@ public sealed class ReferenceMaterializationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetMaterializationStatusWithoutRunIdReturnsTheLatestRunForTheAnchor()
+    {
+        var options = CreateOptions();
+        var anchor = await CreateAnchorAsync(options);
+        var service = new SqliteReferenceMaterializationService(
+            options,
+            new EmptyChapterSplitAnalyzer(),
+            modelPreflight: new RecordingPreflight(new ReferenceMaterializationModelPreflightResult(
+                new ReferenceMaterializationModelIdentityPayload("llm", "model"),
+                new ReferenceMaterializationModelIdentityPayload("embedding", "model", 16))));
+        var profile = await service.PreviewChapterSplitAsync(
+            new PreviewReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, "# {title}"),
+            CancellationToken.None);
+        await service.ConfirmChapterSplitAsync(
+            new ConfirmReferenceChapterSplitPayload(anchor.NovelId, anchor.AnchorId, profile.SplitProfileId),
+            CancellationToken.None);
+        var created = await service.EnqueueMaterializationAsync(
+            new EnqueueReferenceMaterializationPayload(anchor.NovelId, anchor.AnchorId, profile.SplitProfileId),
+            CancellationToken.None);
+
+        var recovered = await service.GetMaterializationStatusAsync(
+            new GetReferenceMaterializationStatusPayload(anchor.NovelId, anchor.AnchorId, null),
+            CancellationToken.None);
+
+        Assert.NotNull(recovered);
+        Assert.Equal(created.RunId, recovered!.RunId);
+    }
+
+    [Fact]
     public async Task EnqueuePropagatesModelPreflightFailureWithoutPersistingAnyRun()
     {
         var options = CreateOptions();

@@ -1005,7 +1005,7 @@ has_more: boolean
   export interface GetMaterializationStatusInput {
     novel_id: number
     anchor_id: number
-    run_id: string
+    run_id?: string | null
   }
 
   export type RetryMaterializationInput = GetMaterializationStatusInput
