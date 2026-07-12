@@ -1015,6 +1015,12 @@ has_more: boolean
     size: number
   }
 
+  export interface ListMaterializationCandidatesInput extends GetMaterializationStatusInput {
+    decision?: 'pending' | 'accepted' | 'rejected' | 'review_required'
+    page?: number
+    size?: number
+  }
+
   export interface ListActiveMaterializationMaterialsInput {
     novel_id: number
     anchor_id: number
@@ -1104,6 +1110,22 @@ has_more: boolean
     confidence: number
     tags: MaterializationMaterialTags
     reason_codes: string[]
+  }
+
+  export interface MaterializationCandidate {
+    candidate_id: string
+    run_id: string
+    anchor_id: number
+    candidate_type: string
+    decision: 'pending' | 'accepted' | 'rejected' | 'review_required'
+    decision_origin: string
+    quality_score?: number | null
+    confidence?: number | null
+    tags: MaterializationMaterialTags
+    reason_codes: string[]
+    text_preview: string
+    source_node_count: number
+    row_version: number
   }
 
   export interface MaterializationSemanticSearchHit {
@@ -3010,6 +3032,14 @@ export namespace storage {
 
   export interface PageResult_reference_MaterializationChapterProgress_ {
     items: reference.MaterializationChapterProgress[]
+    total: number
+    page: number
+    size: number
+    total_pages: number
+  }
+
+  export interface PageResult_reference_MaterializationCandidate_ {
+    items: reference.MaterializationCandidate[]
     total: number
     page: number
     size: number

@@ -104,6 +104,27 @@ public sealed partial class SqliteReferenceMaterializationService
         return await _runStore.ListChapterProgressAsync(input.RunId, input.Page, input.Size, cancellationToken);
     }
 
+    public async ValueTask<PageResultPayload<ReferenceMaterializationCandidatePayload>> ListMaterializationCandidatesAsync(
+        ListReferenceMaterializationCandidatesPayload input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ValidateReferenceInput(input.NovelId, input.AnchorId);
+        await EnsureAnchorAccessibleAsync(input.NovelId, input.AnchorId, cancellationToken);
+        var status = await _runStore.GetAsync(input.RunId, cancellationToken);
+        if (status is null || status.AnchorId != input.AnchorId)
+        {
+            throw new ArgumentException("Materialization run does not exist.", nameof(input));
+        }
+
+        return await _runStore.ListCandidatesAsync(
+            input.RunId,
+            input.Decision,
+            input.Page,
+            input.Size,
+            cancellationToken);
+    }
+
     public async ValueTask<PageResultPayload<ReferenceMaterializationMaterialPayload>> ListActiveMaterialsAsync(
         ListActiveReferenceMaterializationMaterialsPayload input,
         CancellationToken cancellationToken)

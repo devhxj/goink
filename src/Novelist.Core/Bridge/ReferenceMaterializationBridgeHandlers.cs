@@ -49,6 +49,11 @@ public static class ReferenceMaterializationBridgeHandlers
                 ReadObjectArg<ListReferenceMaterializationChapterProgressPayload>(context.Payload, 0, "input"),
                 cancellationToken)));
 
+        dispatcher.Register("ListReferenceMaterializationCandidates", async (context, cancellationToken) =>
+            await ExecuteCandidatesAsync(() => service.ListMaterializationCandidatesAsync(
+                ReadObjectArg<ListReferenceMaterializationCandidatesPayload>(context.Payload, 0, "input"),
+                cancellationToken)));
+
         dispatcher.Register("ListActiveReferenceMaterializationMaterials", async (context, cancellationToken) =>
             await ExecuteMaterialsAsync(() => service.ListActiveMaterialsAsync(
                 ReadObjectArg<ListActiveReferenceMaterializationMaterialsPayload>(context.Payload, 0, "input"),
@@ -165,6 +170,29 @@ public static class ReferenceMaterializationBridgeHandlers
         }
     }
 
+    private static async ValueTask<PageResultPayload<ReferenceMaterializationCandidatePayload>> ExecuteCandidatesAsync(
+        Func<ValueTask<PageResultPayload<ReferenceMaterializationCandidatePayload>>> operation)
+    {
+        try
+        {
+            var result = await operation();
+            return new PageResultPayload<ReferenceMaterializationCandidatePayload>(
+                result.Items.Select(SanitizeCandidate).ToArray(),
+                result.Total,
+                result.Page,
+                result.Size,
+                result.TotalPages);
+        }
+        catch (ReferenceMaterializationException exception)
+        {
+            throw new BridgeRequestException(
+                exception.ErrorCode,
+                exception.Message,
+                new { error_code = exception.ErrorCode },
+                retryable: true);
+        }
+    }
+
     private static async ValueTask<IReadOnlyList<ReferenceMaterializationSemanticSearchHitPayload>> ExecuteSemanticMaterialsAsync(
         Func<ValueTask<IReadOnlyList<ReferenceMaterializationSemanticSearchHitPayload>>> operation)
     {
@@ -242,6 +270,31 @@ public static class ReferenceMaterializationBridgeHandlers
                 CausalInformationRoles = SanitizeTags(material.Tags.CausalInformationRoles)
             },
             ReasonCodes = SanitizeTags(material.ReasonCodes)
+        };
+    }
+
+    private static ReferenceMaterializationCandidatePayload SanitizeCandidate(
+        ReferenceMaterializationCandidatePayload candidate)
+    {
+        return candidate with
+        {
+            CandidateId = ReferencePayloadSanitizer.RedactAndBoundText(candidate.CandidateId, 128),
+            RunId = ReferencePayloadSanitizer.RedactAndBoundText(candidate.RunId, 128),
+            CandidateType = ReferencePayloadSanitizer.RedactAndBoundText(candidate.CandidateType, 64),
+            Decision = ReferencePayloadSanitizer.RedactAndBoundText(candidate.Decision, 32),
+            DecisionOrigin = ReferencePayloadSanitizer.RedactAndBoundText(candidate.DecisionOrigin, 64),
+            TextPreview = ReferencePayloadSanitizer.RedactAndBoundText(candidate.TextPreview, 512),
+            Tags = new ReferenceMaterializationMaterialTagsPayload(
+                SanitizeTags(candidate.Tags.NarrativeFunctions),
+                SanitizeTags(candidate.Tags.EmotionMechanics),
+                SanitizeTags(candidate.Tags.Pov),
+                SanitizeTags(candidate.Tags.Techniques))
+            {
+                SceneBeatRoles = SanitizeTags(candidate.Tags.SceneBeatRoles),
+                CharacterRelations = SanitizeTags(candidate.Tags.CharacterRelations),
+                CausalInformationRoles = SanitizeTags(candidate.Tags.CausalInformationRoles)
+            },
+            ReasonCodes = SanitizeTags(candidate.ReasonCodes)
         };
     }
 

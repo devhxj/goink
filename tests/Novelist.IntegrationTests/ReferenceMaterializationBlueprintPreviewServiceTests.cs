@@ -181,6 +181,8 @@ public sealed class ReferenceMaterializationBlueprintPreviewServiceTests : IDisp
 
         public ValueTask<PageResultPayload<ReferenceMaterializationChapterProgressPayload>> ListMaterializationChapterProgressAsync(ListReferenceMaterializationChapterProgressPayload input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public ValueTask<PageResultPayload<ReferenceMaterializationCandidatePayload>> ListMaterializationCandidatesAsync(ListReferenceMaterializationCandidatesPayload input, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public ValueTask<PageResultPayload<ReferenceMaterializationMaterialPayload>> ListActiveMaterialsAsync(
             ListActiveReferenceMaterializationMaterialsPayload input,
             CancellationToken cancellationToken)

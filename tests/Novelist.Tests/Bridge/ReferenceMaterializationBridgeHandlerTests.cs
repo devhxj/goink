@@ -21,6 +21,15 @@ public sealed class ReferenceMaterializationBridgeHandlerTests
         await AssertOkAsync(dispatcher, "GetReferenceMaterializationStatus", new GetReferenceMaterializationStatusPayload(42, 99, "run-1"));
         await AssertOkAsync(dispatcher, "RetryReferenceMaterialization", new RetryReferenceMaterializationPayload(42, 99, "run-1"));
         await AssertOkAsync(dispatcher, "ListReferenceMaterializationChapterProgress", new ListReferenceMaterializationChapterProgressPayload(42, 99, "run-1", 1, 20));
+        await AssertOkAsync(dispatcher, "ListReferenceMaterializationCandidates", new
+        {
+            novel_id = 42L,
+            anchor_id = 99L,
+            run_id = "run-1",
+            decision = ReferenceMaterializationCandidateDecisions.ReviewRequired,
+            page = 1,
+            size = 20
+        });
         await AssertOkAsync(dispatcher, "ListActiveReferenceMaterializationMaterials", new ListActiveReferenceMaterializationMaterialsPayload(42, 99, 1, 20, "真相"));
         await AssertOkAsync(dispatcher, "SearchActiveReferenceMaterializationMaterials", new SearchActiveReferenceMaterializationMaterialsPayload(42, 99, "谜底", 10));
 
@@ -33,6 +42,7 @@ public sealed class ReferenceMaterializationBridgeHandlerTests
                 "status:42:99:run-1",
                 "retry:42:99:run-1",
                 "progress:42:99:run-1:1:20",
+                "candidates:42:99:run-1:review_required:1:20",
                 "materials:42:99:1:20:真相",
                 "semantic-materials:42:99:谜底:10"
             ],
@@ -246,6 +256,32 @@ public sealed class ReferenceMaterializationBridgeHandlerTests
                     0.8,
                     new ReferenceMaterializationMaterialTagsPayload(["reveal"], [], ["close_third"], ["subtext"]),
                     ["complete_exchange"])],
+                1,
+                input.Page,
+                input.Size,
+                1));
+        }
+
+        public ValueTask<PageResultPayload<ReferenceMaterializationCandidatePayload>> ListMaterializationCandidatesAsync(
+            ListReferenceMaterializationCandidatesPayload input,
+            CancellationToken cancellationToken)
+        {
+            Calls.Add($"candidates:{input.NovelId}:{input.AnchorId}:{input.RunId}:{input.Decision}:{input.Page}:{input.Size}");
+            return ValueTask.FromResult(new PageResultPayload<ReferenceMaterializationCandidatePayload>(
+                [new ReferenceMaterializationCandidatePayload(
+                    "candidate-1",
+                    input.RunId,
+                    input.AnchorId,
+                    "dialogue_exchange",
+                    input.Decision,
+                    "llm_qualifier",
+                    0.8,
+                    0.6,
+                    new ReferenceMaterializationMaterialTagsPayload(["reveal"], [], ["close_third"], ["subtext"]),
+                    ["context_missing"],
+                    "她没有立刻回答。",
+                    1,
+                    3)],
                 1,
                 input.Page,
                 input.Size,

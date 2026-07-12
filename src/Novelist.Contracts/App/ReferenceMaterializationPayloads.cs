@@ -159,6 +159,14 @@ public sealed record ListReferenceMaterializationChapterProgressPayload(
     [property: JsonPropertyName("page")] int Page,
     [property: JsonPropertyName("size")] int Size);
 
+public sealed record ListReferenceMaterializationCandidatesPayload(
+    [property: JsonPropertyName("novel_id")] long NovelId,
+    [property: JsonPropertyName("anchor_id")] long AnchorId,
+    [property: JsonPropertyName("run_id")] string RunId,
+    [property: JsonPropertyName("decision")] string Decision = ReferenceMaterializationCandidateDecisions.ReviewRequired,
+    [property: JsonPropertyName("page")] int Page = 1,
+    [property: JsonPropertyName("size")] int Size = 20);
+
 public sealed record ListActiveReferenceMaterializationMaterialsPayload(
     [property: JsonPropertyName("novel_id")] long NovelId,
     [property: JsonPropertyName("anchor_id")] long AnchorId,
@@ -290,6 +298,23 @@ public sealed record ReferenceMaterializationMaterialTagsPayload(
     [JsonPropertyName("causal_information_roles")]
     public IReadOnlyList<string> CausalInformationRoles { get; init; } = [];
 }
+
+public sealed record ReferenceMaterializationCandidatePayload(
+    [property: JsonPropertyName("candidate_id")] string CandidateId,
+    [property: JsonPropertyName("run_id")] string RunId,
+    [property: JsonPropertyName("anchor_id")] long AnchorId,
+    [property: JsonPropertyName("candidate_type")] string CandidateType,
+    [property: JsonPropertyName("decision")] string Decision,
+    [property: JsonPropertyName("decision_origin")] string DecisionOrigin,
+    [property: JsonPropertyName("quality_score")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? QualityScore,
+    [property: JsonPropertyName("confidence")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Confidence,
+    [property: JsonPropertyName("tags")] ReferenceMaterializationMaterialTagsPayload Tags,
+    [property: JsonPropertyName("reason_codes")] IReadOnlyList<string> ReasonCodes,
+    [property: JsonPropertyName("text_preview")] string TextPreview,
+    [property: JsonPropertyName("source_node_count")] int SourceNodeCount,
+    [property: JsonPropertyName("row_version")] long RowVersion);
 
 public sealed record ReferenceMaterializationMaterialPayload(
     [property: JsonPropertyName("material_id")] string MaterialId,

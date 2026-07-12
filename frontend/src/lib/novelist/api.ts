@@ -160,6 +160,7 @@ export interface NovelistAppApi {
  GetReferenceCorpusAnalysisJob: AppMethod<[{ job_id: string }], reference.CorpusAnalysisJob | null>
  ListReferenceCorpusAnalysisJobs: AppMethod<[{ page_request: storage.PageRequest }], reference.CorpusAnalysisJobPage>
  ListReferenceMaterializationChapterProgress: AppMethod<[reference.ListMaterializationChapterProgressInput], storage.PageResult_reference_MaterializationChapterProgress_>
+ ListReferenceMaterializationCandidates: AppMethod<[reference.ListMaterializationCandidatesInput], storage.PageResult_reference_MaterializationCandidate_>
  ListActiveReferenceMaterializationMaterials: AppMethod<[reference.ListActiveMaterializationMaterialsInput], storage.PageResult_reference_MaterializationMaterial_>
  SearchActiveReferenceMaterializationMaterials: AppMethod<[reference.SearchActiveMaterializationMaterialsInput], reference.MaterializationSemanticSearchHit[]>
  GenerateReferenceMaterializationBlueprintPreview: AppMethod<[reference.GenerateMaterializationBlueprintPreviewInput], reference.MaterializationBlueprintPreview>
@@ -402,6 +403,7 @@ GetReferenceCorpusFeatureAnalysisRun: appMethod<NovelistAppApi['GetReferenceCorp
  GetReferenceCorpusAnalysisJob: appMethod<NovelistAppApi['GetReferenceCorpusAnalysisJob']>('GetReferenceCorpusAnalysisJob'),
  ListReferenceCorpusAnalysisJobs: appMethod<NovelistAppApi['ListReferenceCorpusAnalysisJobs']>('ListReferenceCorpusAnalysisJobs'),
  ListReferenceMaterializationChapterProgress: appMethod<NovelistAppApi['ListReferenceMaterializationChapterProgress']>('ListReferenceMaterializationChapterProgress'),
+ ListReferenceMaterializationCandidates: appMethod<NovelistAppApi['ListReferenceMaterializationCandidates']>('ListReferenceMaterializationCandidates'),
  ListActiveReferenceMaterializationMaterials: appMethod<NovelistAppApi['ListActiveReferenceMaterializationMaterials']>('ListActiveReferenceMaterializationMaterials'),
  SearchActiveReferenceMaterializationMaterials: appMethod<NovelistAppApi['SearchActiveReferenceMaterializationMaterials']>('SearchActiveReferenceMaterializationMaterials'),
  GenerateReferenceMaterializationBlueprintPreview: appMethod<NovelistAppApi['GenerateReferenceMaterializationBlueprintPreview']>('GenerateReferenceMaterializationBlueprintPreview'),
