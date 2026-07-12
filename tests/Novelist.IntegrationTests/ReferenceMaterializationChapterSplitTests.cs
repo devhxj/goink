@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Novelist.Contracts.App;
 using Novelist.Core.App;
@@ -169,6 +170,50 @@ public sealed class ReferenceMaterializationChapterSplitTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeAutoSplitHandlesUtf8BomAndFullWidthHeadingWhitespace()
+    {
+        var options = CreateOptions();
+        await InitializeAsync(options);
+        var novels = new FileSystemNovelService(options, new FileSystemAppSettingsService(options));
+        var novel = await novels.CreateNovelAsync(new CreateNovelPayload("全角空格目录", "", ""), CancellationToken.None);
+        var source = """
+            目录
+            第一辑 开端(text00002.html)
+            第二辑 回声(text00003.html)
+
+            版权信息
+
+            第一辑 开端
+
+            雨声压住窗沿。
+
+            第二辑　回声
+
+            门外响起第三次敲门。
+            """;
+        var sourcePath = CreateSourceFileWithBom("full-width-heading-space.txt", source);
+        var anchors = new SqliteReferenceAnchorService(options, novels);
+        var anchor = await anchors.CreateAnchorAsync(
+            new CreateReferenceAnchorPayload(novel.Id, "全角空格来源", null, sourcePath, "text", "user_provided"),
+            CancellationToken.None);
+        var firstHeadingOffset = source.IndexOf("第一辑", StringComparison.Ordinal);
+        var service = new SqliteReferenceMaterializationService(
+            options,
+            new RecordingChapterSplitAnalyzer(new ReferenceChapterSplitModelResult(
+                "chapter_template",
+                "第{number}辑 {title}",
+                0.95,
+                [firstHeadingOffset])));
+
+        var result = await service.AnalyzeChapterSplitAsync(
+            new AnalyzeReferenceChapterSplitPayload(novel.Id, anchor.AnchorId),
+            CancellationToken.None);
+
+        Assert.Equal(2, result.ChapterCount);
+        Assert.Equal(["开端", "回声"], result.Boundaries.Select(boundary => boundary.Title).ToArray());
+    }
+
+    [Fact]
     public async Task PreviewManualSplitSupportsLiteralDelimiters()
     {
         var options = CreateOptions();
@@ -217,7 +262,7 @@ public sealed class ReferenceMaterializationChapterSplitTests : IDisposable
     }
 
     [Fact]
-    public async Task AnalyzeAutoSplitRejectsModelEvidenceThatDoesNotPointToAValidatedHeading()
+    public async Task AnalyzeAutoSplitPersistsValidatedHeadingOffsetsInsteadOfModelReportedOffsets()
     {
         var options = CreateOptions();
         await InitializeAsync(options);
@@ -236,12 +281,13 @@ public sealed class ReferenceMaterializationChapterSplitTests : IDisposable
                 0.9,
                 [1])));
 
-        var exception = await Assert.ThrowsAsync<ReferenceMaterializationException>(async () =>
-            await service.AnalyzeChapterSplitAsync(
-                new AnalyzeReferenceChapterSplitPayload(novel.Id, anchor.AnchorId),
-                CancellationToken.None));
+        var result = await service.AnalyzeChapterSplitAsync(
+            new AnalyzeReferenceChapterSplitPayload(novel.Id, anchor.AnchorId),
+            CancellationToken.None);
 
-        Assert.Equal(ReferenceMaterializationErrorCodes.ChapterSplitOutputInvalid, exception.ErrorCode);
+        Assert.Equal(2, result.ChapterCount);
+        var evidenceOffsets = await ReadProfileEvidenceOffsetsAsync(options, result.SplitProfileId);
+        Assert.Equal(new[] { 0, 16 }, evidenceOffsets);
     }
 
     [Fact]
@@ -300,6 +346,15 @@ public sealed class ReferenceMaterializationChapterSplitTests : IDisposable
         return path;
     }
 
+    private string CreateSourceFileWithBom(string fileName, string content)
+    {
+        var directory = Path.Combine(_root, "sources");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, fileName);
+        File.WriteAllText(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        return path;
+    }
+
     private static async ValueTask InitializeAsync(AppInitializationOptions options)
     {
         var initialization = new FileSystemAppInitializationService(options);
@@ -323,6 +378,22 @@ public sealed class ReferenceMaterializationChapterSplitTests : IDisposable
         command.Parameters.AddWithValue("$split_profile_id", splitProfileId);
         return (string)(await command.ExecuteScalarAsync(CancellationToken.None)
             ?? throw new InvalidOperationException("Split profile was not persisted."));
+    }
+
+    private static async ValueTask<int[]> ReadProfileEvidenceOffsetsAsync(AppInitializationOptions options, string splitProfileId)
+    {
+        await using var connection = await OpenConnectionAsync(options);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT pattern_json FROM reference_chapter_split_profiles WHERE split_profile_id = $split_profile_id;";
+        command.Parameters.AddWithValue("$split_profile_id", splitProfileId);
+        var json = (string)(await command.ExecuteScalarAsync(CancellationToken.None)
+            ?? throw new InvalidOperationException("Split profile was not persisted."));
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement
+            .GetProperty("evidence_offsets")
+            .EnumerateArray()
+            .Select(item => item.GetInt32())
+            .ToArray();
     }
 
     private static async ValueTask<int> CountAnchorRowsAsync(AppInitializationOptions options, string tableName, long anchorId)

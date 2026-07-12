@@ -67,8 +67,18 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
             new ReferenceChapterSplitModelRequest(input.AnchorId, source.Hash, sample),
             cancellationToken);
         ValidateModelResult(modelResult, sample.Length);
-        ValidateModelEvidence(sample, modelResult);
-        var boundaries = BuildBoundaries(source.NormalizedText, modelResult.PatternKind, modelResult.DelimiterTemplate);
+        var validatedEvidenceOffsets = ValidateModelEvidence(sample, modelResult);
+        IReadOnlyList<ChapterBoundary> boundaries;
+        try
+        {
+            boundaries = BuildBoundaries(source.NormalizedText, modelResult.PatternKind, modelResult.DelimiterTemplate);
+        }
+        catch (ArgumentException)
+        {
+            throw new ReferenceMaterializationException(
+                ReferenceMaterializationErrorCodes.ChapterSplitOutputInvalid,
+                "Chapter split analysis produced invalid chapter boundaries.");
+        }
 
         await EnsureSourceDidNotChangeAsync(source, input.NovelId, input.AnchorId, cancellationToken);
         return await PersistProfileAsync(
@@ -81,7 +91,7 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
             sample.Length,
             JsonSerializer.Serialize(new
             {
-                evidence_offsets = modelResult.EvidenceOffsets
+                evidence_offsets = validatedEvidenceOffsets
             }),
             modelResult.ProviderName,
             modelResult.ModelId,
@@ -502,7 +512,11 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
                          line.Equals("table of contents", StringComparison.OrdinalIgnoreCase));
 
     private static string NormalizeTableOfContentsTitle(string value) =>
-        TableOfContentsLinkSuffixPattern.Replace(value, string.Empty).Trim();
+        string.Join(
+            " ",
+            TableOfContentsLinkSuffixPattern
+                .Replace(value, string.Empty)
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private static List<Heading> FindHeadings(string source, string patternKind, string delimiterTemplate)
     {
@@ -597,13 +611,38 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
             else
             {
                 var nextToken = FindNextTemplateToken(template, offset);
-                builder.Append(Regex.Escape(template[offset..nextToken]));
+                AppendTemplateLiteral(builder, template[offset..nextToken]);
                 offset = nextToken;
             }
         }
 
         builder.Append("\\s*$");
         return new Regex(builder.ToString(), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+    }
+
+    private static void AppendTemplateLiteral(StringBuilder builder, string literal)
+    {
+        for (var offset = 0; offset < literal.Length;)
+        {
+            if (char.IsWhiteSpace(literal[offset]))
+            {
+                builder.Append(@"\s+");
+                while (offset < literal.Length && char.IsWhiteSpace(literal[offset]))
+                {
+                    offset++;
+                }
+
+                continue;
+            }
+
+            var start = offset;
+            while (offset < literal.Length && !char.IsWhiteSpace(literal[offset]))
+            {
+                offset++;
+            }
+
+            builder.Append(Regex.Escape(literal[start..offset]));
+        }
     }
 
     private static int FindNextTemplateToken(string template, int offset)
@@ -684,17 +723,24 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
         }
     }
 
-    private static void ValidateModelEvidence(string sample, ReferenceChapterSplitModelResult result)
+    private static IReadOnlyList<int> ValidateModelEvidence(string sample, ReferenceChapterSplitModelResult result)
     {
-        var headingOffsets = FindHeadings(sample, result.PatternKind, result.DelimiterTemplate)
+        var headings = ExcludeLeadingTableOfContentsHeadings(
+            sample,
+            FindHeadings(sample, result.PatternKind, result.DelimiterTemplate));
+        var headingOffsets = headings
             .Select(heading => heading.HeadingStart)
-            .ToHashSet();
-        if (headingOffsets.Count == 0 || result.EvidenceOffsets.Any(offset => !headingOffsets.Contains(offset)))
+            .Distinct()
+            .OrderBy(offset => offset)
+            .ToArray();
+        if (headingOffsets.Length == 0)
         {
             throw new ReferenceMaterializationException(
                 ReferenceMaterializationErrorCodes.ChapterSplitOutputInvalid,
-                "Chapter split analysis returned evidence that does not match the source sample.");
+                "Chapter split analysis did not produce a template that matches the source sample.");
         }
+
+        return headingOffsets.Take(3).ToArray();
     }
 
     private static void ValidateReferenceInput(long novelId, long anchorId)
@@ -753,7 +799,13 @@ public sealed partial class SqliteReferenceMaterializationService : IReferenceMa
         }
 
         var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
-        var normalized = Encoding.UTF8.GetString(bytes)
+        var decoded = Encoding.UTF8.GetString(bytes);
+        if (decoded.Length > 0 && decoded[0] == '\uFEFF')
+        {
+            decoded = decoded[1..];
+        }
+
+        var normalized = decoded
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace("\r", "\n", StringComparison.Ordinal);
         if (string.IsNullOrWhiteSpace(normalized))
